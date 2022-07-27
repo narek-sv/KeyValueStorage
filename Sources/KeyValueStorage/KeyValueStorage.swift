@@ -17,11 +17,11 @@ final class KeyValueStorage {
     let accessGroup: String?
     
     private static var defaultServiceName: String = {
-        Bundle.main.bundleIdentifier ?? "defaultSuiteName"
+        Bundle.main.bundleIdentifier.unwrapped("defaultSuiteName")
     }()
     
     init() {
-        self.userDefaults = UserDefaults(suiteName: Self.defaultServiceName)!
+        self.userDefaults = UserDefaults.standard
         self.keychain = KeychainHelper(serviceName: Self.defaultServiceName)
         self.accessGroup = nil
     }
@@ -42,19 +42,15 @@ final class KeyValueStorage {
     }
     
     func save<T: Codable>(_ value: T, forKey key: KeyValueStorageKey<T>) {
-        if case .inMemory = key.storageType {
-            inMemoryStorage[key.name] = value
-        } else {
+        switch key.storageType {
+        case .userDefaults:
             guard let data = try? encoder.encode([key.name: value]) else { return }
-            
-            switch key.storageType {
-            case .userDefaults:
-                userDefaults.set(data, forKey: key.name)
-            case .keychain:
-                keychain.set(data, forKey: key.name)
-            case .inMemory:
-                break
-            }
+            userDefaults.set(data, forKey: key.name)
+        case .keychain:
+            guard let data = try? encoder.encode([key.name: value]) else { return }
+            keychain.set(data, forKey: key.name)
+        case .inMemory:
+            inMemoryStorage[key.name] = value
         }
     }
     

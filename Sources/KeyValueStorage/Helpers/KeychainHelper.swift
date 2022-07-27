@@ -172,12 +172,6 @@ final class KeychainHelper {
         }
         return keys
     }
-    
-    private func hasValue(forKey key: String,
-                          withAccessibility accessibility: Accessibility? = nil,
-                          isSynchronizable: Bool = false) -> Bool {
-        return get(forKey: key, withAccessibility: accessibility, isSynchronizable: isSynchronizable) != nil
-    }
 }
 
 // MARK: - Keys
