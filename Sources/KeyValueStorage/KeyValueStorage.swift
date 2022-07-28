@@ -14,7 +14,7 @@ final class KeyValueStorage {
     private let decoder = JSONDecoder()
     private let userDefaults: UserDefaults
     private let keychain: KeychainHelper
-    
+    private let concurrentQueue = DispatchQueue(label: "KeyValueStorage.default.queue", qos: .userInitiated)
     let accessGroup: String?
     
     private static var defaultServiceName: String = {
@@ -42,62 +42,70 @@ final class KeyValueStorage {
         }
     }
     
-    func save<T: Codable>(_ value: T, forKey key: KeyValueStorageKey<T>) {
-        switch key.storageType {
-        case let .inMemory(isStatic):
-            if isStatic {
-                Self.inMemoryStorage[key.name] = value
-            } else {
-                inMemoryStorage[key.name] = value
-            }
-        case .userDefaults:
-            guard let data = try? encoder.encode([key.name: value]) else { return }
-            userDefaults.set(data, forKey: key.name)
-        case let .keychain(accessibility, synchronizable):
-            guard let data = try? encoder.encode([key.name: value]) else { return }
-            keychain.set(data, forKey: key.name, withAccessibility: accessibility, isSynchronizable: synchronizable)
-        }
-    }
-    
     func fetch<T: Codable>(forKey key: KeyValueStorageKey<T>) -> T? {
-        var fetchedData: Data?
-
-        switch key.storageType {
-        case let .inMemory(isStatic):
-            if isStatic {
-                return Self.inMemoryStorage[key.name] as? T
-            } else {
-                return inMemoryStorage[key.name] as? T
+        concurrentQueue.sync {
+            var fetchedData: Data?
+            
+            switch key.storageType {
+            case let .inMemory(isStatic):
+                if isStatic {
+                    return Self.inMemoryStorage[key.name] as? T
+                } else {
+                    return inMemoryStorage[key.name] as? T
+                }
+            case .userDefaults:
+                fetchedData = userDefaults.data(forKey: key.name)
+            case let .keychain(accessibility, synchronizable):
+                fetchedData = keychain.get(forKey: key.name, withAccessibility: accessibility, isSynchronizable: synchronizable)
             }
-        case .userDefaults:
-            fetchedData = userDefaults.data(forKey: key.name)
-        case let .keychain(accessibility, synchronizable):
-            fetchedData = keychain.get(forKey: key.name, withAccessibility: accessibility, isSynchronizable: synchronizable)
+            
+            guard let data = fetchedData else { return nil }
+            return (try? decoder.decode([String: T].self, from: data))?[key.name]
         }
-
-        guard let data = fetchedData else { return nil }
-        return (try? decoder.decode([String: T].self, from: data))?[key.name]
     }
     
     func delete<T: Codable>(forKey key: KeyValueStorageKey<T>) {
-        switch key.storageType {
-        case let .inMemory(isStatic):
-            if isStatic {
-                Self.inMemoryStorage[key.name] = nil
-            } else {
-                inMemoryStorage[key.name] = nil
+        concurrentQueue.sync {
+            switch key.storageType {
+            case let .inMemory(isStatic):
+                if isStatic {
+                    Self.inMemoryStorage[key.name] = nil
+                } else {
+                    self.inMemoryStorage[key.name] = nil
+                }
+            case .userDefaults:
+                self.userDefaults.removeObject(forKey: key.name)
+            case let .keychain(accessibility, synchronizable):
+                self.keychain.remove(forKey: key.name, withAccessibility: accessibility, isSynchronizable: synchronizable)
             }
-        case .userDefaults:
-            userDefaults.removeObject(forKey: key.name)
-        case let .keychain(accessibility, synchronizable):
-            keychain.remove(forKey: key.name, withAccessibility: accessibility, isSynchronizable: synchronizable)
+        }
+    }
+    
+    func save<T: Codable>(_ value: T, forKey key: KeyValueStorageKey<T>) {
+        concurrentQueue.sync {
+            switch key.storageType {
+            case let .inMemory(isStatic):
+                if isStatic {
+                    Self.inMemoryStorage[key.name] = value
+                } else {
+                    self.inMemoryStorage[key.name] = value
+                }
+            case .userDefaults:
+                guard let data = try? self.encoder.encode([key.name: value]) else { return }
+                self.userDefaults.set(data, forKey: key.name)
+            case let .keychain(accessibility, synchronizable):
+                guard let data = try? self.encoder.encode([key.name: value]) else { return }
+                self.keychain.set(data, forKey: key.name, withAccessibility: accessibility, isSynchronizable: synchronizable)
+            }
         }
     }
     
     func clear() {
-        Self.inMemoryStorage.removeAll()
-        inMemoryStorage.removeAll()
-        userDefaults.removePersistentDomain(forName: accessGroup ?? Self.defaultServiceName)
-        keychain.removeAll()
+        concurrentQueue.sync {
+            Self.inMemoryStorage.removeAll()
+            self.inMemoryStorage.removeAll()
+            self.userDefaults.removePersistentDomain(forName: self.accessGroup ?? Self.defaultServiceName)
+            self.keychain.removeAll()
+        }
     }
 }
