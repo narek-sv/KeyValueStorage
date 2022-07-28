@@ -8,6 +8,7 @@
 import Foundation
 
 final class KeyValueStorage {
+    static private  var inMemoryStorage = [String: Any]()
     private var inMemoryStorage = [String: Any]()
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
@@ -43,14 +44,18 @@ final class KeyValueStorage {
     
     func save<T: Codable>(_ value: T, forKey key: KeyValueStorageKey<T>) {
         switch key.storageType {
+        case let .inMemory(isStatic):
+            if isStatic {
+                Self.inMemoryStorage[key.name] = value
+            } else {
+                inMemoryStorage[key.name] = value
+            }
         case .userDefaults:
             guard let data = try? encoder.encode([key.name: value]) else { return }
             userDefaults.set(data, forKey: key.name)
-        case .keychain:
+        case let .keychain(accessibility, synchronizable):
             guard let data = try? encoder.encode([key.name: value]) else { return }
-            keychain.set(data, forKey: key.name)
-        case .inMemory:
-            inMemoryStorage[key.name] = value
+            keychain.set(data, forKey: key.name, withAccessibility: accessibility, isSynchronizable: synchronizable)
         }
     }
     
@@ -58,12 +63,16 @@ final class KeyValueStorage {
         var fetchedData: Data?
 
         switch key.storageType {
-        case .inMemory:
-            return inMemoryStorage[key.name] as? T
+        case let .inMemory(isStatic):
+            if isStatic {
+                return Self.inMemoryStorage[key.name] as? T
+            } else {
+                return inMemoryStorage[key.name] as? T
+            }
         case .userDefaults:
             fetchedData = userDefaults.data(forKey: key.name)
-        case .keychain:
-            fetchedData = keychain.get(forKey: key.name)
+        case let .keychain(accessibility, synchronizable):
+            fetchedData = keychain.get(forKey: key.name, withAccessibility: accessibility, isSynchronizable: synchronizable)
         }
 
         guard let data = fetchedData else { return nil }
@@ -72,12 +81,16 @@ final class KeyValueStorage {
     
     func delete<T: Codable>(forKey key: KeyValueStorageKey<T>) {
         switch key.storageType {
-        case .inMemory:
-            inMemoryStorage[key.name] = nil
+        case let .inMemory(isStatic):
+            if isStatic {
+                Self.inMemoryStorage[key.name] = nil
+            } else {
+                inMemoryStorage[key.name] = nil
+            }
         case .userDefaults:
             userDefaults.removeObject(forKey: key.name)
-        case .keychain:
-            keychain.remove(forKey: key.name)
+        case let .keychain(accessibility, synchronizable):
+            keychain.remove(forKey: key.name, withAccessibility: accessibility, isSynchronizable: synchronizable)
         }
     }
     

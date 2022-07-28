@@ -6,7 +6,7 @@
 //
 
 public enum KeyValueStorageType: Equatable {
-    case inMemory
     case userDefaults
-    case keychain
+    case inMemory(isStatic: Bool = false)
+    case keychain(accessibility: KeychainAccessibility = .whenUnlocked, isSynchronizable: Bool = false)
 }

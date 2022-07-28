@@ -10,10 +10,10 @@ import Security
 
 final class KeychainHelper {
     
-    /// ServiceName is used to uniquely identify this keychain accessor. If no service name is specified bundleIdentifier will be used.
+    /// `serviceName` is used to uniquely identify this keychain accessor. If no service name is specified bundleIdentifier will be used.
     private(set) var serviceName: String
     
-    /// AccessGroup is used to identify which Keychain Access Group this entry belongs to. This allows you to use shared keychain access between different applications.
+    /// `accessGroup` is used to identify which Keychain Access Group this entry belongs to. This allows you to use shared keychain access between different applications.
     private(set) var accessGroup: String?
     
     init(serviceName: String, accessGroup: String? = nil) {
@@ -28,7 +28,7 @@ final class KeychainHelper {
     /// - parameter isSynchronizable: A bool that describes if the item should be synchronizable, to be synched with the iCloud. If none is provided, will default to false
     /// - returns: The Data object associated with the key if it exists. If no data exists, returns nil.
     func get(forKey key: String,
-             withAccessibility accessibility: Accessibility? = nil,
+             withAccessibility accessibility: KeychainAccessibility? = nil,
              isSynchronizable: Bool = false) -> Data? {
         var keychainQueryDictionary = query(forKey: key, withAccessibility: accessibility, isSynchronizable: isSynchronizable)
         keychainQueryDictionary[KeychainHelper.matchLimit] = kSecMatchLimitOne
@@ -51,11 +51,11 @@ final class KeychainHelper {
     @discardableResult
     func set(_ value: Data,
              forKey key: String,
-             withAccessibility accessibility: Accessibility? = nil,
+             withAccessibility accessibility: KeychainAccessibility? = nil,
              isSynchronizable: Bool = false) -> Bool {
         var keychainQueryDictionary = query(forKey: key, withAccessibility: accessibility, isSynchronizable: isSynchronizable)
         keychainQueryDictionary[KeychainHelper.valueData] = value
-        keychainQueryDictionary[KeychainHelper.attrAccessible] = accessibility?.rawValue ??  Accessibility.whenUnlocked.rawValue
+        keychainQueryDictionary[KeychainHelper.attrAccessible] = accessibility?.rawValue ??  KeychainAccessibility.whenUnlocked.rawValue
         
         let status = SecItemAdd(keychainQueryDictionary as CFDictionary, nil)
         if status == errSecSuccess {
@@ -75,7 +75,7 @@ final class KeychainHelper {
     /// - returns: True if successful, false otherwise.
     @discardableResult
     func remove(forKey key: String,
-                withAccessibility accessibility: Accessibility? = nil,
+                withAccessibility accessibility: KeychainAccessibility? = nil,
                 isSynchronizable: Bool = false) -> Bool {
         let keychainQueryDictionary = query(forKey: key, withAccessibility: accessibility, isSynchronizable: isSynchronizable)
         
@@ -99,7 +99,7 @@ final class KeychainHelper {
     
     private func update(_ value: Data,
                         forKey key: String,
-                        withAccessibility accessibility: Accessibility? = nil,
+                        withAccessibility accessibility: KeychainAccessibility? = nil,
                         isSynchronizable: Bool = false) -> Bool {
         let updateDictionary = [KeychainHelper.valueData: value]
         var keychainQueryDictionary = query(forKey: key, withAccessibility: accessibility, isSynchronizable: isSynchronizable)
@@ -110,7 +110,7 @@ final class KeychainHelper {
     }
     
     private func query(forKey key: String,
-                       withAccessibility accessibility: Accessibility? = nil,
+                       withAccessibility accessibility: KeychainAccessibility? = nil,
                        isSynchronizable: Bool = false) -> [String: Any] {
         var keychainQueryDictionary: [String: Any] = [KeychainHelper.class: kSecClassGenericPassword]
         let encodedIdentifier: Data? = key.data(using: .utf8)
@@ -124,7 +124,7 @@ final class KeychainHelper {
         return keychainQueryDictionary
     }
     
-    private func accessibility(ofKey key: String) -> Accessibility? {
+    private func accessibility(ofKey key: String) -> KeychainAccessibility? {
         var keychainQueryDictionary = query(forKey: key)
         keychainQueryDictionary[KeychainHelper.attrAccessible] = nil
         keychainQueryDictionary[KeychainHelper.matchLimit] = kSecMatchLimitOne
@@ -140,7 +140,7 @@ final class KeychainHelper {
             return nil
         }
         
-        return Accessibility(rawValue: accessibilityAttrValue)
+        return KeychainAccessibility(rawValue: accessibilityAttrValue)
     }
     
     private func allKeys() -> Set<String> {
@@ -192,7 +192,7 @@ extension KeychainHelper {
 
 // MARK: - Accessibility
 
-enum Accessibility: String {
+public enum KeychainAccessibility: String {
     case afterFirstUnlock
     case afterFirstUnlockThisDeviceOnly
     case always

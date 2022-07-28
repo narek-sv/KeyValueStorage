@@ -121,7 +121,7 @@ final class KeyValueStorageTests: XCTestCase {
     func testIntInMemory() {
         // Given
         let integer = 17
-        let key = KeyValueStorageKey<Int>(name: "anInteger", storage: .inMemory)
+        let key = KeyValueStorageKey<Int>(name: "anInteger", storage: .inMemory())
         
         // When
         storage.save(integer, forKey: key)
@@ -137,7 +137,7 @@ final class KeyValueStorageTests: XCTestCase {
     func testStringInMemory() {
         // Given
         let string = "someString"
-        let key = KeyValueStorageKey<String>(name: "aString", storage: .inMemory)
+        let key = KeyValueStorageKey<String>(name: "aString", storage: .inMemory())
         
         // When
         storage.save(string, forKey: key)
@@ -153,7 +153,7 @@ final class KeyValueStorageTests: XCTestCase {
     func testDateInMemory() {
         // Given
         let date = Date()
-        let key = KeyValueStorageKey<Date>(name: "aDate", storage: .inMemory)
+        let key = KeyValueStorageKey<Date>(name: "aDate", storage: .inMemory())
         
         // When
         storage.save(date, forKey: key)
@@ -169,7 +169,7 @@ final class KeyValueStorageTests: XCTestCase {
     func testArrayInMemory() {
         // Given
         let array = [1, 2, 3, 4]
-        let key = KeyValueStorageKey<[Int]>(name: "anArray", storage: .inMemory)
+        let key = KeyValueStorageKey<[Int]>(name: "anArray", storage: .inMemory())
         
         // When
         storage.save(array, forKey: key)
@@ -185,7 +185,7 @@ final class KeyValueStorageTests: XCTestCase {
     func testDictionary1InMemory() {
         // Given
         let dictionary: [String: Int] = ["a": 1, "b": 2]
-        let key = KeyValueStorageKey<[String: Int]>(name: "aDictionary", storage: .inMemory)
+        let key = KeyValueStorageKey<[String: Int]>(name: "aDictionary", storage: .inMemory())
         
         // When
         storage.save(dictionary, forKey: key)
@@ -201,7 +201,7 @@ final class KeyValueStorageTests: XCTestCase {
     func testDictionary2InMemory() {
         // Given
         let dictionary: [Int: String] = [1: "a", 2: "b"]
-        let key = KeyValueStorageKey<[Int: String]>(name: "aDictionary", storage: .inMemory)
+        let key = KeyValueStorageKey<[Int: String]>(name: "aDictionary", storage: .inMemory())
         
         // When
         storage.save(dictionary, forKey: key)
@@ -214,10 +214,28 @@ final class KeyValueStorageTests: XCTestCase {
         XCTAssertNil(storage.fetch(forKey: key))
     }
     
+    func testIntInMemoryStatic() {
+        // Given
+        let integer = 17
+        let key = KeyValueStorageKey<Int>(name: "anInteger", storage: .inMemory(isStatic: true))
+        let otherStorage = KeyValueStorage(accessGroup: UUID().uuidString, teamID: "xxx")
+        
+        // When
+        storage.save(integer, forKey: key)
+        // Then
+        XCTAssertEqual(integer, storage.fetch(forKey: key))
+        XCTAssertEqual(integer, otherStorage.fetch(forKey: key))
+        
+        // When
+        otherStorage.delete(forKey: key)
+        // Then
+        XCTAssertNil(storage.fetch(forKey: key))
+    }
+    
     func testIntSecure() {
         // Given
         let integer = 17
-        let key = KeyValueStorageKey<Int>(name: "anInteger", storage: .keychain)
+        let key = KeyValueStorageKey<Int>(name: "anInteger", storage: .keychain())
         
         // When
         storage.save(integer, forKey: key)
@@ -233,7 +251,7 @@ final class KeyValueStorageTests: XCTestCase {
     func testStringSecure() {
         // Given
         let string = "someString"
-        let key = KeyValueStorageKey<String>(name: "aString", storage: .keychain)
+        let key = KeyValueStorageKey<String>(name: "aString", storage: .keychain())
         
         // When
         storage.save(string, forKey: key)
@@ -249,7 +267,7 @@ final class KeyValueStorageTests: XCTestCase {
     func testDateSecure() {
         // Given
         let date = Date()
-        let key = KeyValueStorageKey<Date>(name: "aDate", storage: .keychain)
+        let key = KeyValueStorageKey<Date>(name: "aDate", storage: .keychain())
         
         storage.save(date, forKey: key)
         // Then
@@ -263,7 +281,7 @@ final class KeyValueStorageTests: XCTestCase {
     func testArraySecure() {
         // Given
         let array = [1, 2, 3, 4]
-        let key = KeyValueStorageKey<[Int]>(name: "anArray", storage: .keychain)
+        let key = KeyValueStorageKey<[Int]>(name: "anArray", storage: .keychain())
         
         // When
         storage.save(array, forKey: key)
@@ -279,7 +297,7 @@ final class KeyValueStorageTests: XCTestCase {
     func testDictionary1Secure() {
         // Given
         let dictionary: [String: Int] = ["a": 1, "b": 2]
-        let key = KeyValueStorageKey<[String: Int]>(name: "aDictionary", storage: .keychain)
+        let key = KeyValueStorageKey<[String: Int]>(name: "aDictionary", storage: .keychain())
         
         // When
         storage.save(dictionary, forKey: key)
@@ -295,7 +313,7 @@ final class KeyValueStorageTests: XCTestCase {
     func testDictionary2Secure() {
         // Given
         let dictionary: [Int: String] = [1: "a", 2: "b"]
-        let key = KeyValueStorageKey<[Int: String]>(name: "aDictionary", storage: .keychain)
+        let key = KeyValueStorageKey<[Int: String]>(name: "aDictionary", storage: .keychain())
         
         // When
         storage.save(dictionary, forKey: key)
@@ -344,7 +362,7 @@ final class KeyValueStorageTests: XCTestCase {
     func testStructSecure() {
         // Given
         let structure = SomeStruct(string: "struct", integer: 8, date: Date(timeIntervalSince1970: 44651))
-        let key = KeyValueStorageKey<SomeStruct>(name: "aStruct", storage: .keychain)
+        let key = KeyValueStorageKey<SomeStruct>(name: "aStruct", storage: .keychain())
         
         // When
         storage.save(structure, forKey: key)
@@ -360,7 +378,7 @@ final class KeyValueStorageTests: XCTestCase {
     func testClassSecure() {
         // Given
         let classification = SomeClass(double: 5.67, array: [8, 5], dict: ["some": "thing"])
-        let key = KeyValueStorageKey<SomeClass>(name: "aClass", storage: .keychain)
+        let key = KeyValueStorageKey<SomeClass>(name: "aClass", storage: .keychain())
         
         // When
         storage.save(classification, forKey: key)
@@ -376,7 +394,7 @@ final class KeyValueStorageTests: XCTestCase {
     func testStructInMemory() {
         // Given
         let structure = SomeStruct(string: "struct", integer: 8, date: Date(timeIntervalSince1970: 44651))
-        let key = KeyValueStorageKey<SomeStruct>(name: "aStruct", storage: .inMemory)
+        let key = KeyValueStorageKey<SomeStruct>(name: "aStruct", storage: .inMemory())
         
         // When
         storage.save(structure, forKey: key)
@@ -392,7 +410,7 @@ final class KeyValueStorageTests: XCTestCase {
     func testClassInMemory() {
         // Given
         let classification = SomeClass(double: 5.67, array: [8, 5], dict: ["some": "thing"])
-        let key = KeyValueStorageKey<SomeClass>(name: "aClass", storage: .inMemory)
+        let key = KeyValueStorageKey<SomeClass>(name: "aClass", storage: .inMemory())
         
         // When
         storage.save(classification, forKey: key)
@@ -430,7 +448,7 @@ final class KeyValueStorageTests: XCTestCase {
         // Given
         let classification = SomeClass(double: 5.67, array: [8, 5], dict: ["some": "thing"])
         let key = KeyValueStorageKey<SomeClass>(name: "aClass")
-        let wrongKey = KeyValueStorageKey<SomeClass>(name: "aClass", storage: .keychain)
+        let wrongKey = KeyValueStorageKey<SomeClass>(name: "aClass", storage: .keychain())
         
         // When
         storage.save(classification, forKey: key)
@@ -448,8 +466,8 @@ final class KeyValueStorageTests: XCTestCase {
         // Given
         let classification = SomeClass(double: .infinity, array: [8, 5], dict: ["some": "thing"])
         let key1 = KeyValueStorageKey<SomeClass>(name: "aClass")
-        let key2 = KeyValueStorageKey<SomeClass>(name: "aClass", storage: .keychain)
-        let key3 = KeyValueStorageKey<SomeClass>(name: "aClass", storage: .inMemory)
+        let key2 = KeyValueStorageKey<SomeClass>(name: "aClass", storage: .keychain())
+        let key3 = KeyValueStorageKey<SomeClass>(name: "aClass", storage: .inMemory())
 
         // When
         storage.save(classification, forKey: key1)
@@ -474,8 +492,8 @@ final class KeyValueStorageTests: XCTestCase {
         let class3 = SomeClass(double: 8.88, array: [4, 3], dict: ["another": "stuff"])
         let class4 = SomeClass(double: 0, array: [0, 0], dict: ["zero": "empty"])
         let key1 = KeyValueStorageKey<SomeClass>(name: "aClass")
-        let key2 = KeyValueStorageKey<SomeClass>(name: "aClass", storage: .keychain)
-        let key3 = KeyValueStorageKey<SomeClass>(name: "aClass", storage: .inMemory)
+        let key2 = KeyValueStorageKey<SomeClass>(name: "aClass", storage: .keychain())
+        let key3 = KeyValueStorageKey<SomeClass>(name: "aClass", storage: .inMemory())
 
         // When
         storage.save(class1, forKey: key1)
@@ -520,8 +538,8 @@ final class KeyValueStorageTests: XCTestCase {
         let class2 = SomeClass(double: 6.67, array: [5, 8], dict: ["thing": "some"])
         let class3 = SomeClass(double: 8.88, array: [4, 3], dict: ["another": "stuff"])
         let key1 = KeyValueStorageKey<SomeClass>(name: "aClass")
-        let key2 = KeyValueStorageKey<SomeClass>(name: "aClass", storage: .keychain)
-        let key3 = KeyValueStorageKey<SomeClass>(name: "aClass", storage: .inMemory)
+        let key2 = KeyValueStorageKey<SomeClass>(name: "aClass", storage: .keychain())
+        let key3 = KeyValueStorageKey<SomeClass>(name: "aClass", storage: .inMemory())
 
         // When
         storage.save(class1, forKey: key1)
@@ -563,7 +581,7 @@ final class KeyValueStorageTests: XCTestCase {
     func testSet() {
         // Given
         let string = "someString"
-        let key = KeyValueStorageKey<String>(name: "aString", storage: .keychain)
+        let key = KeyValueStorageKey<String>(name: "aString", storage: .keychain())
         
         // When
         storage.set(string, forKey: key)
@@ -581,9 +599,9 @@ final class KeyValueStorageTests: XCTestCase {
         let integer1 = 17
         let integer2 = 8
         let integer3 = 6
-        let key1 = KeyValueStorageKey<Int>(name: "anInteger1", storage: .keychain)
+        let key1 = KeyValueStorageKey<Int>(name: "anInteger1", storage: .keychain())
         let key2 = KeyValueStorageKey<Int>(name: "anInteger2", storage: .userDefaults)
-        let key3 = KeyValueStorageKey<Int>(name: "anInteger3", storage: .inMemory)
+        let key3 = KeyValueStorageKey<Int>(name: "anInteger3", storage: .inMemory())
 
         storage.save(integer1, forKey: key1)
         storage.save(integer2, forKey: key2)
