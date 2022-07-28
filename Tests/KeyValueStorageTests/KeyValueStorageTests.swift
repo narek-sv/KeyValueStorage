@@ -8,6 +8,7 @@
 import XCTest
 @testable import KeyValueStorage
 
+#if os(macOS)
 final class KeyValueStorageTests: XCTestCase {
     private let suitName = "UserStore#KeychainForTests"
     private var storage: KeyValueStorage!
@@ -506,6 +507,11 @@ final class KeyValueStorageTests: XCTestCase {
         XCTAssertEqual(class2, storage.fetch(forKey: key2))
         
         // When
+        storage.save(class2, forKey: key2)
+        // Then
+        XCTAssertEqual(class2, storage.fetch(forKey: key2))
+        
+        // When
         storage.save(class3, forKey: key3)
         // Then
         XCTAssertEqual(class3, storage.fetch(forKey: key3))
@@ -654,3 +660,4 @@ class SomeClass: Equatable, Codable {
         return lhs.double == rhs.double && lhs.array == rhs.array && lhs.dict == rhs.dict
     }
 }
+#endif

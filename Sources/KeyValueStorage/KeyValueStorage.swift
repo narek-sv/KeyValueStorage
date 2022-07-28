@@ -95,6 +95,7 @@ final class KeyValueStorage {
     }
     
     func clear() {
+        Self.inMemoryStorage.removeAll()
         inMemoryStorage.removeAll()
         userDefaults.removePersistentDomain(forName: accessGroup ?? Self.defaultServiceName)
         keychain.removeAll()
