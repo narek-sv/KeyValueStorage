@@ -17,4 +17,5 @@ jobs:
       run: swift build -v
     - name: Run tests
       run: swift test -v --enable-code-coverage
-    - uses: codecov/codecov-action@v3.1.0
+    - name: Upload to Codecov
+      uses: codecov/codecov-action@v3.1.0
