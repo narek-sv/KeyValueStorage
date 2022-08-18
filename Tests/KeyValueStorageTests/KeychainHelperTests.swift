@@ -28,7 +28,7 @@ class KeychainHelperTests: XCTestCase {
         
         // When - Then
         XCTAssertNil(helper.get(forKey: key))
-        XCTAssertNil(helper.get(forKey: key, withAccessibility: .always))
+        XCTAssertNil(helper.get(forKey: key, withAccessibility: .whenUnlocked))
         XCTAssertNil(helper.get(forKey: key, isSynchronizable: true))
 
         // When
@@ -36,7 +36,7 @@ class KeychainHelperTests: XCTestCase {
         
         // Then
         XCTAssertEqual(helper.get(forKey: key), data)
-        XCTAssertEqual(helper.get(forKey: key, withAccessibility: .always), data)
+        XCTAssertEqual(helper.get(forKey: key, withAccessibility: .whenUnlocked), data)
         XCTAssertNil(helper.get(forKey: key, isSynchronizable: true))
         
         // When
@@ -44,7 +44,7 @@ class KeychainHelperTests: XCTestCase {
 
         // Then
         XCTAssertEqual(helper.get(forKey: key), newData)
-        XCTAssertEqual(helper.get(forKey: key, withAccessibility: .always), newData)
+        XCTAssertEqual(helper.get(forKey: key, withAccessibility: .whenUnlocked), newData)
         XCTAssertNil(helper.get(forKey: key, isSynchronizable: true))
         
         // When
@@ -52,7 +52,7 @@ class KeychainHelperTests: XCTestCase {
         
         // Then
         XCTAssertNil(helper.get(forKey: key))
-        XCTAssertNil(helper.get(forKey: key, withAccessibility: .always))
+        XCTAssertNil(helper.get(forKey: key, withAccessibility: .whenUnlocked))
         XCTAssertNil(helper.get(forKey: key, isSynchronizable: true))
         
         // When
@@ -60,7 +60,7 @@ class KeychainHelperTests: XCTestCase {
         
         // Then
         XCTAssertNil(helper.get(forKey: key))
-        XCTAssertNil(helper.get(forKey: key, withAccessibility: .always))
+        XCTAssertNil(helper.get(forKey: key, withAccessibility: .whenUnlocked))
         XCTAssertNil(helper.get(forKey: key, withAccessibility: .afterFirstUnlock))
         XCTAssertNil(helper.get(forKey: key, isSynchronizable: true))
     }
@@ -69,9 +69,7 @@ class KeychainHelperTests: XCTestCase {
         // Given
         XCTAssertEqual(KeychainAccessibility.afterFirstUnlock.key, String(kSecAttrAccessibleAfterFirstUnlock))
         XCTAssertEqual(KeychainAccessibility.afterFirstUnlockThisDeviceOnly.key, String(kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly))
-        XCTAssertEqual(KeychainAccessibility.always.key, String(kSecAttrAccessibleAlways))
         XCTAssertEqual(KeychainAccessibility.whenPasscodeSetThisDeviceOnly.key, String(kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly))
-        XCTAssertEqual(KeychainAccessibility.alwaysThisDeviceOnly.key, String(kSecAttrAccessibleAlwaysThisDeviceOnly))
         XCTAssertEqual(KeychainAccessibility.whenUnlocked.key, String(kSecAttrAccessibleWhenUnlocked))
         XCTAssertEqual(KeychainAccessibility.whenUnlockedThisDeviceOnly.key, String(kSecAttrAccessibleWhenUnlockedThisDeviceOnly))
     }

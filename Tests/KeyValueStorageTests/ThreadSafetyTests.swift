@@ -20,8 +20,7 @@ class ThreadSafetyTests: XCTestCase {
     }
 
     func testSafety() throws {
-        stressTest(in: .inMemory(isStatic: false))
-        stressTest(in: .inMemory(isStatic: true))
+        stressTest(in: .inMemory)
         stressTest(in: .userDefaults)
         stressTest(in: .keychain())
     }

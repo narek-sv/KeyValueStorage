@@ -8,8 +8,7 @@
 import Foundation
 
 final class KeyValueStorage {
-    static private  var inMemoryStorage = [String: Any]()
-    private var inMemoryStorage = [String: Any]()
+    static private var inMemoryStorage = [String: [String: Any]]()
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private let userDefaults: UserDefaults
@@ -20,6 +19,10 @@ final class KeyValueStorage {
     private static var defaultServiceName: String = {
         Bundle.main.bundleIdentifier.unwrapped("defaultSuiteName")
     }()
+    
+    private var serviceName: String {
+        accessGroup.unwrapped(Self.defaultServiceName)
+    }
     
     init() {
         self.userDefaults = UserDefaults.standard
@@ -47,12 +50,8 @@ final class KeyValueStorage {
             var fetchedData: Data?
             
             switch key.storageType {
-            case let .inMemory(isStatic):
-                if isStatic {
-                    return Self.inMemoryStorage[key.name] as? T
-                } else {
-                    return inMemoryStorage[key.name] as? T
-                }
+            case .inMemory:
+                return Self.inMemoryStorage[serviceName]?[key.name] as? T
             case .userDefaults:
                 fetchedData = userDefaults.data(forKey: key.name)
             case let .keychain(accessibility, synchronizable):
@@ -67,12 +66,8 @@ final class KeyValueStorage {
     func delete<T: Codable>(forKey key: KeyValueStorageKey<T>) {
         concurrentQueue.sync {
             switch key.storageType {
-            case let .inMemory(isStatic):
-                if isStatic {
-                    Self.inMemoryStorage[key.name] = nil
-                } else {
-                    self.inMemoryStorage[key.name] = nil
-                }
+            case .inMemory:
+                Self.inMemoryStorage[serviceName]?[key.name] = nil
             case .userDefaults:
                 self.userDefaults.removeObject(forKey: key.name)
             case let .keychain(accessibility, synchronizable):
@@ -84,12 +79,10 @@ final class KeyValueStorage {
     func save<T: Codable>(_ value: T, forKey key: KeyValueStorageKey<T>) {
         concurrentQueue.sync {
             switch key.storageType {
-            case let .inMemory(isStatic):
-                if isStatic {
-                    Self.inMemoryStorage[key.name] = value
-                } else {
-                    self.inMemoryStorage[key.name] = value
-                }
+            case .inMemory:
+                var data = Self.inMemoryStorage[serviceName].unwrapped([:])
+                data[key.name] = value
+                Self.inMemoryStorage[serviceName] = data
             case .userDefaults:
                 guard let data = try? self.encoder.encode([key.name: value]) else { return }
                 self.userDefaults.set(data, forKey: key.name)
@@ -103,7 +96,6 @@ final class KeyValueStorage {
     func clear() {
         concurrentQueue.sync {
             Self.inMemoryStorage.removeAll()
-            self.inMemoryStorage.removeAll()
             self.userDefaults.removePersistentDomain(forName: self.accessGroup ?? Self.defaultServiceName)
             self.keychain.removeAll()
         }

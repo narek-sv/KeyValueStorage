@@ -119,107 +119,48 @@ final class KeyValueStorageTests: XCTestCase {
         XCTAssertNil(storage.fetch(forKey: key))
     }
     
-    func testIntInMemory() {
+    func testIntInMemoryDefault() {
         // Given
         let integer = 17
-        let key = KeyValueStorageKey<Int>(name: "anInteger", storage: .inMemory())
+        let key = KeyValueStorageKey<Int>(name: "anInteger", storage: .inMemory)
+        let otherStorage = KeyValueStorage()
         
         // When
         storage.save(integer, forKey: key)
         // Then
         XCTAssertEqual(integer, storage.fetch(forKey: key))
+        XCTAssertEqual(integer, otherStorage.fetch(forKey: key))
         
         // When
-        storage.delete(forKey: key)
+        otherStorage.delete(forKey: key)
         // Then
         XCTAssertNil(storage.fetch(forKey: key))
     }
     
-    func testStringInMemory() {
-        // Given
-        let string = "someString"
-        let key = KeyValueStorageKey<String>(name: "aString", storage: .inMemory())
-        
-        // When
-        storage.save(string, forKey: key)
-        // Then
-        XCTAssertEqual(string, storage.fetch(forKey: key))
-        
-        // When
-        storage.delete(forKey: key)
-        // Then
-        XCTAssertNil(storage.fetch(forKey: key))
-    }
-    
-    func testDateInMemory() {
-        // Given
-        let date = Date()
-        let key = KeyValueStorageKey<Date>(name: "aDate", storage: .inMemory())
-        
-        // When
-        storage.save(date, forKey: key)
-        // Then
-        XCTAssertEqual(date, storage.fetch(forKey: key))
-        
-        // When
-        storage.delete(forKey: key)
-        // Then
-        XCTAssertNil(storage.fetch(forKey: key))
-    }
-    
-    func testArrayInMemory() {
-        // Given
-        let array = [1, 2, 3, 4]
-        let key = KeyValueStorageKey<[Int]>(name: "anArray", storage: .inMemory())
-        
-        // When
-        storage.save(array, forKey: key)
-        // Then
-        XCTAssertEqual(array, storage.fetch(forKey: key))
-        
-        // When
-        storage.delete(forKey: key)
-        // Then
-        XCTAssertNil(storage.fetch(forKey: key))
-    }
-    
-    func testDictionary1InMemory() {
-        // Given
-        let dictionary: [String: Int] = ["a": 1, "b": 2]
-        let key = KeyValueStorageKey<[String: Int]>(name: "aDictionary", storage: .inMemory())
-        
-        // When
-        storage.save(dictionary, forKey: key)
-        // Then
-        XCTAssertEqual(dictionary, storage.fetch(forKey: key))
-        
-        // When
-        storage.delete(forKey: key)
-        // Then
-        XCTAssertNil(storage.fetch(forKey: key))
-    }
-    
-    func testDictionary2InMemory() {
-        // Given
-        let dictionary: [Int: String] = [1: "a", 2: "b"]
-        let key = KeyValueStorageKey<[Int: String]>(name: "aDictionary", storage: .inMemory())
-        
-        // When
-        storage.save(dictionary, forKey: key)
-        // Then
-        XCTAssertEqual(dictionary, storage.fetch(forKey: key))
-        
-        // When
-        storage.delete(forKey: key)
-        // Then
-        XCTAssertNil(storage.fetch(forKey: key))
-    }
-    
-    func testIntInMemoryStatic() {
+    func testIntInMemoryDifferentWithGroup() {
         // Given
         let integer = 17
-        let key = KeyValueStorageKey<Int>(name: "anInteger", storage: .inMemory(isStatic: true))
+        let key = KeyValueStorageKey<Int>(name: "anInteger", storage: .inMemory)
         let otherStorage = KeyValueStorage(accessGroup: UUID().uuidString, teamID: "xxx")
+        
+        // When
+        storage.save(integer, forKey: key)
+        // Then
+        XCTAssertEqual(integer, storage.fetch(forKey: key))
+        XCTAssertNil(otherStorage.fetch(forKey: key))
+        
+        // When
+        otherStorage.delete(forKey: key)
+        // Then
+        XCTAssertEqual(integer, storage.fetch(forKey: key))
+    }
+    
+    func testIntInMemorySameWithGroup() {
+        // Given
+        let integer = 17
+        let key = KeyValueStorageKey<Int>(name: "anInteger", storage: .inMemory)
+        let otherStorage = KeyValueStorage(accessGroup: "accessGroup", teamID: "teamID")
+        storage = KeyValueStorage(accessGroup: "accessGroup", teamID: "teamID")
         
         // When
         storage.save(integer, forKey: key)
@@ -392,39 +333,6 @@ final class KeyValueStorageTests: XCTestCase {
         XCTAssertNil(storage.fetch(forKey: key))
     }
     
-    func testStructInMemory() {
-        // Given
-        let structure = SomeStruct(string: "struct", integer: 8, date: Date(timeIntervalSince1970: 44651))
-        let key = KeyValueStorageKey<SomeStruct>(name: "aStruct", storage: .inMemory())
-        
-        // When
-        storage.save(structure, forKey: key)
-        // Then
-        XCTAssertEqual(structure, storage.fetch(forKey: key))
-
-        // When
-        storage.delete(forKey: key)
-        // Then
-        XCTAssertNil(storage.fetch(forKey: key))
-    }
-    
-    func testClassInMemory() {
-        // Given
-        let classification = SomeClass(double: 5.67, array: [8, 5], dict: ["some": "thing"])
-        let key = KeyValueStorageKey<SomeClass>(name: "aClass", storage: .inMemory())
-        
-        // When
-        storage.save(classification, forKey: key)
-        // Then
-        XCTAssertEqual(classification, storage.fetch(forKey: key))
-        XCTAssertTrue(classification === storage.fetch(forKey: key))
-        
-        // When
-        storage.delete(forKey: key)
-        // Then
-        XCTAssertNil(storage.fetch(forKey: key))
-    }
-    
     // MARK: - Testing edge cases
     
     func testWrongFetchType() {
@@ -468,7 +376,7 @@ final class KeyValueStorageTests: XCTestCase {
         let classification = SomeClass(double: .infinity, array: [8, 5], dict: ["some": "thing"])
         let key1 = KeyValueStorageKey<SomeClass>(name: "aClass")
         let key2 = KeyValueStorageKey<SomeClass>(name: "aClass", storage: .keychain())
-        let key3 = KeyValueStorageKey<SomeClass>(name: "aClass", storage: .inMemory())
+        let key3 = KeyValueStorageKey<SomeClass>(name: "aClass", storage: .inMemory)
 
         // When
         storage.save(classification, forKey: key1)
@@ -494,7 +402,7 @@ final class KeyValueStorageTests: XCTestCase {
         let class4 = SomeClass(double: 0, array: [0, 0], dict: ["zero": "empty"])
         let key1 = KeyValueStorageKey<SomeClass>(name: "aClass")
         let key2 = KeyValueStorageKey<SomeClass>(name: "aClass", storage: .keychain())
-        let key3 = KeyValueStorageKey<SomeClass>(name: "aClass", storage: .inMemory())
+        let key3 = KeyValueStorageKey<SomeClass>(name: "aClass", storage: .inMemory)
 
         // When
         storage.save(class1, forKey: key1)
@@ -545,7 +453,7 @@ final class KeyValueStorageTests: XCTestCase {
         let class3 = SomeClass(double: 8.88, array: [4, 3], dict: ["another": "stuff"])
         let key1 = KeyValueStorageKey<SomeClass>(name: "aClass")
         let key2 = KeyValueStorageKey<SomeClass>(name: "aClass", storage: .keychain())
-        let key3 = KeyValueStorageKey<SomeClass>(name: "aClass", storage: .inMemory())
+        let key3 = KeyValueStorageKey<SomeClass>(name: "aClass", storage: .inMemory)
 
         // When
         storage.save(class1, forKey: key1)
@@ -607,7 +515,7 @@ final class KeyValueStorageTests: XCTestCase {
         let integer3 = 6
         let key1 = KeyValueStorageKey<Int>(name: "anInteger1", storage: .keychain())
         let key2 = KeyValueStorageKey<Int>(name: "anInteger2", storage: .userDefaults)
-        let key3 = KeyValueStorageKey<Int>(name: "anInteger3", storage: .inMemory())
+        let key3 = KeyValueStorageKey<Int>(name: "anInteger3", storage: .inMemory)
 
         storage.save(integer1, forKey: key1)
         storage.save(integer2, forKey: key2)

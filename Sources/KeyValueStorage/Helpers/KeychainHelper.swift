@@ -10,7 +10,7 @@ import Security
 
 final class KeychainHelper {
     
-    /// `serviceName` is used to uniquely identify this keychain accessor. If no service name is specified bundleIdentifier will be used.
+    /// `serviceName` is used to uniquely identify this keychain accessor.
     private(set) var serviceName: String
     
     /// `accessGroup` is used to identify which Keychain Access Group this entry belongs to. This allows you to use shared keychain access between different applications.
@@ -146,19 +146,17 @@ extension KeychainHelper {
 public enum KeychainAccessibility {
     case afterFirstUnlock
     case afterFirstUnlockThisDeviceOnly
-    case always
     case whenPasscodeSetThisDeviceOnly
-    case alwaysThisDeviceOnly
     case whenUnlocked
     case whenUnlockedThisDeviceOnly
+//  case always                   (deprecated)
+//  case alwaysThisDeviceOnly     (deprecated)
     
     var key: String {
         switch self {
         case .afterFirstUnlock:                 return kSecAttrAccessibleAfterFirstUnlock as String
         case .afterFirstUnlockThisDeviceOnly:   return kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as String
-        case .always:                           return kSecAttrAccessibleAlways as String
         case .whenPasscodeSetThisDeviceOnly:    return kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly as String
-        case .alwaysThisDeviceOnly:             return kSecAttrAccessibleAlwaysThisDeviceOnly as String
         case .whenUnlocked:                     return kSecAttrAccessibleWhenUnlocked as String
         case .whenUnlockedThisDeviceOnly:       return kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String
         }
