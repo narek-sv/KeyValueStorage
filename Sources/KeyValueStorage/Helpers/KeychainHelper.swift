@@ -8,6 +8,7 @@
 import Foundation
 import Security
 
+/// A wrapper class which allows to use Keychain it in a similar manner to User Defaults.
 final class KeychainHelper {
     
     /// `serviceName` is used to uniquely identify this keychain accessor.
@@ -25,7 +26,7 @@ final class KeychainHelper {
     ///
     /// - parameter forKey: The key to lookup data for.
     /// - parameter withAccessibility: Optional accessibility to use when retrieving the keychain item.
-    /// - parameter isSynchronizable: A bool that describes if the item should be synchronizable, to be synched with the iCloud. If none is provided, will default to false
+    /// - parameter isSynchronizable: A bool that describes if the item should be synchronizable, to be synched with the iCloud. If none is provided, will default to false.
     /// - returns: The Data object associated with the key if it exists. If no data exists, returns nil.
     func get(forKey key: String,
              withAccessibility accessibility: KeychainAccessibility? = nil,
@@ -46,7 +47,7 @@ final class KeychainHelper {
     /// - parameter value: The Data object to save.
     /// - parameter forKey: The key to save the object under.
     /// - parameter withAccessibility: Optional accessibility to use when setting the keychain item.
-    /// - parameter isSynchronizable: A bool that describes if the item should be synchronizable, to be synched with the iCloud. If none is provided, will default to false
+    /// - parameter isSynchronizable: A bool that describes if the item should be synchronizable, to be synched with the iCloud. If none is provided, will default to false.
     /// - returns: True if the save was successful, false otherwise.
     @discardableResult
     func set(_ value: Data,
@@ -71,7 +72,7 @@ final class KeychainHelper {
     ///
     /// - parameter forKey: The key value to remove data for.
     /// - parameter withAccessibility: Optional accessibility level to use when looking up the keychain item.
-    /// - parameter isSynchronizable: A bool that describes if the item should be synchronizable, to be synched with the iCloud. If none is provided, will default to false
+    /// - parameter isSynchronizable: A bool that describes if the item should be synchronizable, to be synched with the iCloud. If none is provided, will default to false.
     /// - returns: True if successful, false otherwise.
     @discardableResult
     func remove(forKey key: String,
