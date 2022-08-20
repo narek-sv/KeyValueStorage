@@ -9,6 +9,13 @@
 An elegant, thread-safe, multipurpose key-value storage, compatible with all Apple platforms.
 
 ---
+## Supported Platforms
+
+| iOS | macOS | watchOS | tvOS |
+| --- | --- | --- | --- |
+| 9.0+ | 10.10+ | 2.0+ | 9.0+ |
+
+---
 ## Installation
 
 ### [Swift Package Manager](https://swift.org/package-manager/)
