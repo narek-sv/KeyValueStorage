@@ -105,6 +105,8 @@ or clear the whole storage content:
 storage.clear()
 ```
 
+`KeyValueStorage` works with any type that conforms to `Codable` protocol.
+
 ### Storage types 
 
 The KeyValueStorage supports 3 storage types
