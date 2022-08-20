@@ -5,8 +5,8 @@
 
 An elegant, multipurpose key-value storage, compatible with all Apple platforms.
 
-## Installation
 ---
+## Installation
 
 ### Swift Package Manager
 
@@ -24,13 +24,13 @@ To be added later.
 
 To be added later.
 
-## Usage
 ---
+## Usage
 
 To be added later.
 
 
-## License
 ---
+## License
 
 See [License.md](https://github.com/narek-sv/KeyValueStorage/blob/main/LICENSE) for more information.
