@@ -9,18 +9,18 @@
 public struct KeyValueStorageKey<T: Codable> {
     
     /// `name` is used to uniquely identify the item.
-    let name: String
+    public let name: String
     
     /// `codingType` is used for properly encoding and decoding the item.
-    let codingType: T.Type
+    public let codingType: T.Type
     
     /// `storageType` is used for specifing the storage type where the item will be kept.
-    let storageType: KeyValueStorageType
+    public let storageType: KeyValueStorageType
     
     /// Initializes the key by specifying the key name and the storage type.
     /// - parameter name: The name of the key.
     /// - parameter storage: The storage type. Default value is `userDefaults`.
-    init(name: String, storage: KeyValueStorageType = .userDefaults) {
+    public init(name: String, storage: KeyValueStorageType = .userDefaults) {
         self.name = name
         self.codingType = T.self
         self.storageType = storage
