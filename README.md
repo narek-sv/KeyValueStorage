@@ -2,7 +2,7 @@
 
 ![Build & Test](https://github.com/narek-sv/KeyValueStorage/actions/workflows/swift.yml/badge.svg)
 [![Swift Package Manager compatible](https://img.shields.io/badge/Swift%20Package%20Manager-compatible-success.svg)](https://github.com/apple/swift-package-manager)
-<!-- [![CocoaPods compatible](https://img.shields.io/cocoapods/v/xxx)](https://cocoapods.org/pods/xxx) -->
+[![CocoaPods compatible](https://img.shields.io/cocoapods/v/KeyValueStorageSwift)](https://cocoapods.org/pods/KeyValueStorageSwift)
 
 ---
 
@@ -16,14 +16,6 @@ An elegant, thread-safe, multipurpose key-value storage, compatible with all App
 To be added later.
 
 ### CocoaPods
-
-To be added later.
-
-### Carthage
-
-To be added later.
-
-### Mint
 
 To be added later.
 
