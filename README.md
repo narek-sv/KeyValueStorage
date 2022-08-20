@@ -7,7 +7,7 @@
 
 ---
 
-An elegant, fats, thread-safe, multipurpose key-value storage, compatible with all Apple platforms.
+An elegant, fast, thread-safe, multipurpose key-value storage, compatible with all Apple platforms.
 
 ---
 ## Supported Platforms
