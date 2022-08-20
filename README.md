@@ -23,6 +23,11 @@ dependencies: [
 ]
 ```
 
+or
+
+* In Xcode select *File > Add Packages*.
+* Enter this project's URL: https://github.com/narek-sv/KeyValueStorage.git
+
 In any file you'd like to use KeyValueStorage in, don't forget to
 import the framework with `import KeyValueStorage`.
 
@@ -41,6 +46,8 @@ import the framework with `import KeyValueStorageSwift`.
 
 ---
 ## Usage
+
+### Main functionality 
 
 First, initialize the storage:
 ```swift
@@ -90,10 +97,12 @@ or clear the whole storage content:
 storage.clear()
 ```
 
+### Storage types 
+
 The KeyValueStorage supports 3 storage types
 * `In-memory` (This storage type persists the items only within an app session.)
 * `User-Defaults` (This storage type persists the items within the whole app lifetime.)
-* `Keychain` (This storage type keeps the items in secure storage and persists even app re-installations. Supports iCloud synchronization.)
+* `Keychain` (This storage type keeps the items in secure storage and persists even app re-installations. Supports `iCloud` synchronization.)
 
 You specify the storage type when declaring the key:
 ```swift
@@ -102,6 +111,8 @@ let key2 = KeyValueStorageKey<Date>(name: "birthday", storage: .userDefaults)
 let key3 = KeyValueStorageKey<String>(name: "password", storage: .keychain())
 ```
 If you don't specify a storage type `.userDefaults` will be used.
+
+### Xcode autocompletion 
 
 To get the advantages of the Xcode autocompletion it is recommended to declare all your keys in the extension of the `KeyValueStorageKey` like so:
 ```swift
@@ -123,6 +134,35 @@ extension KeyValueStorageKey {
 then Xcode will suggest all the keys specified in the extension when you put a dot:
 <img width="567" alt="Screen Shot 2022-08-20 at 18 04 02" src="https://user-images.githubusercontent.com/23353201/185749955-91558762-513d-46ef-83de-b836808fbb2e.png">
 
+### App Groups
+
+`KeyValueStorage` also supports working with shared containers, which allows you to share your items among different **App Extensions** or **your other Apps**. To do so, first, you need to configure your app by following the steps described in [this](https://developer.apple.com/documentation/security/keychain_services/keychain_items/sharing_access_to_keychain_items_among_a_collection_of_apps) article.
+
+Then you simply have to initialize your `KeyValueStorage` with the `init(accessGroup:teamID:)` initializer by providing your newly created `accessGroup` identifier and your development `teamID`. That's it; you are ready to use **App Groups**.
+
+### Keychain
+
+Use `accessibility` parameter to specify the security level of the keychain storage.
+By default the `.whenUnlocked` option is used. It is one of the most restrictive options and provides good data protection.
+
+```swift
+let key = KeyValueStorageKey<String>(name: "password", storage: .keychain(accessibility: .whenUnlocked))
+```
+
+You can use `.afterFirstUnlock` if you need your app to access the keychain item while in the background. Note that it is less secure than the `.whenUnlocked` option.
+
+Here are all the supported accessibility types:
+* *afterFirstUnlock*
+* *afterFirstUnlockThisDeviceOnly*
+* *whenPasscodeSetThisDeviceOnly*
+* *whenUnlocked*
+* *whenUnlockedThisDeviceOnly*
+
+Set `synchronizable` property to `true` to enable keychain items synchronization across user's multiple devices. The synchronization will work for users who have the "Keychain" enabled in the iCloud settings on their devices. Deleting a synchronizable item will remove it from all devices.
+
+```swift
+let key = KeyValueStorageKey<String>(name: "password", storage: .keychain(accessibility: .afterFirstUnlock, isSynchronizable: true))
+```
 ---
 ## License
 
