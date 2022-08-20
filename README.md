@@ -6,7 +6,7 @@
 
 ---
 
-An elegant, multipurpose key-value storage, compatible with all Apple platforms.
+An elegant, thread-safe, multipurpose key-value storage, compatible with all Apple platforms.
 
 ---
 ## Installation
