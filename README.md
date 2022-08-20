@@ -19,7 +19,7 @@ Once you have your Swift package set up, adding KeyValueStorage as a dependency 
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/narek-sv/KeyValueStorage.git", .upToNextMajor(from: "1.0.1"))
+    .package(url: "https://github.com/narek-sv/KeyValueStorage.git", .upToNextMajor(from: "1.0.2"))
 ]
 ```
 
