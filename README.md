@@ -168,7 +168,7 @@ Here are all the supported accessibility types:
 * *whenUnlocked*
 * *whenUnlockedThisDeviceOnly*
 
-Set `synchronizable` property to `true` to enable keychain items synchronization across user's multiple devices. The synchronization will work for users who have the "Keychain" enabled in the iCloud settings on their devices. Deleting a synchronizable item will remove it from all devices.
+Set `synchronizable` property to `true` to enable keychain items synchronization across user's multiple devices. The synchronization will work for users who have the **Keychain** enabled in the *iCloud* settings on their devices. Deleting a synchronizable item will remove it from all devices.
 
 ```swift
 let key = KeyValueStorageKey<String>(name: "password", storage: .keychain(accessibility: .afterFirstUnlock, isSynchronizable: true))
