@@ -11,13 +11,33 @@ An elegant, thread-safe, multipurpose key-value storage, compatible with all App
 ---
 ## Installation
 
-### Swift Package Manager
+### [Swift Package Manager](https://swift.org/package-manager/)
 
-To be added later.
+Swift Package Manager is a tool for automating the distribution of Swift code and is integrated into the `swift` compiler. 
 
-### CocoaPods
+Once you have your Swift package set up, adding KeyValueStorage as a dependency is as easy as adding it to the `dependencies` value of your `Package.swift`.
 
-To be added later.
+```swift
+dependencies: [
+    .package(url: "https://github.com/narek-sv/KeyValueStorage.git", .upToNextMajor(from: "1.0.1"))
+]
+```
+
+In any file you'd like to use KeyValueStorage in, don't forget to
+import the framework with `import KeyValueStorage`.
+
+### [CocoaPods](https://cocoapods.org)
+
+CocoaPods is a dependency manager for Cocoa projects. For usage and installation instructions, visit their website. To integrate KeyValueStorage into your Xcode project using CocoaPods, specify it in your `Podfile`:
+
+```ruby
+pod 'KeyValueStorageSwift'
+```
+
+Then run `pod install`.
+
+In any file you'd like to use KeyValueStorage in, don't forget to
+import the framework with `import KeyValueStorageSwift`.
 
 ---
 ## Usage
