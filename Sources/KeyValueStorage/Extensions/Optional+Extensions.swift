@@ -9,6 +9,6 @@ import Foundation
 
 extension Optional {
     func unwrapped(_ defaultValue: Wrapped) -> Wrapped {
-        return self ?? defaultValue
+        self ?? defaultValue
     }
 }

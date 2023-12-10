@@ -28,7 +28,7 @@ open class Storage<Value: Codable> {
     
     public var wrappedValue: Value? {
         get {
-            return storage.fetch(forKey: key)
+            storage.fetch(forKey: key)
         }
         
         set {

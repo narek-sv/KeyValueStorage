@@ -564,7 +564,7 @@ class SomeClass: Equatable, Codable {
     }
     
     static func == (lhs: SomeClass, rhs: SomeClass) -> Bool {
-        return lhs.double == rhs.double && lhs.array == rhs.array && lhs.dict == rhs.dict
+        lhs.double == rhs.double && lhs.array == rhs.array && lhs.dict == rhs.dict
     }
 }
 #endif
