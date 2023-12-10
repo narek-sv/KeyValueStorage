@@ -9,6 +9,7 @@ import XCTest
 @testable import KeyValueStorage
 
 #if os(macOS)
+@available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
 final class KeyValueStoragePropertyWrapperTests: XCTestCase {
     private var storage: KeyValueStorage!
     
