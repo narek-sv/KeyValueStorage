@@ -155,11 +155,11 @@ public enum KeychainAccessibility {
     
     var key: String {
         switch self {
-        case .afterFirstUnlock:                 kSecAttrAccessibleAfterFirstUnlock as String
-        case .afterFirstUnlockThisDeviceOnly:   kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as String
-        case .whenPasscodeSetThisDeviceOnly:    kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly as String
-        case .whenUnlocked:                     kSecAttrAccessibleWhenUnlocked as String
-        case .whenUnlockedThisDeviceOnly:       kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String
+        case .afterFirstUnlock:                 return kSecAttrAccessibleAfterFirstUnlock as String
+        case .afterFirstUnlockThisDeviceOnly:   return kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as String
+        case .whenPasscodeSetThisDeviceOnly:    return kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly as String
+        case .whenUnlocked:                     return kSecAttrAccessibleWhenUnlocked as String
+        case .whenUnlockedThisDeviceOnly:       return kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String
         }
     }
 }
