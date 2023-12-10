@@ -119,3 +119,7 @@ open class KeyValueStorage {
         }
     }
 }
+
+public extension KeyValueStorage {
+    static let `default` = KeyValueStorage()
+}

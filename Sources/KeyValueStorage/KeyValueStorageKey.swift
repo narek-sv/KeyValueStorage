@@ -26,3 +26,18 @@ public struct KeyValueStorageKey<T: Codable> {
         self.storageType = storage
     }
 }
+
+extension KeyValueStorageKey: Hashable {
+    public static func == (lhs: KeyValueStorageKey<T>, rhs: KeyValueStorageKey<T>) -> Bool {
+        lhs.name == rhs.name && 
+        lhs.storageType == rhs.storageType &&
+        lhs.codingType == rhs.codingType
+
+    }
+    
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(name)
+        hasher.combine(storageType)
+        hasher.combine(String(describing: codingType))
+    }
+}

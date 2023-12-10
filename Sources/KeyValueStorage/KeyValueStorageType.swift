@@ -6,7 +6,7 @@
 //
 
 /// This enum contains all the supported storage types
-public enum KeyValueStorageType: Equatable {
+public enum KeyValueStorageType: Hashable {
     
     /// This storage type persists only within an app session.
     case inMemory
