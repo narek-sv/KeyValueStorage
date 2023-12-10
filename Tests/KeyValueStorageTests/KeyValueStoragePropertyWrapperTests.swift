@@ -10,7 +10,6 @@ import XCTest
 
 #if os(macOS)
 final class KeyValueStoragePropertyWrapperTests: XCTestCase {
-    private let suitName = "UserStore#KeychainForTests"
     private var storage: KeyValueStorage!
     
     override func setUp() {
@@ -109,6 +108,9 @@ final class KeyValueStoragePropertyWrapperTests: XCTestCase {
         XCTAssertTrue(sink1Called)
         XCTAssertTrue(sink2Called)
         XCTAssertTrue(sink3Called)
+        XCTAssertNotNil(subscription1)
+        XCTAssertNotNil(subscription2)
+        XCTAssertNotNil(subscription3)
     }
 }
 

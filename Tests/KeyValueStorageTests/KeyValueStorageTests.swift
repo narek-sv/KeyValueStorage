@@ -10,7 +10,6 @@ import XCTest
 
 #if os(macOS)
 final class KeyValueStorageTests: XCTestCase {
-    private let suitName = "UserStore#KeychainForTests"
     private var storage: KeyValueStorage!
     
     override func setUp() {

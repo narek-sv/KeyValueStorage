@@ -13,7 +13,7 @@ open class KeyValueStorage {
     private let decoder = JSONDecoder()
     private let userDefaults: UserDefaults
     private let keychain: KeychainHelper
-    private let concurrentQueue = DispatchQueue(label: "KeyValueStorage.default.queue", qos: .userInitiated)
+    private let serialQueue = DispatchQueue(label: "KeyValueStorage.default.queue", qos: .userInitiated)
     private var serviceName: String { accessGroup.unwrapped(Self.defaultServiceName) }
     private static var defaultServiceName: String = { Bundle.main.bundleIdentifier.unwrapped("defaultSuiteName") }()
     private static var inMemoryStorage = [String: [String: Any]]()
@@ -43,7 +43,7 @@ open class KeyValueStorage {
     /// - parameter value: The item to be saved.
     /// - parameter key: The key to uniquely identify the item.
     open func save<T: Codable>(_ value: T, forKey key: KeyValueStorageKey<T>) {
-        concurrentQueue.sync {
+        serialQueue.sync {
             switch key.storageType {
             case .inMemory:
                 var data = Self.inMemoryStorage[serviceName].unwrapped([:])
@@ -64,7 +64,7 @@ open class KeyValueStorage {
     /// - parameter key: The key to uniquely identify the item.
     /// - returns: The item or nil if there is no item associated with the specified key.
     open func fetch<T: Codable>(forKey key: KeyValueStorageKey<T>) -> T? {
-        concurrentQueue.sync {
+        serialQueue.sync {
             var fetchedData: Data?
             
             switch key.storageType {
@@ -86,7 +86,7 @@ open class KeyValueStorage {
     /// - parameter value: The item to be saved.
     /// - parameter key: The key to uniquely identify the item.
     open func delete<T: Codable>(forKey key: KeyValueStorageKey<T>) {
-        concurrentQueue.sync {
+        serialQueue.sync {
             switch key.storageType {
             case .inMemory:
                 Self.inMemoryStorage[serviceName]?[key.name] = nil
@@ -112,8 +112,8 @@ open class KeyValueStorage {
     
     /// Clears all the items in all storage types.
     open func clear() {
-        concurrentQueue.sync {
-            Self.inMemoryStorage.removeAll()
+        serialQueue.sync {
+            Self.inMemoryStorage[self.serviceName] = nil
             self.userDefaults.removePersistentDomain(forName: self.accessGroup ?? Self.defaultServiceName)
             self.keychain.removeAll()
         }
