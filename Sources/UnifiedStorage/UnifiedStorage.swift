@@ -77,7 +77,6 @@ public actor UnifiedStorage {
     public init() {
         self.init(factory: DefaultUnifiedStorageFactory())
     }
-
     
     public func fetch<Storage: KeyValueDataStorage, Value: CodingValue>(forKey key: Key<Storage, Value>) async throws -> Value? {
         let storage = try storage(for: .init(key: key))
@@ -90,11 +89,8 @@ public actor UnifiedStorage {
     }
     
     public func set<Storage: KeyValueDataStorage, Value: CodingValue>(_ value: Value?, forKey key: Key<Storage, Value>) async throws {
-        if let value = value {
-            try await save(value, forKey: key)
-        } else {
-            try await delete(forKey: key)
-        }
+        let storage = try storage(for: .init(key: key))
+        try await storage.set(value, forKey: key.key)
     }
     
     public func delete<Storage: KeyValueDataStorage, Value: CodingValue>(forKey key: Key<Storage, Value>) async throws {

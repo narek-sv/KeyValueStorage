@@ -5,6 +5,8 @@
 //  Created by Narek Sahakyan on 11.12.23.
 //
 
+import Foundation
+
 public struct CodingKey<Storage: KeyValueDataStorage, Value: CodingValue>: Sendable {
     public let key: Storage.Key
     public let codingType: Value.Type
