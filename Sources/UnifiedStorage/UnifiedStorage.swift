@@ -5,9 +5,6 @@
 //  Created by Narek Sahakyan on 11.12.23.
 //
 
-typealias UserDefaultsKey<Value: CodingValue> = UnifiedStorageKey<UserDefaultsStorage, Value>
-typealias KeychainKey<Value: CodingValue> = UnifiedStorageKey<KeychainStorage, Value>
-
 public struct UnifiedStorageKey<Storage: KeyValueDataStorage, Value: CodingValue>: Sendable {
     public let key: Storage.Key
     public let domain: Storage.Domain?
