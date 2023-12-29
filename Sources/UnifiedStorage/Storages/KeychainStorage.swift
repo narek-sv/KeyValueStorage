@@ -66,11 +66,11 @@ open class KeychainStorage: KeyValueDataStorage, @unchecked Sendable {
 
 public extension KeychainStorage {
     struct Key: KeyValueDataStorageKey {
-        let name: String
-        let accessibility: KeychainAccessibility?
-        let isSynchronizable: Bool
+        public let name: String
+        public let accessibility: KeychainAccessibility?
+        public let isSynchronizable: Bool
         
-        init(name: String, accessibility: KeychainAccessibility? = nil, isSynchronizable: Bool = false) {
+        public init(name: String, accessibility: KeychainAccessibility? = nil, isSynchronizable: Bool = false) {
             self.name = name
             self.accessibility = accessibility
             self.isSynchronizable = isSynchronizable
@@ -78,10 +78,10 @@ public extension KeychainStorage {
     }
         
     struct Domain: KeyValueDataStorageDomain {
-        let groupId: String
-        let teamId: String
+        public let groupId: String
+        public let teamId: String
         
-        var accessGroup: String {
+        public var accessGroup: String {
             teamId + "." + groupId
         }
     }
@@ -96,8 +96,4 @@ public extension KeychainStorage {
 public final class KeychainActor {
     public actor Actor { }
     public static let shared = Actor()
-}
-
-class SUB: KeychainStorage {
-    
 }
