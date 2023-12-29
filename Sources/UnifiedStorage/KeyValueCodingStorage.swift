@@ -7,18 +7,15 @@
 
 import Foundation
 
-public struct CodingKey<Storage: KeyValueDataStorage, Value: CodingValue>: Sendable {
+public struct KeyValueCodingStorageKey<Storage: KeyValueDataStorage, Value: CodingValue>: Sendable {
     public let key: Storage.Key
+    public let domain: Storage.Domain?
     public let codingType: Value.Type
     
-    public init(key: Storage.Key) {
+    public init(key: Storage.Key, domain: Storage.Domain? = nil) {
         self.key = key
+        self.domain = domain
         self.codingType = Value.self
-    }
-    
-    public init(key: Storage.Key, codingType: Value.Type) {
-        self.key = key
-        self.codingType = codingType
     }
 }
 
@@ -35,26 +32,26 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
         self.storage = storage
     }
     
-    public func fetch<Value: CodingValue>(forKey key: Storage.Key) async throws -> Value? {
-        if let data = try await storage.fetch(forKey: key) {
+    public func fetch<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws -> Value? {
+        if let data = try await storage.fetch(forKey: key.key) {
             return try await coder.decode(data)
         }
         
         return nil
     }
     
-    public func save<Value: CodingValue>(_ value: Value, forKey key: Storage.Key) async throws {
+    public func save<Value: CodingValue>(_ value: Value, forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws {
         let encoded = try await coder.encode(value)
-        try await storage.save(encoded, forKey: key)
+        try await storage.save(encoded, forKey: key.key)
     }
     
-    public func set<Value: CodingValue>(_ value: Value?, forKey key: Storage.Key) async throws {
+    public func set<Value: CodingValue>(_ value: Value?, forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws {
         let encoded = try await coder.encode(value)
-        try await storage.set(encoded, forKey: key)
+        try await storage.set(encoded, forKey: key.key)
     }
     
-    public func delete(forKey key: Storage.Key) async throws {
-        try await storage.delete(forKey: key)
+    public func delete<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws {
+        try await storage.delete(forKey: key.key)
     }
     
     public func clear() async throws {

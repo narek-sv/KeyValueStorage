@@ -5,33 +5,23 @@
 //  Created by Narek Sahakyan on 11.12.23.
 //
 
-public struct UnifiedStorageKey<Storage: KeyValueDataStorage, Value: CodingValue>: Sendable {
-    public let key: Storage.Key
-    public let domain: Storage.Domain?
-    public let codingType: Value.Type
-    
-    public init(key: Storage.Key, domain: Storage.Domain? = nil) {
-        self.key = key
-        self.domain = domain
-        self.codingType = Value.self
-    }
-    
-    public static func userDefaults(key: Storage.Key, domain: Storage.Domain? = nil) -> UnifiedStorageKey<Storage, Value>
+public extension UnifiedStorageKey {
+    static func userDefaults(key: Storage.Key, domain: Storage.Domain? = nil) -> UnifiedStorageKey<Storage, Value>
     where Storage == UserDefaultsStorage {
         .init(key: key, domain: domain)
     }
     
-    public static func keychain(key: Storage.Key, domain: Storage.Domain? = nil) -> UnifiedStorageKey<Storage, Value>
+    static func keychain(key: Storage.Key, domain: Storage.Domain? = nil) -> UnifiedStorageKey<Storage, Value>
     where Storage == KeychainStorage {
         .init(key: key, domain: domain)
     }
     
-    public static func inMemory(key: Storage.Key, domain: Storage.Domain? = nil) -> UnifiedStorageKey<Storage, Value>
+    static func inMemory(key: Storage.Key, domain: Storage.Domain? = nil) -> UnifiedStorageKey<Storage, Value>
     where Storage == InMemoryStorage {
         .init(key: key, domain: domain)
     }
     
-    public static func file(key: Storage.Key, domain: Storage.Domain? = nil) -> UnifiedStorageKey<Storage, Value>
+    static func file(key: Storage.Key, domain: Storage.Domain? = nil) -> UnifiedStorageKey<Storage, Value>
     where Storage == FileStorage {
         .init(key: key, domain: domain)
     }
@@ -80,22 +70,22 @@ public actor UnifiedStorage {
     
     public func fetch<Storage: KeyValueDataStorage, Value: CodingValue>(forKey key: Key<Storage, Value>) async throws -> Value? {
         let storage = try storage(for: .init(key: key))
-        return try await storage.fetch(forKey: key.key)
+        return try await storage.fetch(forKey: key)
     }
     
     public func save<Storage: KeyValueDataStorage, Value: CodingValue>(_ value: Value, forKey key: Key<Storage, Value>) async throws {
         let storage = try storage(for: .init(key: key))
-        try await storage.save(value, forKey: key.key)
+        try await storage.save(value, forKey: key)
     }
     
     public func set<Storage: KeyValueDataStorage, Value: CodingValue>(_ value: Value?, forKey key: Key<Storage, Value>) async throws {
         let storage = try storage(for: .init(key: key))
-        try await storage.set(value, forKey: key.key)
+        try await storage.set(value, forKey: key)
     }
     
     public func delete<Storage: KeyValueDataStorage, Value: CodingValue>(forKey key: Key<Storage, Value>) async throws {
         let storage = try storage(for: .init(key: key))
-        try await storage.delete(forKey: key.key)
+        try await storage.delete(forKey: key)
     }
     
     public func clear<Storage: KeyValueDataStorage>(storage: Storage.Type, forDomain domain: Storage.Domain) async throws {
