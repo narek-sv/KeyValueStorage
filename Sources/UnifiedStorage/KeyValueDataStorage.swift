@@ -17,6 +17,8 @@ public protocol KeyValueDataStorage: Sendable {
     associatedtype Error: KeyValueDataStorageError
 
     static var defaultGroup: String { get }
+    
+    var domain: Domain? { get }
 
     init(domain: Domain?) throws
     

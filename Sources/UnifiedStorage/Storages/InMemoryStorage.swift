@@ -10,7 +10,7 @@ import Foundation
 @InMemoryActor
 open class InMemoryStorage: KeyValueDataStorage, @unchecked Sendable {
     private static var container = [Domain?: [Key: Data]]()
-    private let domain: Domain?
+    public let domain: Domain?
     
     public required nonisolated init(domain: Domain?) throws {
         self.domain = domain

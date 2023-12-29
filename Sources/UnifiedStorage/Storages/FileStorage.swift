@@ -10,8 +10,8 @@ import Foundation
 @FileActor
 open class FileStorage: KeyValueDataStorage, @unchecked Sendable {
     private let fileManager: FileManager
-    private let domain: Domain?
     private let root: URL
+    public let domain: Domain?
     
     public required nonisolated init(domain: Domain?) throws {
         self.fileManager = .default

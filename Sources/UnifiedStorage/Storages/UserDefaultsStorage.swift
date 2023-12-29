@@ -10,7 +10,7 @@ import Foundation
 @UserDefaultsActor
 open class UserDefaultsStorage: KeyValueDataStorage, @unchecked Sendable {
     private let userDefaults: UserDefaults
-    private let domain: Domain?
+    public let domain: Domain?
     
     public required nonisolated init(domain: Domain?) throws {
         self.domain = domain

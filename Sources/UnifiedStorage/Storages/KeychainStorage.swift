@@ -10,7 +10,7 @@ import Foundation
 @KeychainActor
 open class KeychainStorage: KeyValueDataStorage, @unchecked Sendable {
     private let keychain: KeychainHelper
-    private let domain: Domain?
+    public let domain: Domain?
     
     public required nonisolated init(domain: Domain?) throws {
         self.domain = domain

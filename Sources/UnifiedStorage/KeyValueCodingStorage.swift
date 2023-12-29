@@ -26,6 +26,10 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
     private let coder: DataCoder
     private let storage: Storage
     
+    public var domain: Storage.Domain? {
+        storage.domain
+    }
+    
     public init(storage: Storage, coder: DataCoder = JSONDataCoder()) {
         self.coder = coder
         self.storage = storage
@@ -45,11 +49,8 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
     }
     
     public func set<Value: CodingValue>(_ value: Value?, forKey key: Storage.Key) async throws {
-        if let value = value {
-            try await save(value, forKey: key)
-        } else {
-            try await delete(forKey: key)
-        }
+        let encoded = try await coder.encode(value)
+        try await storage.set(encoded, forKey: key)
     }
     
     public func delete(forKey key: Storage.Key) async throws {
