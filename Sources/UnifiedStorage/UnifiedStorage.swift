@@ -5,6 +5,8 @@
 //  Created by Narek Sahakyan on 11.12.23.
 //
 
+import Combine
+
 public extension UnifiedStorageKey {
     static func userDefaults(key: Storage.Key, domain: Storage.Domain? = nil) -> UnifiedStorageKey<Storage, Value>
     where Storage == UserDefaultsStorage {
@@ -41,7 +43,7 @@ public struct UnifiedStorageDomain<Storage: KeyValueDataStorage>: Sendable {
 
 public protocol UnifiedStorageFactory {
     func dataStorage<Storage: KeyValueDataStorage>(for domain: UnifiedStorageDomain<Storage>) throws -> Storage
-    func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) throws -> KeyValueCodingStorage<Storage>
+    func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) throws -> KeyValueObservableStorage<Storage>
 }
 
 public final class DefaultUnifiedStorageFactory: UnifiedStorageFactory {
@@ -49,8 +51,8 @@ public final class DefaultUnifiedStorageFactory: UnifiedStorageFactory {
         try Storage(domain: domain.domain)
     }
     
-    public func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) throws -> KeyValueCodingStorage<Storage> {
-        KeyValueCodingStorage(storage: storage)
+    public func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) throws -> KeyValueObservableStorage<Storage> {
+        KeyValueObservableStorage(storage: storage)
     }
 }
 

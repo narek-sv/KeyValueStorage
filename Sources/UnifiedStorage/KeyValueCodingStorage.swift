@@ -19,6 +19,21 @@ public struct KeyValueCodingStorageKey<Storage: KeyValueDataStorage, Value: Codi
     }
 }
 
+extension KeyValueCodingStorageKey: Hashable {
+    public static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.key == rhs.key &&
+        lhs.domain == rhs.domain &&
+        lhs.codingType == rhs.codingType
+
+    }
+    
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(key)
+        hasher.combine(domain)
+        hasher.combine(String(describing: codingType))
+    }
+}
+
 open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Sendable {
     private let coder: DataCoder
     private let storage: Storage
@@ -57,4 +72,10 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
     public func clear() async throws {
         try await storage.clear()
     }
+}
+
+@globalActor
+public final class CodingStorageActor {
+    public actor Actor { }
+    public static let shared = Actor()
 }
