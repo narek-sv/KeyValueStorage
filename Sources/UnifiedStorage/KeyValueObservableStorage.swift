@@ -88,3 +88,5 @@ open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodi
 private struct Container {
     var value: Any?
 }
+
+extension AnyPublisher: @unchecked Sendable { }
