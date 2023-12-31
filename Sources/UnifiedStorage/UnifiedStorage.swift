@@ -99,7 +99,6 @@ public actor UnifiedStorage {
     public func clear<Storage: KeyValueDataStorage>(storage: Storage.Type, forDomain domain: Storage.Domain) async throws {
         let storage = try? self.storage(for: UnifiedStorageDomain<Storage>(domain: domain))
         try await storage?.clear()
-        self.storages[domain] = nil
     }
     
     public func clear<Storage: KeyValueDataStorage>(storage: Storage.Type) async throws {
