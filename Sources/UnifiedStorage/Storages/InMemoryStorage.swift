@@ -7,6 +7,8 @@
 
 import Foundation
 
+// MARK: - Data Storage
+
 @InMemoryActor
 open class InMemoryStorage: KeyValueDataStorage, @unchecked Sendable {
     private static var container = [Domain?: [Key: Data]]()
@@ -37,6 +39,8 @@ open class InMemoryStorage: KeyValueDataStorage, @unchecked Sendable {
     }
 }
 
+// MARK: - Associated Types
+
 public extension InMemoryStorage {
     typealias Key = String
     typealias Domain = String
@@ -45,6 +49,8 @@ public extension InMemoryStorage {
         case other(Swift.Error)
     }
 }
+
+// MARK: - Global Actors
 
 @globalActor
 public final class InMemoryActor {

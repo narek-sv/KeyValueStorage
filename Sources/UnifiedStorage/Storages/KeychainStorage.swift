@@ -7,6 +7,8 @@
 
 import Foundation
 
+// MARK: - Data Storage
+
 @KeychainActor
 open class KeychainStorage: KeyValueDataStorage, @unchecked Sendable {
     private let keychain: KeychainHelper
@@ -64,6 +66,8 @@ open class KeychainStorage: KeyValueDataStorage, @unchecked Sendable {
     }
 }
 
+// MARK: - Associated Types
+
 public extension KeychainStorage {
     struct Key: KeyValueDataStorageKey {
         public let name: String
@@ -91,6 +95,8 @@ public extension KeychainStorage {
         case other(Swift.Error)
     }
 }
+
+// MARK: - Global Actors
 
 @globalActor
 public final class KeychainActor {

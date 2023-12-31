@@ -7,6 +7,8 @@
 
 import Foundation
 
+// MARK: - Data Storage
+
 @FileActor
 open class FileStorage: KeyValueDataStorage, @unchecked Sendable {
     private let fileManager: FileManager
@@ -81,6 +83,8 @@ open class FileStorage: KeyValueDataStorage, @unchecked Sendable {
     }
 }
 
+// MARK: - Associated Types
+
 public extension FileStorage {
     typealias Key = String
     typealias Domain = String
@@ -92,6 +96,8 @@ public extension FileStorage {
         case other(Swift.Error)
     }
 }
+
+// MARK: - Global Actors
 
 @globalActor
 public final class FileActor {

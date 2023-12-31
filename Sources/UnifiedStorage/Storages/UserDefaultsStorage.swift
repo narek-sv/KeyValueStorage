@@ -7,6 +7,8 @@
 
 import Foundation
 
+// MARK: - Data Storage
+
 @UserDefaultsActor
 open class UserDefaultsStorage: KeyValueDataStorage, @unchecked Sendable {
     private let userDefaults: UserDefaults
@@ -44,6 +46,8 @@ open class UserDefaultsStorage: KeyValueDataStorage, @unchecked Sendable {
     
 }
 
+// MARK: - Associated Types
+
 public extension UserDefaultsStorage {
     typealias Key = String
     typealias Domain = String
@@ -54,10 +58,10 @@ public extension UserDefaultsStorage {
     }
 }
 
+// MARK: - Global Actors
+
 @globalActor
 public final class UserDefaultsActor {
     public actor Actor { }
     public static let shared = Actor()
 }
-
-extension UserDefaults: @unchecked Sendable { }
