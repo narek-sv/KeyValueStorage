@@ -83,8 +83,8 @@ open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodi
     private func publisher(for key: Storage.Key) -> PassthroughSubject<Container, Never>? {
         KeyValueObservations.observations[domain]?[key] as? PassthroughSubject<Container, Never>
     }
-}
-
-private struct Container {
-    var value: Any?
+    
+    private struct Container {
+        var value: Any?
+    }
 }
