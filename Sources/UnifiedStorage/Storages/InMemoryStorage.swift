@@ -14,7 +14,7 @@ open class InMemoryStorage: KeyValueDataStorage, @unchecked Sendable {
 
     // MARK: Properties
 
-    private static var container = [Domain?: [Key: Data]]()
+    internal static var container = [Domain?: [Key: Data]]() // not thread safe, for internal use only
     public let domain: Domain?
     
     // MARK: Initializers
