@@ -43,15 +43,21 @@ public struct UnifiedStorageDomain<Storage: KeyValueDataStorage>: Sendable {
 
 public protocol UnifiedStorageFactory {
     func dataStorage<Storage: KeyValueDataStorage>(for domain: UnifiedStorageDomain<Storage>) throws -> Storage
-    func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) throws -> KeyValueObservableStorage<Storage>
+    func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) throws -> KeyValueCodingStorage<Storage>
 }
 
-public final class DefaultUnifiedStorageFactory: UnifiedStorageFactory {
+open class DefaultUnifiedStorageFactory: UnifiedStorageFactory {
     public func dataStorage<Storage: KeyValueDataStorage>(for domain: UnifiedStorageDomain<Storage>) throws -> Storage {
         try Storage(domain: domain.domain)
     }
     
-    public func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) throws -> KeyValueObservableStorage<Storage> {
+    public func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) throws -> KeyValueCodingStorage<Storage> {
+        KeyValueCodingStorage(storage: storage)
+    }
+}
+
+public final class ObservableUnifiedStorageFactory: DefaultUnifiedStorageFactory {
+    public override func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) throws -> KeyValueCodingStorage<Storage> {
         KeyValueObservableStorage(storage: storage)
     }
 }

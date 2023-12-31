@@ -56,7 +56,7 @@ open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodi
     }
     
     @available(macOS 12.0, iOS 15.0, tvOS 15.0, watchOS 8.0, *)
-    func asyncPublisher<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async -> AsyncPublisher<AnyPublisher<Value?, Never>> {
+    public func asyncPublisher<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async -> AsyncPublisher<AnyPublisher<Value?, Never>> {
         await AsyncPublisher(publisher(forKey: key))
     }
     
@@ -90,3 +90,6 @@ private struct Container {
 }
 
 extension AnyPublisher: @unchecked Sendable { }
+
+@available(macOS 12.0, iOS 15.0, tvOS 15.0, watchOS 8.0, *)
+extension AsyncPublisher: @unchecked Sendable { }
