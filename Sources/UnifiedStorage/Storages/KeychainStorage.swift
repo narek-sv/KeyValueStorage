@@ -11,9 +11,14 @@ import Foundation
 
 @KeychainActor
 open class KeychainStorage: KeyValueDataStorage, @unchecked Sendable {
+    
+    // MARK: Properties
+
     private let keychain: KeychainHelper
     public let domain: Domain?
     
+    // MARK: Initializers
+
     public required nonisolated init(domain: Domain?) throws {
         self.domain = domain
         
@@ -23,6 +28,8 @@ open class KeychainStorage: KeyValueDataStorage, @unchecked Sendable {
             keychain = KeychainHelper(serviceName: Self.defaultGroup)
         }
     }
+    
+    // MARK: Main Functionality
     
     public func fetch(forKey key: Key) async throws -> Data? {
         try execute {
@@ -47,6 +54,8 @@ open class KeychainStorage: KeyValueDataStorage, @unchecked Sendable {
             try keychain.removeAll()
         }
     }
+    
+    // MARK: Helpers
     
     private func convert(error: Swift.Error) -> Error {
         if case let .status(status) = error as? KeychainHelperError {

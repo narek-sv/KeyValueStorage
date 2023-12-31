@@ -11,12 +11,19 @@ import Foundation
 
 @InMemoryActor
 open class InMemoryStorage: KeyValueDataStorage, @unchecked Sendable {
+
+    // MARK: Properties
+
     private static var container = [Domain?: [Key: Data]]()
     public let domain: Domain?
     
+    // MARK: Initializers
+
     public required nonisolated init(domain: Domain?) throws {
         self.domain = domain
     }
+    
+    // MARK: Main Functionality
     
     public func fetch(forKey key: Key) async throws -> Data? {
         Self.container[domain]?[key]
@@ -35,7 +42,7 @@ open class InMemoryStorage: KeyValueDataStorage, @unchecked Sendable {
     }
     
     public func clear() async throws {
-        Self.container = [:]
+        Self.container[domain] = [:]
     }
 }
 

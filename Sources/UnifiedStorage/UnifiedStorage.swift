@@ -7,6 +7,8 @@
 
 import Combine
 
+// MARK: - Unified Storage Key
+
 public extension UnifiedStorageKey {
     static func userDefaults(key: Storage.Key, domain: Storage.Domain? = nil) -> UnifiedStorageKey<Storage, Value>
     where Storage == UserDefaultsStorage {
@@ -29,6 +31,8 @@ public extension UnifiedStorageKey {
     }
 }
 
+// MARK: - Unified Storage Domain
+
 public struct UnifiedStorageDomain<Storage: KeyValueDataStorage>: Sendable {
     public let domain: Storage.Domain?
     
@@ -40,6 +44,8 @@ public struct UnifiedStorageDomain<Storage: KeyValueDataStorage>: Sendable {
         self.domain = key.domain
     }
 }
+
+// MARK: - Unified Storage Factory
 
 public protocol UnifiedStorageFactory {
     func dataStorage<Storage: KeyValueDataStorage>(for domain: UnifiedStorageDomain<Storage>) throws -> Storage
@@ -62,11 +68,20 @@ public final class ObservableUnifiedStorageFactory: DefaultUnifiedStorageFactory
     }
 }
 
+// MARK: - Unified Storage
+
 public actor UnifiedStorage {
+    
+    // MARK: Type Aliases
+
     public typealias Key = UnifiedStorageKey
+    
+    // MARK: Properties
     
     private var storages = [AnyHashable?: Any]()
     private let factory: UnifiedStorageFactory
+
+    // MARK: Initializers
 
     public init(factory: UnifiedStorageFactory) {
         self.factory = factory
@@ -75,6 +90,8 @@ public actor UnifiedStorage {
     public init() {
         self.init(factory: DefaultUnifiedStorageFactory())
     }
+    
+    // MARK: Main Functionality
     
     public func fetch<Storage: KeyValueDataStorage, Value: CodingValue>(forKey key: Key<Storage, Value>) async throws -> Value? {
         let storage = try storage(for: .init(key: key))
@@ -116,6 +133,8 @@ public actor UnifiedStorage {
             }
         }
     }
+    
+    // MARK: Helpers
     
     private func storage<Storage: KeyValueDataStorage>(for domain: UnifiedStorageDomain<Storage>) throws -> KeyValueCodingStorage<Storage> {
         if let storage = storages[domain.domain], let casted = storage as? KeyValueCodingStorage<Storage> {

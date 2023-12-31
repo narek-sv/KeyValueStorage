@@ -11,9 +11,14 @@ import Foundation
 
 @UserDefaultsActor
 open class UserDefaultsStorage: KeyValueDataStorage, @unchecked Sendable {
+    
+    // MARK: Properties
+
     private let userDefaults: UserDefaults
     public let domain: Domain?
     
+    // MARK: Initializers
+
     public required nonisolated init(domain: Domain?) throws {
         self.domain = domain
         
@@ -28,6 +33,8 @@ open class UserDefaultsStorage: KeyValueDataStorage, @unchecked Sendable {
         }
     }
     
+    // MARK: Main Functionality
+
     public func fetch(forKey key: Key) throws -> Data? {
         userDefaults.data(forKey: key)
     }
@@ -43,7 +50,6 @@ open class UserDefaultsStorage: KeyValueDataStorage, @unchecked Sendable {
     public func clear() throws {
         userDefaults.removePersistentDomain(forName: domain ?? Self.defaultGroup)
     }
-    
 }
 
 // MARK: - Associated Types

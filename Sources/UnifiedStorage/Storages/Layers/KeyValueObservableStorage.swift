@@ -7,16 +7,21 @@
 
 import Combine
 
-@CodingStorageActor
+@ObservableCodingStorageActor
 private final class KeyValueObservations {
     fileprivate static var observations = [AnyHashable?: [AnyHashable: Any]]()
     fileprivate static var cancellables = Set<AnyCancellable>()
 }
 
-@CodingStorageActor
+@ObservableCodingStorageActor
 open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodingStorage<Storage>, @unchecked Sendable {
+    
+    // MARK: Properties
+
     private var cancellables = Set<AnyCancellable>()
     
+    // MARK: Observations
+
     public func stream<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async -> AsyncStream<Value?> {
         let publisher: AnyPublisher<Value?, _> = await publisher(forKey: key)
         return .init { continuation in
@@ -60,6 +65,8 @@ open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodi
         await AsyncPublisher(publisher(forKey: key))
     }
     
+    // MARK: Main Functionality
+    
     public override func save<Value: CodingValue>(_ value: Value, forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws {
         try await super.save(value, forKey: key)
         publisher(for: key.key)?.send(.init(value: value))
@@ -80,9 +87,13 @@ open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodi
         }
     }
     
+    // MARK: Helpers
+    
     private func publisher(for key: Storage.Key) -> PassthroughSubject<Container, Never>? {
         KeyValueObservations.observations[domain]?[key] as? PassthroughSubject<Container, Never>
     }
+    
+    // MARK: Inner Hidden Types
     
     private struct Container {
         var value: Any?

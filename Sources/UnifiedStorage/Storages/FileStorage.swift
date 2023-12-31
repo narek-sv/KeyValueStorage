@@ -11,9 +11,14 @@ import Foundation
 
 @FileActor
 open class FileStorage: KeyValueDataStorage, @unchecked Sendable {
+    
+    // MARK: Properties
+    
     private let fileManager: FileManager
     private let root: URL
     public let domain: Domain?
+    
+    // MARK: Initializers
     
     public required nonisolated init(domain: Domain?) throws {
         self.fileManager = .default
@@ -33,6 +38,8 @@ open class FileStorage: KeyValueDataStorage, @unchecked Sendable {
             root = url
         }
     }
+    
+    // MARK: Main Functionality
     
     public func fetch(forKey key: Key) async throws -> Data? {
         fileManager.contents(atPath: directory(for: key).path)
@@ -64,6 +71,8 @@ open class FileStorage: KeyValueDataStorage, @unchecked Sendable {
             try fileManager.removeItem(at: root)
         }
     }
+    
+    // MARK: Helpers
     
     private func directory(for key: Key) -> URL {
         root.appendingPathComponent(key)

@@ -7,6 +7,8 @@
 
 import Foundation
 
+// MARK: - Coding Storage Key
+
 public struct KeyValueCodingStorageKey<Storage: KeyValueDataStorage, Value: CodingValue>: Sendable {
     public let key: Storage.Key
     public let domain: Storage.Domain?
@@ -34,7 +36,12 @@ extension KeyValueCodingStorageKey: Hashable {
     }
 }
 
+// MARK: - Coding Storage
+
 open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Sendable {
+    
+    // MARK: Properties
+
     private let coder: DataCoder
     private let storage: Storage
     
@@ -42,10 +49,14 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
         storage.domain
     }
     
+    // MARK: Initializers
+    
     public init(storage: Storage, coder: DataCoder = JSONDataCoder()) {
         self.coder = coder
         self.storage = storage
     }
+    
+    // MARK: Main Functionality
     
     public func fetch<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws -> Value? {
         if let data = try await storage.fetch(forKey: key.key) {
@@ -74,8 +85,10 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
     }
 }
 
+// MARK: - Global Actors
+
 @globalActor
-public final class CodingStorageActor {
+public final class ObservableCodingStorageActor {
     public actor Actor { }
     public static let shared = Actor()
 }

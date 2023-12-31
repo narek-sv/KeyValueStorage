@@ -7,9 +7,7 @@
 
 import Foundation
 
-public protocol KeyValueDataStorageError: Error, Sendable {
-    static func other(_ error: Error & Sendable) -> Self
-}
+// MARK: - Data Storage Protocol
 
 public protocol KeyValueDataStorage: Sendable {
     associatedtype Key: KeyValueDataStorageKey
@@ -29,6 +27,8 @@ public protocol KeyValueDataStorage: Sendable {
     func clear() async throws
 }
 
+// MARK: - Default Implementations
+
 public extension KeyValueDataStorage {
     init() throws {
         try self.init(domain: nil)
@@ -45,4 +45,12 @@ public extension KeyValueDataStorage {
             try await delete(forKey: key)
         }
     }
+}
+
+// MARK: - Associated Type Requirements
+
+public typealias KeyValueDataStorageKey = Hashable & Sendable
+public typealias KeyValueDataStorageDomain = Hashable & Sendable
+public protocol KeyValueDataStorageError: Error, Sendable {
+    static func other(_ error: Error & Sendable) -> Self
 }
