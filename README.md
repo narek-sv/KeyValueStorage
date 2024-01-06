@@ -1,6 +1,8 @@
-# KeyValueStorage
+### INFO!
+Introducing the next evolution of the framework (`v2`). This version has been thoroughly rewritten from the ground up to support concurrency, a robust architecture that strictly adheres to SOLID principles, enhanced testability, ease of use, and much more. (Check the `unified-storage` branch before the official release.) 
 
-INFO! Introducing the next evolution of the framework (`v2`). This version has been thoroughly rewritten from the ground up to support concurrency, a robust architecture that strictly adheres to SOLID principles, enhanced testability, ease of use, and much more. (Check the `unified-storage` branch before the official release.) 
+
+# KeyValueStorage
 
 ![Build & Test](https://github.com/narek-sv/KeyValueStorage/actions/workflows/swift.yml/badge.svg)
 [![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)](https://github.com/narek-sv/KeyValueStorage/actions/workflows/swift.yml)
