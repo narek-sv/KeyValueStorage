@@ -15,9 +15,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
     - uses: swift-actions/setup-swift@v1
+      name: Setup Swift
       with:
         swift-version: ${{ matrix.swift }}
     - uses: actions/checkout@v4
+      name: Checkout
     - name: Build
       run: swift build -v
     - name: Test
