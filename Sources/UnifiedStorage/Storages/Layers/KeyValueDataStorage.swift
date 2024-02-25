@@ -18,7 +18,8 @@ public protocol KeyValueDataStorage: Sendable {
     
     var domain: Domain? { get }
 
-    init(domain: Domain?) throws
+    init() async throws
+    init(domain: Domain) async throws
     
     func fetch(forKey key: Key) async throws -> Data?
     func save(_ value: Data, forKey key: Key) async throws
@@ -30,20 +31,8 @@ public protocol KeyValueDataStorage: Sendable {
 // MARK: - Default Implementations
 
 public extension KeyValueDataStorage {
-    init() throws {
-        try self.init(domain: nil)
-    }
-    
     static var defaultGroup: String {
         Bundle.main.bundleIdentifier ?? "KeyValueDataStorage"
-    }
-    
-    func set(_ value: Data?, forKey key: Key) async throws {
-        if let value = value {
-            try await save(value, forKey: key)
-        } else {
-            try await delete(forKey: key)
-        }
     }
 }
 

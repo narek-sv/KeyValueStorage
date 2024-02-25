@@ -48,13 +48,17 @@ public struct UnifiedStorageDomain<Storage: KeyValueDataStorage>: Sendable {
 // MARK: - Unified Storage Factory
 
 public protocol UnifiedStorageFactory {
-    func dataStorage<Storage: KeyValueDataStorage>(for domain: UnifiedStorageDomain<Storage>) throws -> Storage
+    func dataStorage<Storage: KeyValueDataStorage>(for domain: UnifiedStorageDomain<Storage>) async throws -> Storage
     func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) throws -> KeyValueCodingStorage<Storage>
 }
 
 open class DefaultUnifiedStorageFactory: UnifiedStorageFactory {
-    public func dataStorage<Storage: KeyValueDataStorage>(for domain: UnifiedStorageDomain<Storage>) throws -> Storage {
-        try Storage(domain: domain.domain)
+    public func dataStorage<Storage: KeyValueDataStorage>(for domain: UnifiedStorageDomain<Storage>) async throws -> Storage {
+        if let domain = domain.domain {
+            return try await Storage(domain: domain)
+        }
+        
+        return try await Storage()
     }
     
     public func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) throws -> KeyValueCodingStorage<Storage> {
@@ -94,27 +98,27 @@ public actor UnifiedStorage {
     // MARK: Main Functionality
     
     public func fetch<Storage: KeyValueDataStorage, Value: CodingValue>(forKey key: Key<Storage, Value>) async throws -> Value? {
-        let storage = try storage(for: .init(key: key))
+        let storage = try await storage(for: .init(key: key))
         return try await storage.fetch(forKey: key)
     }
     
     public func save<Storage: KeyValueDataStorage, Value: CodingValue>(_ value: Value, forKey key: Key<Storage, Value>) async throws {
-        let storage = try storage(for: .init(key: key))
+        let storage = try await storage(for: .init(key: key))
         try await storage.save(value, forKey: key)
     }
     
     public func set<Storage: KeyValueDataStorage, Value: CodingValue>(_ value: Value?, forKey key: Key<Storage, Value>) async throws {
-        let storage = try storage(for: .init(key: key))
+        let storage = try await storage(for: .init(key: key))
         try await storage.set(value, forKey: key)
     }
     
     public func delete<Storage: KeyValueDataStorage, Value: CodingValue>(forKey key: Key<Storage, Value>) async throws {
-        let storage = try storage(for: .init(key: key))
+        let storage = try await storage(for: .init(key: key))
         try await storage.delete(forKey: key)
     }
     
     public func clear<Storage: KeyValueDataStorage>(storage: Storage.Type, forDomain domain: Storage.Domain) async throws {
-        let storage = try? self.storage(for: UnifiedStorageDomain<Storage>(domain: domain))
+        let storage = try? await self.storage(for: UnifiedStorageDomain<Storage>(domain: domain))
         try await storage?.clear()
     }
     
@@ -136,12 +140,12 @@ public actor UnifiedStorage {
     
     // MARK: Helpers
     
-    private func storage<Storage: KeyValueDataStorage>(for domain: UnifiedStorageDomain<Storage>) throws -> KeyValueCodingStorage<Storage> {
+    private func storage<Storage: KeyValueDataStorage>(for domain: UnifiedStorageDomain<Storage>) async throws -> KeyValueCodingStorage<Storage> {
         if let storage = storages[domain.domain], let casted = storage as? KeyValueCodingStorage<Storage> {
             return casted
         }
         
-        let dataStorage = try factory.dataStorage(for: domain)
+        let dataStorage = try await factory.dataStorage(for: domain)
         let codingStorage = try factory.codingStorage(for: dataStorage)
         storages[domain.domain] = codingStorage
         return codingStorage

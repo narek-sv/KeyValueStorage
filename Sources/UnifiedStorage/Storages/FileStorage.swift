@@ -20,32 +20,35 @@ open class FileStorage: KeyValueDataStorage, @unchecked Sendable {
     
     // MARK: Initializers
     
-    public required nonisolated init(domain: Domain?) throws {
-        self.fileManager = .default
-        self.domain = domain
-        
-        if let domain {
-            guard let url = fileManager.containerURL(forSecurityApplicationGroupIdentifier: domain) else {
-                throw Error.failedToInitSharedDirectory
-            }
-            
-            root = url
-        } else {
-            guard let url = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else {
-                throw Error.failedToFindDocumentsDirectory
-            }
-            
-            root = url
+    public required init() throws {
+        let fileManager = FileManager.default
+        guard let url = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            throw Error.failedToFindDocumentsDirectory
         }
+        
+        self.root = url
+        self.domain = nil
+        self.fileManager = fileManager
+    }
+    
+    public required init(domain: Domain) throws {
+        let fileManager = FileManager.default
+        guard let url = fileManager.containerURL(forSecurityApplicationGroupIdentifier: domain) else {
+            throw Error.failedToInitSharedDirectory
+        }
+        
+        self.root = url
+        self.domain = domain
+        self.fileManager = fileManager
     }
     
     // MARK: Main Functionality
     
-    public func fetch(forKey key: Key) async throws -> Data? {
+    public func fetch(forKey key: Key) throws -> Data? {
         fileManager.contents(atPath: directory(for: key).path)
     }
     
-    public func save(_ value: Data, forKey key: Key) async throws {
+    public func save(_ value: Data, forKey key: Key) throws {
         try execute {
             let directory = directory(for: key)
             let directoryPath = directory.path
@@ -60,13 +63,21 @@ open class FileStorage: KeyValueDataStorage, @unchecked Sendable {
         }
     }
     
-    public func delete(forKey key: Key) async throws {
+    public func delete(forKey key: Key) throws {
         try execute {
             try fileManager.removeItem(at: directory(for: key))
         }
     }
     
-    public func clear() async throws {
+    public func set(_ value: Data?, forKey key: Key) throws {
+        if let value = value {
+            try save(value, forKey: key)
+        } else {
+            try delete(forKey: key)
+        }
+    }
+    
+    public func clear() throws {
         try execute {
             try fileManager.removeItem(at: root)
         }

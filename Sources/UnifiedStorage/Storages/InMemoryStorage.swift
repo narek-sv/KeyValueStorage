@@ -18,18 +18,22 @@ open class InMemoryStorage: KeyValueDataStorage, @unchecked Sendable {
     public let domain: Domain?
     
     // MARK: Initializers
-
-    public required nonisolated init(domain: Domain?) throws {
+    
+    public required init() {
+        self.domain = nil
+    }
+    
+    public required init(domain: Domain) {
         self.domain = domain
     }
     
     // MARK: Main Functionality
     
-    public func fetch(forKey key: Key) async throws -> Data? {
+    public func fetch(forKey key: Key) -> Data? {
         Self.container[domain]?[key]
     }
     
-    public func save(_ value: Data, forKey key: Key) async throws {
+    public func save(_ value: Data, forKey key: Key) {
         if Self.container[domain] == nil {
             Self.container[domain] = [:]
         }
@@ -37,11 +41,19 @@ open class InMemoryStorage: KeyValueDataStorage, @unchecked Sendable {
         Self.container[domain]?[key] = value
     }
     
-    public func delete(forKey key: Key) async throws {
+    public func set(_ value: Data?, forKey key: Key) {
+        if let value = value {
+            save(value, forKey: key)
+        } else {
+            delete(forKey: key)
+        }
+    }
+    
+    public func delete(forKey key: Key) {
         Self.container[domain]?[key] = nil
     }
     
-    public func clear() async throws {
+    public func clear() {
         Self.container[domain] = [:]
     }
 }

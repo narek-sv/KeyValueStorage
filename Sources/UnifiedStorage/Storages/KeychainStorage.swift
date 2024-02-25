@@ -18,38 +18,46 @@ open class KeychainStorage: KeyValueDataStorage, @unchecked Sendable {
     public let domain: Domain?
     
     // MARK: Initializers
+    
+    public required init() {
+        self.domain = nil
+        self.keychain = KeychainHelper(serviceName: Self.defaultGroup)
+    }
 
-    public required nonisolated init(domain: Domain?) throws {
+    public required init(domain: Domain) {
         self.domain = domain
-        
-        if let domain {
-            keychain = KeychainHelper(serviceName: Self.defaultGroup, accessGroup: domain.accessGroup)
-        } else {
-            keychain = KeychainHelper(serviceName: Self.defaultGroup)
-        }
+        self.keychain = KeychainHelper(serviceName: Self.defaultGroup, accessGroup: domain.accessGroup)
     }
     
     // MARK: Main Functionality
     
-    public func fetch(forKey key: Key) async throws -> Data? {
+    public func fetch(forKey key: Key) throws -> Data? {
         try execute {
             try keychain.get(forKey: key.name, withAccessibility: key.accessibility, isSynchronizable: key.isSynchronizable)
         }
     }
     
-    public func save(_ value: Data, forKey key: Key) async throws {
+    public func save(_ value: Data, forKey key: Key) throws {
         try execute {
             try keychain.set(value, forKey: key.name, withAccessibility: key.accessibility, isSynchronizable: key.isSynchronizable)
         }
     }
     
-    public func delete(forKey key: Key) async throws {
+    public func delete(forKey key: Key) throws {
         try execute {
             try keychain.remove(forKey: key.name, withAccessibility: key.accessibility, isSynchronizable: key.isSynchronizable)
         }
     }
     
-    public func clear() async throws {
+    public func set(_ value: Data?, forKey key: Key) throws {
+        if let value = value {
+            try save(value, forKey: key)
+        } else {
+            try delete(forKey: key)
+        }
+    }
+    
+    public func clear() throws {
         try execute {
             try keychain.removeAll()
         }

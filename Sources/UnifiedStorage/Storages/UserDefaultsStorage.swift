@@ -18,36 +18,44 @@ open class UserDefaultsStorage: KeyValueDataStorage, @unchecked Sendable {
     public let domain: Domain?
     
     // MARK: Initializers
+    
+    public required init() {
+        self.domain = nil
+        self.userDefaults = .standard
+    }
 
-    public required nonisolated init(domain: Domain?) throws {
-        self.domain = domain
-        
-        if let domain {
-            guard let defaults = UserDefaults(suiteName: domain) else {
-                throw Error.failedToInitSharedDefaults
-            }
-            
-            userDefaults = defaults
-        } else {
-            userDefaults = .standard
+    public required init(domain: Domain) throws {
+        guard let defaults = UserDefaults(suiteName: domain) else {
+            throw Error.failedToInitSharedDefaults
         }
+        
+        self.domain = domain
+        self.userDefaults = defaults
     }
     
     // MARK: Main Functionality
 
-    public func fetch(forKey key: Key) throws -> Data? {
+    public func fetch(forKey key: Key) -> Data? {
         userDefaults.data(forKey: key)
     }
     
-    public func save(_ value: Data, forKey key: Key) throws {
+    public func save(_ value: Data, forKey key: Key) {
         userDefaults.set(value, forKey: key)
     }
     
-    public func delete(forKey key: Key) throws {
+    public func delete(forKey key: Key) {
         userDefaults.removeObject(forKey: key)
     }
     
-    public func clear() throws {
+    public func set(_ value: Data?, forKey key: Key) {
+        if let value = value {
+            save(value, forKey: key)
+        } else {
+            delete(forKey: key)
+        }
+    }
+    
+    public func clear() {
         userDefaults.removePersistentDomain(forName: domain ?? Self.defaultGroup)
     }
 }
