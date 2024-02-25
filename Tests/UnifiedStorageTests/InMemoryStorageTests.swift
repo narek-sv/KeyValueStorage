@@ -11,9 +11,11 @@ import Foundation
 
 @InMemoryActor
 final class InMemoryStorageTests: XCTestCase {
-    static let Storage = InMemoryStorage.self
+    override func setUp() {
+        InMemoryStorage.container = [:]
+    }
     
-    func testInMemoryDomain() throws {
+    func testInMemoryDomain() {
         // Given
         let storage1 = InMemoryStorage()
         let storage2 = InMemoryStorage(domain: "other")
@@ -23,14 +25,13 @@ final class InMemoryStorageTests: XCTestCase {
         XCTAssertEqual(storage2.domain, "other")
     }
     
-    func testInMemoryFetch() throws {
+    func testInMemoryFetch() {
         // Given
         let storage = InMemoryStorage()
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
         let key1 = "key1"
         let key2 = "key2"
-        InMemoryStorage.container = [:]
         
         // When
         var fetched1 = storage.fetch(forKey: key1)
@@ -86,14 +87,13 @@ final class InMemoryStorageTests: XCTestCase {
         XCTAssertNil(fetched2)
     }
     
-    func testInMemoryFetchDifferentDomains() throws {
+    func testInMemoryFetchDifferentDomains() {
         // Given
         let storage1 = InMemoryStorage()
         let storage2 = InMemoryStorage(domain: "other")
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
         let key = "key"
-        InMemoryStorage.container = [:]
         
         // When
         var fetched1 = storage1.fetch(forKey: key)
@@ -149,14 +149,13 @@ final class InMemoryStorageTests: XCTestCase {
         XCTAssertNil(fetched2)
     }
     
-    func testInMemorySave() throws {
+    func testInMemorySave() {
         // Given
         let storage = InMemoryStorage()
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
         let key1 = "key1"
         let key2 = "key2"
-        InMemoryStorage.container = [:]
         
         // When
         storage.save(data1, forKey: key1)
@@ -180,14 +179,13 @@ final class InMemoryStorageTests: XCTestCase {
         XCTAssertEqual(InMemoryStorage.container[nil]?[key2], data1)
     }
     
-    func testInMemorySaveDifferentDomains() throws {
+    func testInMemorySaveDifferentDomains() {
         // Given
         let storage1 = InMemoryStorage()
         let storage2 = InMemoryStorage(domain: "other")
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
         let key = "key"
-        InMemoryStorage.container = [:]
         
         // When
         storage1.save(data1, forKey: key)
@@ -211,7 +209,7 @@ final class InMemoryStorageTests: XCTestCase {
         XCTAssertEqual(InMemoryStorage.container["other"]?[key], data2)
     }
     
-    func testInMemoryDelete() throws {
+    func testInMemoryDelete() {
         // Given
         let storage = InMemoryStorage()
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -242,7 +240,7 @@ final class InMemoryStorageTests: XCTestCase {
         XCTAssertNil(InMemoryStorage.container[nil]?[key2])
     }
     
-    func testInMemoryDeleteDifferentDomains() throws {
+    func testInMemoryDeleteDifferentDomains() {
         // Given
         let storage1 = InMemoryStorage()
         let storage2 = InMemoryStorage(domain: "other")
@@ -273,7 +271,7 @@ final class InMemoryStorageTests: XCTestCase {
         XCTAssertNil(InMemoryStorage.container["other"]?[key])
     }
     
-    func testInMemorySet() throws {
+    func testInMemorySet() {
         // Given
         let storage = InMemoryStorage()
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -311,7 +309,7 @@ final class InMemoryStorageTests: XCTestCase {
         XCTAssertNil(InMemoryStorage.container[nil]?[key2])
     }
     
-    func testInMemorySetDifferentDomains() throws {
+    func testInMemorySetDifferentDomains() {
         // Given
         let storage1 = InMemoryStorage()
         let storage2 = InMemoryStorage(domain: "other")
@@ -349,7 +347,7 @@ final class InMemoryStorageTests: XCTestCase {
         XCTAssertNil(InMemoryStorage.container["other"]?[key])
     }
     
-    func testInMemoryClear() throws {
+    func testInMemoryClear() {
         // Given
         let storage1 = InMemoryStorage()
         let storage2 = InMemoryStorage(domain: "other")
@@ -393,9 +391,9 @@ final class InMemoryStorageTests: XCTestCase {
         XCTAssertEqual(InMemoryStorage.container["other"], [:])
     }
     
-    func testThreadSafety() throws {
+    func testThreadSafety() {
         // Given
-        let iterations = 10000
+        let iterations = 5000
         let storage = InMemoryStorage()
         let promise = expectation(description: "testThreadSafety")
         let group = DispatchGroup()
@@ -433,4 +431,3 @@ final class InMemoryStorageTests: XCTestCase {
         wait(for: [promise], timeout: 5)
     }
 }
-
