@@ -17,6 +17,8 @@ final class KeychainStorageTests: XCTestCase {
     var standardStorage: KeychainStorage!
     var otherStorage: KeychainStorage!
     
+    #if SWIFT_PACKAGE_CAN_ATTACH_ENTITLRMENTS
+    
     override func setUpWithError() throws {
         standardKeychain = KeychainHelper(serviceName: Bundle.main.bundleIdentifier!)
         otherKeychain = KeychainHelper(serviceName: Bundle.main.bundleIdentifier!, accessGroup: Self.otherStorageDomain.accessGroup)
@@ -460,4 +462,6 @@ final class KeychainStorageTests: XCTestCase {
         
         wait(for: [promise], timeout: 5)
     }
+    
+    #endif
 }
