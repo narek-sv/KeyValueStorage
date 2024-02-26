@@ -438,6 +438,116 @@ final class FileStorageTests: XCTestCase {
         XCTAssertNil(fileManager.contents(atPath: filePath22))
     }
     
+    func testErrorCaseDelete() {
+        // Given
+        let mock = FileManagerMock()
+        let storage = FileStorage(fileManager: mock, root: URL(string: "root")!)
+        mock.removeItemError = nil
+
+        do {
+            // When
+            try storage.delete(forKey: "nonExistingFile")
+        } catch {
+            // Then
+            XCTFail("Unexpected error")
+        }
+        
+        // Given
+        mock.removeItemError = CocoaError(CocoaError.fileNoSuchFile)
+
+        do {
+            // When
+            try storage.delete(forKey: "nonExistingFile")
+        } catch {
+            // Then
+            XCTFail("Unexpected error")
+        }
+        
+        // Given
+        mock.removeItemError = CocoaError(CocoaError.coderInvalidValue)
+
+        do {
+            // When
+            try storage.delete(forKey: "nonExistingFile")
+        } catch let error as FileStorage.Error {
+            // Then
+            if case let .other(innerError as CocoaError) = error {
+                XCTAssertEqual(innerError.code, CocoaError.coderInvalidValue)
+            } else {
+                XCTFail("Unexpected error")
+            }
+        } catch {
+            // Then
+            XCTFail("Unexpected error")
+        }
+    }
+    
+    func testErrorCaseSave() {
+        // Given
+        let mock = FileManagerMock()
+        let storage = FileStorage(fileManager: mock, root: URL(string: "root")!)
+        mock.createDirectoryError = nil
+        mock.createFileError = nil
+
+        do {
+            // When
+            try storage.save(.init(), forKey: "nonExistingFile")
+        } catch {
+            // Then
+            XCTFail("Unexpected error")
+        }
+        
+        // Given
+        mock.createDirectoryError = CocoaError(CocoaError.fileWriteFileExists)
+        mock.createFileError = nil
+
+        do {
+            // When
+            try storage.save(.init(), forKey: "nonExistingFile")
+        } catch {
+            // Then
+            XCTFail("Unexpected error")
+        }
+        
+        // Given
+        mock.createDirectoryError = CocoaError(CocoaError.coderInvalidValue)
+        mock.createFileError = nil
+        
+        do {
+            // When
+            try storage.save(.init(), forKey: "nonExistingFile")
+        } catch let error as FileStorage.Error {
+            // Then
+            if case let .other(innerError as CocoaError) = error {
+                XCTAssertEqual(innerError.code, CocoaError.coderInvalidValue)
+            } else {
+                XCTFail("Unexpected error")
+            }
+        } catch {
+            // Then
+            XCTFail("Unexpected error")
+        }
+        
+        // Given
+        mock.createDirectoryError = nil
+        mock.createFileError = CocoaError(CocoaError.coderInvalidValue)
+        
+        do {
+            // When
+            try storage.save(.init(), forKey: "nonExistingFile")
+        } catch let error as FileStorage.Error {
+            // Then
+            if case .failedToSave = error {
+                // ok
+            } else {
+                XCTFail("Unexpected error")
+            }
+        } catch {
+            // Then
+            XCTFail("Unexpected error")
+        }
+    }
+    
     func testThreadSafety() throws {
         // Given
         let iterations = 5000

@@ -464,4 +464,15 @@ final class KeychainStorageTests: XCTestCase {
     }
     
     #endif
+    
+    func testInitCustomKeychain() {
+        // Given
+        let keychain = KeychainHelper(serviceName: "mock")
+        
+        // When
+        let storage = KeychainStorage(keychain: keychain)
+        
+        // Then
+        XCTAssertNil(storage.domain)
+    }
 }

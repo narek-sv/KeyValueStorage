@@ -403,6 +403,17 @@ final class UserDefaultsStorageTests: XCTestCase {
         XCTAssertNil(otherUserDefaults.data(forKey: key2))
     }
     
+    func testInitCustomUserDefaults() {
+        // Given
+        let userDefaults = UserDefaults(suiteName: "mock")!
+        
+        // When
+        let storage = UserDefaultsStorage(userDefaults: userDefaults)
+        
+        // Then
+        XCTAssertNil(storage.domain)
+    }
+    
     func testThreadSafety() {
         // Given
         let iterations = 5000

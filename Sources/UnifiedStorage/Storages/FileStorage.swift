@@ -120,7 +120,11 @@ open class FileStorage: KeyValueDataStorage, @unchecked Sendable {
     }
     
     private func convert(error: Swift.Error) -> Error {
-        .other(error)
+        if let error = error as? FileStorage.Error {
+            return error
+        }
+        
+        return .other(error)
     }
     
     @discardableResult
