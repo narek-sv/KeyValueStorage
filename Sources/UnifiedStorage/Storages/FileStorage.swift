@@ -42,6 +42,12 @@ open class FileStorage: KeyValueDataStorage, @unchecked Sendable {
         self.fileManager = fileManager
     }
     
+    public init(fileManager: FileManager, root: URL) {
+        self.fileManager = fileManager
+        self.root = root
+        self.domain = nil
+    }
+    
     // MARK: Main Functionality
     
     public func fetch(forKey key: Key) throws -> Data? {

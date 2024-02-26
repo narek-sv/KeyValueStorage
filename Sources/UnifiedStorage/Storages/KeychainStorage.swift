@@ -29,6 +29,11 @@ open class KeychainStorage: KeyValueDataStorage, @unchecked Sendable {
         self.keychain = KeychainHelper(serviceName: Self.defaultGroup, accessGroup: domain.accessGroup)
     }
     
+    public init(keychain: KeychainHelper) {
+        self.keychain = keychain
+        self.domain = nil
+    }
+    
     // MARK: Main Functionality
     
     public func fetch(forKey key: Key) throws -> Data? {

@@ -33,6 +33,11 @@ open class UserDefaultsStorage: KeyValueDataStorage, @unchecked Sendable {
         self.userDefaults = defaults
     }
     
+    public init(userDefaults: UserDefaults) {
+        self.userDefaults = userDefaults
+        self.domain = nil
+    }
+    
     // MARK: Main Functionality
 
     public func fetch(forKey key: Key) -> Data? {

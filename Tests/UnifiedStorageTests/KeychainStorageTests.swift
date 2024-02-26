@@ -20,7 +20,6 @@ final class KeychainStorageTests: XCTestCase {
     override func setUpWithError() throws {
         standardKeychain = KeychainHelper(serviceName: Bundle.main.bundleIdentifier!)
         otherKeychain = KeychainHelper(serviceName: Bundle.main.bundleIdentifier!, accessGroup: Self.otherStorageDomain.accessGroup)
-        xxxx()
 
         try standardKeychain.removeAll()
         try otherKeychain.removeAll()

@@ -13,7 +13,7 @@ enum KeychainHelperError: Error {
 }
 
 /// A wrapper class which allows to use Keychain it in a similar manner to User Defaults.
-final class KeychainHelper: Sendable {
+open class KeychainHelper: @unchecked Sendable {
     
     /// `serviceName` is used to uniquely identify this keychain accessor.
     let serviceName: String
