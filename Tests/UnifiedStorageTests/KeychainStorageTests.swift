@@ -465,6 +465,17 @@ final class KeychainStorageTests: XCTestCase {
     
     #endif
     
+    func testDomain() {
+        // Given
+        let domain = KeychainStorage.Domain(groupId: "a", teamId: "b")
+        
+        // When
+        let group = domain.accessGroup
+        
+        // Then
+        XCTAssertEqual(group, "b.a")
+    }
+    
     func testInitCustomKeychain() {
         // Given
         let keychain = KeychainHelper(serviceName: "mock")
@@ -474,5 +485,217 @@ final class KeychainStorageTests: XCTestCase {
         
         // Then
         XCTAssertNil(storage.domain)
+    }
+    
+    func testMockedFetch() {
+        // Given
+        let mock = KeychainMock(serviceName: "mock")
+        let storage = KeychainStorage(keychain: mock)
+        mock.getError = KeychainHelperError.status(.max)
+
+        do {
+            // When
+            _ = try storage.fetch(forKey: .init(name: "nonExistingFile"))
+        } catch let error as KeychainStorage.Error {
+            // Then
+            if case .os(.max) = error {
+                // ok
+            } else {
+                XCTFail("Unexpected error")
+            }
+        } catch {
+            // Then
+            XCTFail("Unexpected error")
+        }
+        
+        // Given
+        mock.getError = CocoaError(CocoaError.fileNoSuchFile)
+        
+        do {
+            // When
+            _ = try storage.fetch(forKey: .init(name: "nonExistingFile"))
+        } catch let error as KeychainStorage.Error {
+            // Then
+            if case let .other(inner) = error, let cocoa = inner as? CocoaError, cocoa.code == CocoaError.fileNoSuchFile {
+                // ok
+            } else {
+                XCTFail("Unexpected error")
+            }
+        } catch {
+            // Then
+            XCTFail("Unexpected error")
+        }
+        
+        // Given
+        mock.getError = nil
+
+        do {
+            // When
+            _ = try storage.fetch(forKey: .init(name: "nonExistingFile"))
+        } catch {
+            // Then
+            XCTFail("Unexpected error")
+        }
+    }
+    
+    func testMockedSave() {
+        // Given
+        let mock = KeychainMock(serviceName: "mock")
+        let storage = KeychainStorage(keychain: mock)
+        mock.setError = .status(.max)
+
+        do {
+            // When
+            try storage.save(.init(), forKey: .init(name: "nonExistingFile"))
+        } catch let error as KeychainStorage.Error {
+            // Then
+            if case .os(.max) = error {
+                // ok
+            } else {
+                XCTFail("Unexpected error")
+            }
+        } catch {
+            // Then
+            XCTFail("Unexpected error")
+        }
+        
+        // Given
+        mock.setError = nil
+
+        do {
+            // When
+            try storage.save(.init(), forKey: .init(name: "nonExistingFile"))
+        } catch {
+            // Then
+            XCTFail("Unexpected error")
+        }
+    }
+    
+    func testMockedDelete() {
+        // Given
+        let mock = KeychainMock(serviceName: "mock")
+        let storage = KeychainStorage(keychain: mock)
+        mock.removeError = .status(.max)
+
+        do {
+            // When
+            try storage.delete(forKey: .init(name: "nonExistingFile"))
+        } catch let error as KeychainStorage.Error {
+            // Then
+            if case .os(.max) = error {
+                // ok
+            } else {
+                XCTFail("Unexpected error")
+            }
+        } catch {
+            // Then
+            XCTFail("Unexpected error")
+        }
+        
+        // Given
+        mock.removeError = nil
+
+        do {
+            // When
+            try storage.delete(forKey: .init(name: "nonExistingFile"))
+        } catch {
+            // Then
+            XCTFail("Unexpected error")
+        }
+    }
+    
+    func testMockedSet() {
+        // Given
+        let mock = KeychainMock(serviceName: "mock")
+        let storage = KeychainStorage(keychain: mock)
+        mock.removeError = .status(.max)
+
+        do {
+            // When
+            try storage.set(nil, forKey: .init(name: "nonExistingFile"))
+        } catch let error as KeychainStorage.Error {
+            // Then
+            if case .os(.max) = error {
+                // ok
+            } else {
+                XCTFail("Unexpected error")
+            }
+        } catch {
+            // Then
+            XCTFail("Unexpected error")
+        }
+        
+        // Given
+        mock.removeError = nil
+
+        do {
+            // When
+            try storage.set(nil, forKey: .init(name: "nonExistingFile"))
+        } catch {
+            // Then
+            XCTFail("Unexpected error")
+        }
+        
+        // Given
+        mock.setError = .status(.max)
+
+        do {
+            // When
+            try storage.set(.init(), forKey: .init(name: "nonExistingFile"))
+        } catch let error as KeychainStorage.Error {
+            // Then
+            if case .os(.max) = error {
+                // ok
+            } else {
+                XCTFail("Unexpected error")
+            }
+        } catch {
+            // Then
+            XCTFail("Unexpected error")
+        }
+        
+        // When
+        mock.setError = nil
+
+        do {
+            // When
+            try storage.set(.init(), forKey: .init(name: "nonExistingFile"))
+        } catch {
+            // Then
+            XCTFail("Unexpected error")
+        }
+    }
+    
+    func testMockedClear() {
+        // Given
+        let mock = KeychainMock(serviceName: "mock")
+        let storage = KeychainStorage(keychain: mock)
+        mock.removeAllError = .status(.max)
+
+        do {
+            // When
+            try storage.clear()
+        } catch let error as KeychainStorage.Error {
+            // Then
+            if case .os(.max) = error {
+                // ok
+            } else {
+                XCTFail("Unexpected error")
+            }
+        } catch {
+            // Then
+            XCTFail("Unexpected error")
+        }
+        
+        // Given
+        mock.removeAllError = nil
+
+        do {
+            // When
+            try storage.clear()
+        } catch {
+            // Then
+            XCTFail("Unexpected error")
+        }
     }
 }
