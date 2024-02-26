@@ -26,7 +26,7 @@ open class FileStorage: KeyValueDataStorage, @unchecked Sendable {
             throw Error.failedToFindDocumentsDirectory
         }
         
-        self.root = url
+        self.root = url.appendingPathComponent(Self.defaultGroup, isDirectory: true)
         self.domain = nil
         self.fileManager = fileManager
     }
@@ -37,7 +37,7 @@ open class FileStorage: KeyValueDataStorage, @unchecked Sendable {
             throw Error.failedToInitSharedDirectory
         }
         
-        self.root = url
+        self.root = url.appendingPathComponent(Self.defaultGroup, isDirectory: true)
         self.domain = domain
         self.fileManager = fileManager
     }
@@ -52,10 +52,9 @@ open class FileStorage: KeyValueDataStorage, @unchecked Sendable {
         try execute {
             let directory = directory(for: key)
             let directoryPath = directory.path
-
-            if fileManager.fileExists(atPath: directoryPath) {
-                try fileManager.removeItem(at: directory)
-            }
+            
+            try createDirectoryIfDoesntExist(path: root.path)
+            try deleteFileIfExists(path: directoryPath)
             
             if !fileManager.createFile(atPath: directoryPath, contents: value) {
                 throw Error.failedToSave
@@ -65,7 +64,7 @@ open class FileStorage: KeyValueDataStorage, @unchecked Sendable {
     
     public func delete(forKey key: Key) throws {
         try execute {
-            try fileManager.removeItem(at: directory(for: key))
+            try deleteFileIfExists(path: directory(for: key).path)
         }
     }
     
@@ -79,11 +78,36 @@ open class FileStorage: KeyValueDataStorage, @unchecked Sendable {
     
     public func clear() throws {
         try execute {
-            try fileManager.removeItem(at: root)
+            if let fileNames = try? fileManager.contentsOfDirectory(atPath: root.path) {
+                for fileName in fileNames {
+                    let path = root.appendingPathComponent(fileName).path
+                    try deleteFileIfExists(path: path)
+                }
+            }
         }
     }
     
     // MARK: Helpers
+    
+    private func deleteFileIfExists(path: String) throws {
+        do {
+            try fileManager.removeItem(atPath: path)
+        } catch CocoaError.fileNoSuchFile {
+            // ok
+        } catch {
+            throw error
+        }
+    }
+    
+    private func createDirectoryIfDoesntExist(path: String) throws {
+        do {
+            try fileManager.createDirectory(atPath: path, withIntermediateDirectories: true)
+        } catch CocoaError.fileWriteFileExists {
+            // ok
+        } catch {
+            throw error
+        }
+    }
     
     private func directory(for key: Key) -> URL {
         root.appendingPathComponent(key)
