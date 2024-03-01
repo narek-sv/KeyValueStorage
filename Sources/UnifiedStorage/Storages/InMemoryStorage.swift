@@ -65,7 +65,7 @@ public extension InMemoryStorage {
     typealias Domain = String
     
     enum Error: KeyValueDataStorageError {
-        case other(Swift.Error)
+        case unknown
     }
 }
 

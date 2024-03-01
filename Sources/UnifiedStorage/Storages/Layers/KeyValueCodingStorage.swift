@@ -26,7 +26,6 @@ extension KeyValueCodingStorageKey: Hashable {
         lhs.key == rhs.key &&
         lhs.domain == rhs.domain &&
         lhs.codingType == rhs.codingType
-
     }
     
     public func hash(into hasher: inout Hasher) {
@@ -72,7 +71,7 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
     }
     
     public func set<Value: CodingValue>(_ value: Value?, forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws {
-        let encoded = try await coder.encode(value)
+        let encoded = value == nil ? nil : try await coder.encode(value)
         try await storage.set(encoded, forKey: key.key)
     }
     

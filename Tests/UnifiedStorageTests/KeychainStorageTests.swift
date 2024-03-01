@@ -476,6 +476,20 @@ final class KeychainStorageTests: XCTestCase {
         XCTAssertEqual(group, "b.a")
     }
     
+    func testInitDomains() {
+        // When
+        var storage = KeychainStorage()
+        
+        // Then
+        XCTAssertNil(storage.domain)
+        
+        // When
+        storage = KeychainStorage(domain: .init(groupId: "a", teamId: "b"))
+        
+        // Then
+        XCTAssertEqual(storage.domain, .init(groupId: "a", teamId: "b"))
+    }
+    
     func testInitCustomKeychain() {
         // Given
         let keychain = KeychainHelper(serviceName: "mock")

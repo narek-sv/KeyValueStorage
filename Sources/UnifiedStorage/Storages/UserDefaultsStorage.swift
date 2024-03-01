@@ -73,7 +73,6 @@ public extension UserDefaultsStorage {
     
     enum Error: KeyValueDataStorageError {
         case failedToInitSharedDefaults
-        case other(Swift.Error)
     }
 }
 

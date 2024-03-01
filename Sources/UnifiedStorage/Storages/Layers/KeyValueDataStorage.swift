@@ -40,6 +40,4 @@ public extension KeyValueDataStorage {
 
 public typealias KeyValueDataStorageKey = Hashable & Sendable
 public typealias KeyValueDataStorageDomain = Hashable & Sendable
-public protocol KeyValueDataStorageError: Error, Sendable {
-    static func other(_ error: Error & Sendable) -> Self
-}
+public typealias KeyValueDataStorageError = Error & Sendable
