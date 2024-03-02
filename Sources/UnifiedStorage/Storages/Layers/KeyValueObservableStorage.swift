@@ -10,30 +10,27 @@ import Combine
 @ObservableCodingStorageActor
 private final class KeyValueObservations {
     fileprivate static var observations = [AnyHashable?: [AnyHashable: Any]]()
-    fileprivate static var cancellables = Set<AnyCancellable>()
 }
 
 @ObservableCodingStorageActor
 open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodingStorage<Storage>, @unchecked Sendable {
-    
-    // MARK: Properties
-
-    private var cancellables = Set<AnyCancellable>()
-    
+        
     // MARK: Observations
 
-    public func stream<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async -> AsyncStream<Value?> {
-        let publisher: AnyPublisher<Value?, _> = await publisher(forKey: key)
-        return .init { continuation in
-            publisher
-                .sink {
-                    continuation.yield($0)
-                }
-                .store(in: &KeyValueObservations.cancellables)
+    public func stream<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) -> AsyncStream<Value?> {
+        return AsyncStream(bufferingPolicy: .unbounded) { continuation in
+            let publisher: AnyPublisher<Value?, _> = publisher(forKey: key)
+            let subscription = publisher.sink {
+                continuation.yield($0)
             }
+
+            continuation.onTermination = { _ in
+                subscription.cancel()
+            }
+        }
     }
     
-    public func publisher<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async -> AnyPublisher<Value?, Never> {
+    public func publisher<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) -> AnyPublisher<Value?, Never> {
         let mapPublisher = { (publisher: PassthroughSubject<Container, Never>) -> AnyPublisher<Value?, Never> in
             publisher
                 .map {
@@ -60,21 +57,22 @@ open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodi
         return mapPublisher(publisher)
     }
     
-    @available(macOS 12.0, iOS 15.0, tvOS 15.0, watchOS 8.0, *)
-    public func asyncPublisher<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async -> AsyncPublisher<AnyPublisher<Value?, Never>> {
-        await AsyncPublisher(publisher(forKey: key))
-    }
+//    Pretty buggy
+//    @available(macOS 12.0, iOS 15.0, tvOS 15.0, watchOS 8.0, *)
+//    public func asyncPublisher<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async -> AsyncPublisher<AnyPublisher<Value?, Never>> {
+//        AsyncPublisher(publisher(forKey: key))
+//    }
     
     // MARK: Main Functionality
     
     public override func save<Value: CodingValue>(_ value: Value, forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws {
         try await super.save(value, forKey: key)
-        publisher(for: key.key)?.send(.init(value: value))
+        publisher(for: key)?.send(.init(value: value))
     }
     
     public override func delete<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws {
         try await super.delete(forKey: key)
-        publisher(for: key.key)?.send(.init())
+        publisher(for: key)?.send(.init())
     }
     
     public override func clear() async throws {
@@ -89,7 +87,7 @@ open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodi
     
     // MARK: Helpers
     
-    private func publisher(for key: Storage.Key) -> PassthroughSubject<Container, Never>? {
+    private func publisher(for key: AnyHashable) -> PassthroughSubject<Container, Never>? {
         KeyValueObservations.observations[domain]?[key] as? PassthroughSubject<Container, Never>
     }
     
@@ -99,3 +97,5 @@ open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodi
         var value: Any?
     }
 }
+
+extension AnyCancellable: @unchecked Sendable { }

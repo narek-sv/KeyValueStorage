@@ -11,26 +11,27 @@ import Foundation
 
 public struct KeyValueCodingStorageKey<Storage: KeyValueDataStorage, Value: CodingValue>: Sendable {
     public let key: Storage.Key
-    public let domain: Storage.Domain?
     public let codingType: Value.Type
     
-    public init(key: Storage.Key, domain: Storage.Domain? = nil) {
+    public init(key: Storage.Key) {
         self.key = key
-        self.domain = domain
         self.codingType = Value.self
+    }
+    
+    internal init(key: Storage.Key, codingType: Value.Type) {
+        self.key = key
+        self.codingType = codingType
     }
 }
 
 extension KeyValueCodingStorageKey: Hashable {
     public static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.key == rhs.key &&
-        lhs.domain == rhs.domain &&
         lhs.codingType == rhs.codingType
     }
     
     public func hash(into hasher: inout Hasher) {
         hasher.combine(key)
-        hasher.combine(domain)
         hasher.combine(String(describing: codingType))
     }
 }
@@ -71,8 +72,11 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
     }
     
     public func set<Value: CodingValue>(_ value: Value?, forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws {
-        let encoded = value == nil ? nil : try await coder.encode(value)
-        try await storage.set(encoded, forKey: key.key)
+        if let value {
+            try await save(value, forKey: key)
+        } else {
+            try await delete(forKey: key)
+        }
     }
     
     public func delete<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws {

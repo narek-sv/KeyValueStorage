@@ -8,7 +8,6 @@
 import Foundation
 
 public typealias CodingValue = Codable & Sendable
-public typealias UnifiedStorageKey = KeyValueCodingStorageKey
 public typealias UserDefaultsKey<Value: CodingValue> = UnifiedStorageKey<UserDefaultsStorage, Value>
 public typealias KeychainKey<Value: CodingValue> = UnifiedStorageKey<KeychainStorage, Value>
 public typealias InMemoryKey<Value: CodingValue> = UnifiedStorageKey<InMemoryStorage, Value>
