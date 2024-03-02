@@ -38,7 +38,7 @@ extension KeyValueCodingStorageKey: Hashable {
 
 // MARK: - Coding Storage
 
-open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Sendable {
+open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Sendable, Clearing {
     
     // MARK: Properties
 
@@ -86,6 +86,10 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
     public func clear() async throws {
         try await storage.clear()
     }
+}
+
+protocol Clearing {
+    func clear() async throws
 }
 
 // MARK: - Global Actors

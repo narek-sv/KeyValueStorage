@@ -13,11 +13,13 @@ public struct UnifiedStorageKey<Storage: KeyValueDataStorage, Value: CodingValue
     public let key: Storage.Key
     public let domain: Storage.Domain?
     public let codingType: Value.Type
+    public let storageType: Storage.Type
     
     public init(key: Storage.Key, domain: Storage.Domain? = nil) {
         self.key = key
         self.domain = domain
         self.codingType = Value.self
+        self.storageType = Storage.self
     }
 }
 
@@ -25,13 +27,15 @@ extension UnifiedStorageKey: Hashable {
     public static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.key == rhs.key &&
         lhs.domain == rhs.domain &&
-        lhs.codingType == rhs.codingType
+        lhs.codingType == rhs.codingType &&
+        lhs.storageType == rhs.storageType
     }
     
     public func hash(into hasher: inout Hasher) {
         hasher.combine(key)
         hasher.combine(domain)
         hasher.combine(String(describing: codingType))
+        hasher.combine(String(describing: storageType))
     }
 }
 
@@ -122,7 +126,7 @@ public actor UnifiedStorage {
     
     public func clear() async throws {
         for storage in storages.values {
-            if let casted = storage as? (any KeyValueDataStorage) {
+            if let casted = storage as? Clearing {
                 try await casted.clear()
             }
         }
@@ -131,13 +135,38 @@ public actor UnifiedStorage {
     // MARK: Helpers
     
     private func storage<Storage: KeyValueDataStorage>(for domain: Storage.Domain?) async throws -> KeyValueCodingStorage<Storage> {
-        if let storage = storages[domain], let casted = storage as? KeyValueCodingStorage<Storage> {
+        let underlyingKey = UnderlyingStorageKey<Storage>(domain: domain)
+        if let storage = storages[underlyingKey], let casted = storage as? KeyValueCodingStorage<Storage> {
             return casted
         }
         
         let dataStorage: Storage = try await factory.dataStorage(for: domain)
         let codingStorage = try factory.codingStorage(for: dataStorage)
-        storages[domain] = codingStorage
+        storages[underlyingKey] = codingStorage
+      
+        
         return codingStorage
+    }
+}
+
+extension UnifiedStorage {
+    private struct UnderlyingStorageKey<Storage: KeyValueDataStorage>: Hashable, Sendable {
+        let domain: Storage.Domain?
+        let storageType: Storage.Type
+        
+        init(domain: Storage.Domain?) {
+            self.domain = domain
+            self.storageType = Storage.self
+        }
+        
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.domain == rhs.domain &&
+            lhs.storageType == rhs.storageType
+        }
+        
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(domain)
+            hasher.combine(String(describing: storageType))
+        }
     }
 }
