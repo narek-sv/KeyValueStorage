@@ -8,7 +8,8 @@
 import Foundation
 @testable import UnifiedStorage
 
-final class KeychainMock: KeychainHelper {
+final class KeychainHelperMock: KeychainHelper {
+    var storage = [String: Data]()
     var getError: Error?
     var setError: KeychainHelperError?
     var removeError: KeychainHelperError?
@@ -19,24 +20,30 @@ final class KeychainMock: KeychainHelper {
             throw getError
         }
         
-        return nil
+        return storage[key]
     }
     
     override func set(_ value: Data, forKey key: String, withAccessibility accessibility: KeychainAccessibility? = nil, isSynchronizable: Bool = false) throws {
         if let setError {
             throw setError
         }
+        
+        return storage[key] = value
     }
     
     override func remove(forKey key: String, withAccessibility accessibility: KeychainAccessibility? = nil, isSynchronizable: Bool = false) throws {
         if let removeError {
             throw removeError
         }
+        
+        storage[key] = nil
     }
     
     override func removeAll() throws {
         if let removeAllError {
             throw removeAllError
         }
+        
+        storage.removeAll()
     }
 }

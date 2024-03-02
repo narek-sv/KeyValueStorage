@@ -503,7 +503,7 @@ final class KeychainStorageTests: XCTestCase {
     
     func testMockedFetch() {
         // Given
-        let mock = KeychainMock(serviceName: "mock")
+        let mock = KeychainHelperMock(serviceName: "mock")
         let storage = KeychainStorage(keychain: mock)
         mock.getError = KeychainHelperError.status(.max)
 
@@ -554,7 +554,7 @@ final class KeychainStorageTests: XCTestCase {
     
     func testMockedSave() {
         // Given
-        let mock = KeychainMock(serviceName: "mock")
+        let mock = KeychainHelperMock(serviceName: "mock")
         let storage = KeychainStorage(keychain: mock)
         mock.setError = .status(.max)
 
@@ -587,7 +587,7 @@ final class KeychainStorageTests: XCTestCase {
     
     func testMockedDelete() {
         // Given
-        let mock = KeychainMock(serviceName: "mock")
+        let mock = KeychainHelperMock(serviceName: "mock")
         let storage = KeychainStorage(keychain: mock)
         mock.removeError = .status(.max)
 
@@ -620,7 +620,7 @@ final class KeychainStorageTests: XCTestCase {
     
     func testMockedSet() {
         // Given
-        let mock = KeychainMock(serviceName: "mock")
+        let mock = KeychainHelperMock(serviceName: "mock")
         let storage = KeychainStorage(keychain: mock)
         mock.removeError = .status(.max)
 
@@ -682,7 +682,7 @@ final class KeychainStorageTests: XCTestCase {
     
     func testMockedClear() {
         // Given
-        let mock = KeychainMock(serviceName: "mock")
+        let mock = KeychainHelperMock(serviceName: "mock")
         let storage = KeychainStorage(keychain: mock)
         mock.removeAllError = .status(.max)
 

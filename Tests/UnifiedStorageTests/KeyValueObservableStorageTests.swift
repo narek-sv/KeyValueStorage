@@ -70,7 +70,7 @@ final class KeyValueObservableStorageTests: XCTestCase {
             }
         }
         
-        await fulfillment(of: [publisherExpectation], timeout: 1)
+        await wait(to: [publisherExpectation], timeout: 1)
     }
     
     func testPublisherDifferentStorageSameDomainSameKey1() async throws  {
@@ -124,7 +124,7 @@ final class KeyValueObservableStorageTests: XCTestCase {
             }
         }
         
-        await fulfillment(of: [publisherExpectation], timeout: 1)
+        await wait(to: [publisherExpectation], timeout: 1)
     }
     
     func testPublisherDifferentStorageSameDomainSameKey2() async throws  {
@@ -178,7 +178,7 @@ final class KeyValueObservableStorageTests: XCTestCase {
             }
         }
         
-        await fulfillment(of: [publisherExpectation], timeout: 1)
+        await wait(to: [publisherExpectation], timeout: 1)
     }
     
     func testDifferentDomainsSameKey() async throws {
@@ -255,7 +255,7 @@ final class KeyValueObservableStorageTests: XCTestCase {
             }
         }
         
-        await fulfillment(of: [publisherExpectation], timeout: 1)
+        await wait(to: [publisherExpectation], timeout: 1)
     }
     
     func testAsyncStream() async throws {
@@ -306,7 +306,19 @@ final class KeyValueObservableStorageTests: XCTestCase {
             }
         }
         
-        await fulfillment(of: [publisherExpectation], timeout: 100)
+        await wait(to: [publisherExpectation], timeout: 1)
         task.cancel()
     }
 }
+
+extension XCTestCase {
+    func wait(to expectations: [XCTestExpectation], timeout: TimeInterval) async {
+#if swift(>=5.8)
+        await fulfillment(of: expectations, timeout: timeout)
+#else
+        wait(for: expectations, timeout: timeout)
+#endif
+    }
+}
+
+
