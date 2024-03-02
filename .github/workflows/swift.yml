@@ -18,6 +18,8 @@ jobs:
       name: Set up Swift
       with:
         swift-version: ${{ matrix.swift }}
+    - name: Get Swift version
+      run: swift --version
     - uses: actions/checkout@v4
       name: Checkout
     - name: Build
