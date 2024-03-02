@@ -57,9 +57,10 @@ open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodi
         return mapPublisher(publisher)
     }
     
-//    Pretty buggy
+/* AsyncPublisher emits most of the value changes*/
 //    @available(macOS 12.0, iOS 15.0, tvOS 15.0, watchOS 8.0, *)
-//    public func asyncPublisher<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async -> AsyncPublisher<AnyPublisher<Value?, Never>> {
+//    public func asyncPublisher<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) 
+//    async -> AsyncPublisher<AnyPublisher<Value?, Never>> {
 //        AsyncPublisher(publisher(forKey: key))
 //    }
     
@@ -78,7 +79,7 @@ open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodi
     public override func clear() async throws {
         try await super.clear()
 
-        for observation in KeyValueObservations.observations[domain].unwrapped([:]).values {
+        for observation in (KeyValueObservations.observations[domain] ?? [:]).values {
             if let publisher = observation as? PassthroughSubject<Container, Never> {
                 publisher.send(.init())
             }
