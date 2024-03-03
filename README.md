@@ -160,7 +160,7 @@ extension UnifiedStorageKey {
 ```
 
 then Xcode will suggest all the keys specified in the extension when you put a dot:
-<img width="567" alt="Screen Shot 2022-08-20 at 18 04 02" src="https://user-images.githubusercontent.com/23353201/185749955-91558762-513d-46ef-83de-b836808fbb2e.png">
+<img width="620" alt="Screenshot 2024-03-03 at 13 43 39" src="https://github.com/narek-sv/KeyValueStorage/assets/23353201/992873cd-1030-4c95-87cb-e3788c09e5cc">
 
 ---
 ## Keychain
