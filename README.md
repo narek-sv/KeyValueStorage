@@ -58,9 +58,9 @@ let otherKey = UserDefaultsKey<String>(key: "myKey", domain: "sharedContainer")
 
 As you can see the key holds all the necessary info about the value:
 * The key name - `"myKey"`
-* The storgae type - `UserDefaults`
+* The storage type - `UserDefaults`
 * The value type - `String`
-* The domain (optionally) - `"sharedContainer"`
+* The domain (*optional*) - `"sharedContainer"`
 
 now all the left is to instantiate the storage and use it.
 ```swift
@@ -69,10 +69,9 @@ let storage = UnifiedStorage()
 
 // Saves the item and associates it with the key 
 // or overrides the value if there is already such item. 
-
 try await storage.save("Alice", forKey: key)
 
-// Fetches and returns the item associated with the key or returns nil if there is no such item.
+// Returns the item associated with the key or returns nil if there is no such item.
 let value = try await storage.fetch(forKey: key) 
 
 // Deletes the item associated with the key or does nothing if there is no such item.
@@ -82,8 +81,14 @@ try await storage.delete(forKey: key)
 try await storage.set("Bob", forKey: key) // save
 try await storage.set(nil, forKey: key) // delete
 
-// or clear the whole storage content
-storage.clear()
+// Clear only the storage associated with the specified storage and domain
+try await storage.clear(storage: InMemoryStorage.self, forDomain: "someDomain")
+
+// Clear only the storage associated with the specified storage for all domains
+try await storage.clear(storage: InMemoryStorage.self)
+
+// Clear the whole storage content
+try await storage.clear()
 ```
 
 ---
@@ -181,12 +186,19 @@ let key = KeychainKey<String>(key: .init(name: "key3", accessibility: .afterFirs
 ---
 ## Observation
 
-You can also observe each key-value modification within the storage. All you need is to register for the change by specifying the appropriate:
+The initializer of `UnifiedStorage` accepts a special type of `factory` parameter that conforms to the `UnifiedStorageFactory` protocol. It allows you to manage how the storage is instantiated and configured. It is very useful if you want to mock the storages for testing purposes or provide your own implementations instead of the default ones.
 
-To do so first you need to explicitly inform the `UnifiedStorage` that you need to observe key-value changes.
+The default value of the parameter is a 'DefaultUnifiedStorageFactory', which doesn't provide observation abilities to not overly overload the class. However ...
 
-TODO: -
+---
+## Error handling
 
+Despite the fact that all the methods of the `UnifiedStorage` are throwing, it will never throw an exception if you do all the initial setups correctly.
+
+---
+## Thread Safety
+
+All built-in types leverage the power of Swift Concurrency and are thread-safe and protected from any race conditions and data racing. However, if you extend the storage with your own ones, it is your responsibility to make them thread-safe.
 
 ---
 ## Installation
