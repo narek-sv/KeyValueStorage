@@ -13,18 +13,21 @@ Enhance your development with the state-of-the-art key-value storage framework, 
 ---
 ## Supported Platforms
 
-| iOS | macOS | watchOS | tvOS |
+| | | | |
 | --- | --- | --- | --- |
+| **iOS** | **macOS** | **watchOS** | **tvOS** |
 | 13.0+ | 10.15+ | 6.0+ | 13.0+ |
 
 ## Built-in Storage Types
 
-* **In Memory**
-* **User Defaults**
-* **Keychain**
-* **File System**
-* **...**
+|  |
+| --- |
+| **In Memory** |
+| **User Defaults** |
+| **Keychain** |
+| **File System** |
 
+---
 ## App Groups
 
 `KeyValueStorage` also supports working with shared containers, which allows you to share your items among different **App Extensions** or **your other Apps**. To do so, first, you need to configure your app by following the steps described in [this](https://developer.apple.com/documentation/security/keychain_services/keychain_items/sharing_access_to_keychain_items_among_a_collection_of_apps) article.
@@ -50,7 +53,7 @@ import KeyValueStorage
 
 let key = UserDefaultsKey<String>(key: "myKey")
 // or alternatively provide the domain
-// let key = UserDefaultsKey<String>(key: "key", domain: "sharedContainer")
+let otherKey = UserDefaultsKey<String>(key: "myKey", domain: "sharedContainer")
 ```
 
 As you can see the key holds all the necessary info about the value:
@@ -83,6 +86,7 @@ try await storage.set(nil, forKey: key) // delete
 storage.clear()
 ```
 
+---
 ## Type Inference
 
 The framework leverages the full capabilities of Swift Generics, so it can infer the types of values based on the key compile- time, eliminating the need for extra checks or type casting.
@@ -95,6 +99,7 @@ let value = try await storage.fetch(forKey: key) // inferred type for value is M
 try await storage.save(/* accepts only MyType*/, forKey: key)
 ```
 
+---
 ## Custom Storages
 
 The KeyValueStorage has 4 built-in storage types
@@ -123,6 +128,7 @@ try await storage.save(UUID(), forKey: key)
 
 **NOTE**! You need to handle the thread safety of your storage on your own.
 
+---
 ## Xcode autocompletion 
 
 To get the advantages of the Xcode autocompletion it is recommended to declare all your keys in the extension of the `UnifiedStorageKey` like so:
@@ -150,6 +156,7 @@ extension UnifiedStorageKey {
 then Xcode will suggest all the keys specified in the extension when you put a dot:
 <img width="567" alt="Screen Shot 2022-08-20 at 18 04 02" src="https://user-images.githubusercontent.com/23353201/185749955-91558762-513d-46ef-83de-b836808fbb2e.png">
 
+---
 ## Keychain
 
 Use `accessibility` parameter to specify the security level of the keychain storage.
@@ -170,6 +177,8 @@ Set `synchronizable` property to `true` to enable keychain items synchronization
 let key = KeychainKey<String>(key: .init(name: "key3", accessibility: .afterFirstUnlock, isSynchronizable: true),
                                   domain: .init(groupId: "groupId", teamId: "teamId"))
 ```
+
+---
 ## Observation
 
 You can also observe each key-value modification within the storage. All you need is to register for the change by specifying the appropriate:
