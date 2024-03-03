@@ -94,7 +94,7 @@ try await storage.clear()
 ---
 ## Type Inference
 
-The framework leverages the full capabilities of ***Swift Generics***, so it can infer the types of values based on the key compile- time, eliminating the need for extra checks or type casting.
+The framework leverages the full capabilities of ***Swift Generics***, so it can infer the types of values based on the key compile-time, eliminating the need for extra checks or type casting.
 
 ```swift
 struct MyType: Codable, Sendable { ... }
@@ -124,7 +124,7 @@ class NewStorage: KeyValueDataStorage { ... }
 typealias NewStorageKey<Value: CodingValue> = UnifiedStorageKey<NewStorage, Value>
 ```
 
-That's it. You can use it now as the built-in storages
+That's it. You can use it now as the built-in storages:
 
 ```swift
 let key = NewStorageKey<UUID>(key: customKey)
@@ -180,8 +180,8 @@ Here are all the supported accessibility types:
 Set `synchronizable` property to `true` to enable keychain items synchronization across user's multiple devices. The synchronization will work for users who have the ***Keychain*** enabled in the ***iCloud*** settings on their devices. Deleting a synchronizable item will remove it from all devices.
 
 ```swift
-let key = KeychainKey<String>(key: .init(name: "key3", accessibility: .afterFirstUnlock, isSynchronizable: true),
-                                  domain: .init(groupId: "groupId", teamId: "teamId"))
+let key = KeychainKey<String>(key: .init(name: "key", accessibility: .afterFirstUnlock, isSynchronizable: true),
+                              domain: .init(groupId: "groupId", teamId: "teamId"))
 ```
 
 ---
@@ -217,6 +217,8 @@ for await value in stream {
 }
 ```
 
+However, it's important to note that `UnifiedStorage` can only observe changes made through its own methods.
+
 ---
 ## Error handling
 
@@ -225,7 +227,7 @@ Despite the fact that all the methods of the `UnifiedStorage` are throwing, it w
 ---
 ## Thread Safety
 
-All built-in types leverage the power of ***Swift Concurrency*** and are thread-safe and protected from any race conditions and data racing. However, if you extend the storage with your own ones, it is your responsibility to make them thread-safe.
+All built-in types leverage the power of ***Swift Concurrency*** and are thread-safe and protected from race conditions and data racing. However, if you extend the storage with your own ones, it is your responsibility to make them thread-safe.
 
 ---
 ## Tests
