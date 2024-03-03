@@ -132,6 +132,22 @@ public actor UnifiedStorage {
         }
     }
     
+    // MARK: - Observation
+    
+    public func publisher<Storage: KeyValueDataStorage, Value: CodingValue>(forKey key: Key<Storage, Value>)
+    async throws -> AnyPublisher<Value?, Never>? {
+        let storage: KeyValueCodingStorage<Storage> = try await storage(for: key.domain)
+        let codingKey = KeyValueCodingStorageKey<Storage, Value>(key: key.key)
+        return await (storage as? KeyValueObservableStorage<Storage>)?.publisher(forKey: codingKey)
+    }
+    
+    public func stream<Storage: KeyValueDataStorage, Value: CodingValue>(forKey key: Key<Storage, Value>)
+    async throws -> AsyncStream<Value?>? {
+        let storage: KeyValueCodingStorage<Storage> = try await storage(for: key.domain)
+        let codingKey = KeyValueCodingStorageKey<Storage, Value>(key: key.key)
+        return await (storage as? KeyValueObservableStorage<Storage>)?.stream(forKey: codingKey)
+    }
+    
     // MARK: Helpers
     
     private func storage<Storage: KeyValueDataStorage>(for domain: Storage.Domain?) async throws -> KeyValueCodingStorage<Storage> {

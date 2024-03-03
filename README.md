@@ -187,9 +187,35 @@ let key = KeychainKey<String>(key: .init(name: "key3", accessibility: .afterFirs
 ---
 ## Observation
 
-The initializer of `UnifiedStorage` accepts a special type of `factory` parameter that conforms to the `UnifiedStorageFactory` protocol. It allows you to manage how the storage is instantiated and configured. It is very useful if you want to mock the storages for testing purposes or provide your own implementations instead of the default ones.
+The `UnifiedStorage` initializer takes a `factory` parameter that conforms to the `UnifiedStorageFactory` protocol, enabling customized storage instantiation and configuration. This feature is particularly valuable for mocking storage in tests or substituting default implementations with custom ones.
 
-The default value of the parameter is a 'DefaultUnifiedStorageFactory', which doesn't provide observation abilities to not overly overload the class. However ...
+By default, this parameter is set to `DefaultUnifiedStorageFactory`, which omits observation capabilities to avoid excessive class burden. However, supplying an `ObservableUnifiedStorageFactory` instance as the parameter activates observation of all underlying storages for changes.
+
+
+Combine style publishers:
+```swift
+let key = InMemoryKey<String>(key: "key")
+guard let publisher = try await storage.publisher(forKey: key) else {
+    // The storage is not properly configured
+    return
+}
+
+let subscription = publisher.sink { value in
+    print(value) // String?
+}
+```
+
+Concurrency style async streams:
+```swift
+guard let stream = try await storage.stream(forKey: key) else {
+    // The storage is not properly configured
+    return
+}
+
+for await value in stream {
+    print(value) // String?
+}
+```
 
 ---
 ## Error handling
@@ -200,6 +226,12 @@ Despite the fact that all the methods of the `UnifiedStorage` are throwing, it w
 ## Thread Safety
 
 All built-in types leverage the power of ***Swift Concurrency*** and are thread-safe and protected from any race conditions and data racing. However, if you extend the storage with your own ones, it is your responsibility to make them thread-safe.
+
+---
+## Tests
+
+The whole framework is thoroughly validated with high-quality unit tests. 
+Additionally, it serves as an excellent demonstration of how to use the framework as intended.
 
 ---
 ## Installation

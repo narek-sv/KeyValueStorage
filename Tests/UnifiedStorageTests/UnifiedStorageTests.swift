@@ -264,6 +264,30 @@ final class UnifiedStorageTests: XCTestCase {
         XCTAssertNil(fetched7)
         XCTAssertNil(fetched8)
     }
+    
+    func testNonObservable() async throws {
+        // Given
+        var stoarge = UnifiedStorage(factory: DefaultUnifiedStorageFactory())
+        
+        // When
+        var publisher = try await stoarge.publisher(forKey: InMemoryKey<String>(key: "key"))
+        var stream = try await stoarge.stream(forKey: InMemoryKey<String>(key: "key"))
+        
+        // Then
+        XCTAssertNil(publisher)
+        XCTAssertNil(stream)
+        
+        // Given
+        stoarge = UnifiedStorage(factory: ObservableUnifiedStorageFactory())
+                
+        // When
+        publisher = try await stoarge.publisher(forKey: InMemoryKey<String>(key: "key"))
+        stream = try await stoarge.stream(forKey: InMemoryKey<String>(key: "key"))
+
+        // Then
+        XCTAssertNotNil(publisher)
+        XCTAssertNotNil(stream)
+    }
 }
 
 final class MockedUnifiedStorageFactory: DefaultUnifiedStorageFactory {
