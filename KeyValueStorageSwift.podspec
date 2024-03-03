@@ -15,12 +15,6 @@ Pod::Spec.new do |spec|
   spec.tvos.deployment_target       = "13.0"
   
   spec.source       = { :git => "https://github.com/narek-sv/KeyValueStorage.git", :tag => "v2.0.0" }
-  spec.source_files = "Sources/**/*"
-  
-  spec.pod_target_xcconfig  = { 'SWIFT_INCLUDE_PATHS' => '$(inherited) ${PODS_BUILD_DIR}/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)'}
-  
-  spec.test_spec 'Tests' do |test_spec|
-    test_spec.source_files = "Tests/**/*"
-  end
+  spec.source_files = "Sources/KeyValueStorage/**/*"
   
 end
