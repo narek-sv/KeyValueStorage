@@ -8,12 +8,12 @@
 import Foundation
 @testable import KeyValueStorage
 
-final class KeychainHelperMock: KeychainHelper {
+final class KeychainHelperMock: KeychainWrapper {
     var storage = [String: Data]()
     var getError: Error?
-    var setError: KeychainHelperError?
-    var removeError: KeychainHelperError?
-    var removeAllError: KeychainHelperError?
+    var setError: KeychainWrapperError?
+    var removeError: KeychainWrapperError?
+    var removeAllError: KeychainWrapperError?
 
     override func get(forKey key: String, withAccessibility accessibility: KeychainAccessibility? = nil, isSynchronizable: Bool = false) throws -> Data? {
         if let getError {

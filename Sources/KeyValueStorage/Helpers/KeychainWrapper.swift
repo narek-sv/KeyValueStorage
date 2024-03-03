@@ -1,6 +1,6 @@
 //
-//  KeychainHelper.swift
-//  
+//  KeychainWrapper.swift
+//
 //
 //  Created by Narek Sahakyan on 7/27/22.
 //
@@ -8,12 +8,12 @@
 import Foundation
 import Security
 
-enum KeychainHelperError: Error {
+enum KeychainWrapperError: Error {
     case status(OSStatus)
 }
 
 /// A wrapper class which allows to use Keychain it in a similar manner to User Defaults.
-open class KeychainHelper: @unchecked Sendable {
+open class KeychainWrapper: @unchecked Sendable {
     
     /// `serviceName` is used to uniquely identify this keychain accessor.
     let serviceName: String
@@ -30,15 +30,15 @@ open class KeychainHelper: @unchecked Sendable {
              withAccessibility accessibility: KeychainAccessibility? = nil,
              isSynchronizable: Bool = false) throws -> Data? {
         var keychainQueryDictionary = query(forKey: key, withAccessibility: accessibility, isSynchronizable: isSynchronizable)
-        keychainQueryDictionary[KeychainHelper.matchLimit] = kSecMatchLimitOne
-        keychainQueryDictionary[KeychainHelper.returnData] = kCFBooleanTrue
+        keychainQueryDictionary[Self.matchLimit] = kSecMatchLimitOne
+        keychainQueryDictionary[Self.returnData] = kCFBooleanTrue
         
         // Search
         var result: AnyObject?
         let status = SecItemCopyMatching(keychainQueryDictionary as CFDictionary, &result)
         
         if status != errSecSuccess {
-            throw KeychainHelperError.status(status)
+            throw KeychainWrapperError.status(status)
         }
         
         return result as? Data
@@ -49,14 +49,14 @@ open class KeychainHelper: @unchecked Sendable {
              withAccessibility accessibility: KeychainAccessibility? = nil,
              isSynchronizable: Bool = false) throws {
         var keychainQueryDictionary = query(forKey: key, withAccessibility: accessibility, isSynchronizable: isSynchronizable)
-        keychainQueryDictionary[KeychainHelper.valueData] = value
-        keychainQueryDictionary[KeychainHelper.attrAccessible] = accessibility?.key ?? KeychainAccessibility.whenUnlocked.key
+        keychainQueryDictionary[Self.valueData] = value
+        keychainQueryDictionary[Self.attrAccessible] = accessibility?.key ?? KeychainAccessibility.whenUnlocked.key
         
         let status = SecItemAdd(keychainQueryDictionary as CFDictionary, nil)
         if status == errSecDuplicateItem {
             try update(value, forKey: key, withAccessibility: accessibility, isSynchronizable: isSynchronizable)
         } else if status != errSecSuccess {
-            throw KeychainHelperError.status(status)
+            throw KeychainWrapperError.status(status)
         }
     }
 
@@ -67,18 +67,18 @@ open class KeychainHelper: @unchecked Sendable {
         
         let status = SecItemDelete(keychainQueryDictionary as CFDictionary)
         if status != errSecSuccess {
-            throw KeychainHelperError.status(status)
+            throw KeychainWrapperError.status(status)
         }
     }
     
     func removeAll() throws {
-        var keychainQueryDictionary: [String: Any] = [KeychainHelper.class: kSecClassGenericPassword]
-        keychainQueryDictionary[KeychainHelper.attrService] = serviceName
-        keychainQueryDictionary[KeychainHelper.attrAccessGroup] = accessGroup
+        var keychainQueryDictionary: [String: Any] = [Self.class: kSecClassGenericPassword]
+        keychainQueryDictionary[Self.attrService] = serviceName
+        keychainQueryDictionary[Self.attrAccessGroup] = accessGroup
         
         let status = SecItemDelete(keychainQueryDictionary as CFDictionary)
         if status != errSecSuccess {
-            throw KeychainHelperError.status(status)
+            throw KeychainWrapperError.status(status)
         }
     }
     
@@ -88,35 +88,35 @@ open class KeychainHelper: @unchecked Sendable {
                         forKey key: String,
                         withAccessibility accessibility: KeychainAccessibility? = nil,
                         isSynchronizable: Bool = false) throws {
-        let updateDictionary = [KeychainHelper.valueData: value]
+        let updateDictionary = [Self.valueData: value]
         var keychainQueryDictionary = query(forKey: key, withAccessibility: accessibility, isSynchronizable: isSynchronizable)
-        keychainQueryDictionary[KeychainHelper.attrAccessible] = accessibility?.key
+        keychainQueryDictionary[Self.attrAccessible] = accessibility?.key
         
         let status = SecItemUpdate(keychainQueryDictionary as CFDictionary, updateDictionary as CFDictionary)
         if status != errSecSuccess {
-            throw KeychainHelperError.status(status)
+            throw KeychainWrapperError.status(status)
         }
     }
     
     private func query(forKey key: String,
                        withAccessibility accessibility: KeychainAccessibility? = nil,
                        isSynchronizable: Bool = false) -> [String: Any] {
-        var keychainQueryDictionary: [String: Any] = [KeychainHelper.class: kSecClassGenericPassword]
+        var keychainQueryDictionary: [String: Any] = [Self.class: kSecClassGenericPassword]
         let encodedIdentifier = key.data(using: .utf8)
         
-        keychainQueryDictionary[KeychainHelper.attrService] = serviceName
-        keychainQueryDictionary[KeychainHelper.attrAccessible] = accessibility?.key
-        keychainQueryDictionary[KeychainHelper.attrAccessGroup] = accessGroup
-        keychainQueryDictionary[KeychainHelper.attrGeneric] = encodedIdentifier
-        keychainQueryDictionary[KeychainHelper.attrAccount] = encodedIdentifier
-        keychainQueryDictionary[KeychainHelper.attrSynchronizable] = isSynchronizable ? kCFBooleanTrue : kCFBooleanFalse
+        keychainQueryDictionary[Self.attrService] = serviceName
+        keychainQueryDictionary[Self.attrAccessible] = accessibility?.key
+        keychainQueryDictionary[Self.attrAccessGroup] = accessGroup
+        keychainQueryDictionary[Self.attrGeneric] = encodedIdentifier
+        keychainQueryDictionary[Self.attrAccount] = encodedIdentifier
+        keychainQueryDictionary[Self.attrSynchronizable] = isSynchronizable ? kCFBooleanTrue : kCFBooleanFalse
         return keychainQueryDictionary
     }
 }
 
 // MARK: - Keys
 
-extension KeychainHelper {
+extension KeychainWrapper {
     private static let `class`              = kSecClass as String
     private static let matchLimit           = kSecMatchLimit as String
     private static let returnData           = kSecReturnData as String

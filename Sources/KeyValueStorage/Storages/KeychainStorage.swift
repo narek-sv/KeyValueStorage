@@ -14,22 +14,22 @@ open class KeychainStorage: KeyValueDataStorage, @unchecked Sendable {
     
     // MARK: Properties
 
-    private let keychain: KeychainHelper
+    private let keychain: KeychainWrapper
     public let domain: Domain?
     
     // MARK: Initializers
     
     public required init() {
         self.domain = nil
-        self.keychain = KeychainHelper(serviceName: Self.defaultGroup)
+        self.keychain = KeychainWrapper(serviceName: Self.defaultGroup)
     }
 
     public required init(domain: Domain) {
         self.domain = domain
-        self.keychain = KeychainHelper(serviceName: Self.defaultGroup, accessGroup: domain.accessGroup)
+        self.keychain = KeychainWrapper(serviceName: Self.defaultGroup, accessGroup: domain.accessGroup)
     }
     
-    public init(keychain: KeychainHelper) {
+    public init(keychain: KeychainWrapper) {
         self.keychain = keychain
         self.domain = nil
     }
@@ -71,7 +71,7 @@ open class KeychainStorage: KeyValueDataStorage, @unchecked Sendable {
     // MARK: Helpers
     
     private func convert(error: Swift.Error) -> Error {
-        if case let .status(status) = error as? KeychainHelperError {
+        if case let .status(status) = error as? KeychainWrapperError {
             return .os(status)
         }
         

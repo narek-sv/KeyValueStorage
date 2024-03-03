@@ -12,8 +12,8 @@ import Foundation
 @KeychainActor
 final class KeychainStorageTests: XCTestCase {
     static let otherStorageDomain = KeychainStorage.Domain(groupId: "xxx", teamId: "yyy")
-    var standardKeychain: KeychainHelper!
-    var otherKeychain: KeychainHelper!
+    var standardKeychain: KeychainWrapper!
+    var otherKeychain: KeychainWrapper!
     var standardStorage: KeychainStorage!
     var otherStorage: KeychainStorage!
     
@@ -492,7 +492,7 @@ final class KeychainStorageTests: XCTestCase {
     
     func testInitCustomKeychain() {
         // Given
-        let keychain = KeychainHelper(serviceName: "mock")
+        let keychain = KeychainWrapper(serviceName: "mock")
         
         // When
         let storage = KeychainStorage(keychain: keychain)
@@ -505,7 +505,7 @@ final class KeychainStorageTests: XCTestCase {
         // Given
         let mock = KeychainHelperMock(serviceName: "mock")
         let storage = KeychainStorage(keychain: mock)
-        mock.getError = KeychainHelperError.status(.max)
+        mock.getError = KeychainWrapperError.status(.max)
 
         do {
             // When
