@@ -240,7 +240,7 @@ Additionally, it serves as an excellent demonstration of how to use the framewor
 
 ### [Swift Package Manager](https://swift.org/package-manager/)
 
-Once you have your Swift package set up, adding KeyValueStorage as a dependency is as easy as adding it to the `dependencies` value of your `Package.swift`.
+Once you have your Swift package set up, adding KeyValueStorage as a dependency is as easy as adding it to the `dependencies` value of your `Package.swift`:
 
 ```swift
 dependencies: [
