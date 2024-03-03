@@ -8,7 +8,7 @@
 import XCTest
 import Foundation
 import Combine
-@testable import UnifiedStorage
+@testable import KeyValueStorage
 
 @InMemoryActor
 final class KeyValueObservableStorageTests: XCTestCase {

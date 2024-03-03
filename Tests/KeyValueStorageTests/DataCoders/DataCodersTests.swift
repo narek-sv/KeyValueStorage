@@ -7,7 +7,7 @@
 
 import XCTest
 import Foundation
-@testable import UnifiedStorage
+@testable import KeyValueStorage
 
 final class DataCodersTests: XCTestCase {
     func testJSONCoding() async throws {

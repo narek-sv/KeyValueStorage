@@ -6,7 +6,7 @@
 //
 
 import XCTest
-@testable import KeyValueStorage
+@testable import KeyValueStorageLegacy
 
 #if os(macOS)
 class KeychainHelperTests: XCTestCase {

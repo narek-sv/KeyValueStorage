@@ -7,9 +7,9 @@
 
 import XCTest
 import SwiftUI
-@testable import KeyValueStorage
-@testable import KeyValueStorageWrapper
-@testable import KeyValueStorageSwiftUI
+@testable import KeyValueStorageLegacy
+@testable import KeyValueStorageLegacyWrapper
+@testable import KeyValueStorageLegacySwiftUI
 
 #if os(macOS)
 @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)

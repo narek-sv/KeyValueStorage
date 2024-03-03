@@ -6,7 +6,7 @@
 //
 
 import Foundation
-@testable import UnifiedStorage
+@testable import KeyValueStorage
 
 final class InMemoryMock: InMemoryStorage {
     private(set) var saveCalled = false
