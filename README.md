@@ -219,6 +219,13 @@ or
 * In Xcode select *File > Add Packages*.
 * Enter the project's URL: https://github.com/narek-sv/KeyValueStorage.git
 
+In any file you'd like to use the package in, don't forget to
+import the framework:
+
+```swift
+import KeyValueStorage
+```
+
 ### [CocoaPods](https://cocoapods.org)
 
 To integrate KeyValueStorage into your Xcode project using CocoaPods, specify it in your `Podfile`:
@@ -229,15 +236,12 @@ pod 'KeyValueStorageSwift'
 
 Then run `pod install`.
 
-
-
 In any file you'd like to use the package in, don't forget to
 import the framework:
 
 ```swift
-import KeyValueStorage
+import KeyValueStorageSwift
 ```
-
 
 ---
 ## License
