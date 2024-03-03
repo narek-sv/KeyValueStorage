@@ -1,4 +1,4 @@
-// swift-tools-version:5.0
+// swift-tools-version:5.9
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
@@ -6,25 +6,49 @@ import PackageDescription
 let package = Package(
     name: "KeyValueStorage",
     platforms: [
-        .iOS(.v9),
-        .macOS(.v10_10),
-        .watchOS(.v2),
-        .tvOS(.v9)
+        .iOS(.v13),
+        .macOS(.v10_15),
+        .watchOS(.v6),
+        .tvOS(.v13)
     ],
     products: [
         // Products define the executables and libraries a package produces, and make them visible to other packages.
         .library(
             name: "KeyValueStorage",
             targets: ["KeyValueStorage"]),
+        .library(
+            name: "KeyValueStorageWrapper",
+            targets: ["KeyValueStorageWrapper"]),
+        .library(
+            name: "KeyValueStorageSwiftUI",
+            targets: ["KeyValueStorageSwiftUI"]),
+        .library(
+            name: "UnifiedStorage",
+            targets: ["UnifiedStorage"]),
     ],
     targets: [
         // Targets are the basic building blocks of a package. A target can define a module or a test suite.
         // Targets can depend on other targets in this package, and on products in packages this package depends on.
         .target(
+            name: "UnifiedStorage",
+            dependencies: [],
+            swiftSettings: [
+                .enableExperimentalFeature("StrictConcurrency"),
+            ]),
+        .target(
             name: "KeyValueStorage",
             dependencies: []),
+        .target(
+            name: "KeyValueStorageWrapper",
+            dependencies: [.target(name: "KeyValueStorage")]),
+        .target(
+            name: "KeyValueStorageSwiftUI",
+            dependencies: [.target(name: "KeyValueStorageWrapper")]),
         .testTarget(
             name: "KeyValueStorageTests",
-            dependencies: ["KeyValueStorage"]),
+            dependencies: ["KeyValueStorage", "KeyValueStorageWrapper", "KeyValueStorageSwiftUI"]),
+        .testTarget(
+            name: "UnifiedStorageTests",
+            dependencies: ["UnifiedStorage"]),
     ]
 )

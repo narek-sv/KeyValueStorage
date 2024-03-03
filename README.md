@@ -1,51 +1,268 @@
-### INFO!
-Introducing the next evolution of the framework (`v2`). This version has been thoroughly rewritten from the ground up to support concurrency, a robust architecture that strictly adheres to SOLID principles, enhanced testability, ease of use, and much more. (Check the `unified-storage` branch before the official release.) 
-
-
 # KeyValueStorage
 
 ![Build & Test](https://github.com/narek-sv/KeyValueStorage/actions/workflows/swift.yml/badge.svg)
-[![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)](https://github.com/narek-sv/KeyValueStorage/actions/workflows/swift.yml)
+[![Coverage](https://img.shields.io/badge/coverage->=90%25-brightgreen)](https://github.com/narek-sv/KeyValueStorage/actions/workflows/swift.yml)
 [![Swift Package Manager compatible](https://img.shields.io/badge/Swift%20Package%20Manager-compatible-success.svg)](https://github.com/apple/swift-package-manager)
 [![CocoaPods compatible](https://img.shields.io/cocoapods/v/KeyValueStorageSwift)](https://cocoapods.org/pods/KeyValueStorageSwift)
 
 ---
 
-An elegant, fast, thread-safe, multipurpose key-value storage, compatible with all Apple platforms.
+Enhance your development with the state-of-the-art key-value storage framework, meticulously designed for speed, safety, and simplicity. Leveraging Swift's advanced error handling and concurrency features, the framework ensures thread-safe interactions, bolstered by a robust, modular, and protocol-oriented architecture. Unique to the solution, types of values are encoded within the keys, enabling compile-time type inference and eliminating the need for unnecessary casting. It is designed with App Groups in mind, facilitating seamless data sharing between your apps and extensions. Experience a testable, easily integrated storage solution that redefines efficiency and ease of use.
+
 
 ---
 ## Supported Platforms
 
-| iOS | macOS | watchOS | tvOS |
+| | | | |
 | --- | --- | --- | --- |
-| 9.0+ | 10.10+ | 2.0+ | 9.0+ |
+| **iOS** | **macOS** | **watchOS** | **tvOS** |
+| 13.0+ | 10.15+ | 6.0+ | 13.0+ |
+
+## Built-in Storage Types
+
+| | | | |
+| --- | --- | --- | --- |
+| **In Memory** | **User Defaults** | **Keychain** | **File System** |
+
+---
+## App Groups
+
+`KeyValueStorage` also supports working with shared containers, which allows you to share your items among different ***App Extensions*** or ***your other Apps***. To do so, first, you need to configure your app by following the steps described in [this](https://developer.apple.com/documentation/security/keychain_services/keychain_items/sharing_access_to_keychain_items_among_a_collection_of_apps) article.
+
+By providing corresponding `domain`s to each type of storage, you can enable the sharing of storage spaces. Alternatively, by doing so, you can also keep the containers isolated.
+
+---
+## Usage
+
+The framework is capable of working with any type that conforms to `Codable` and `Sendable`.
+The concept here is that first you need to declare the key. It contains every piece of information about how and where the value is stored.
+
+First, you need to declare the key. You can use one of the built-in types:
+
+* `UserDefaultsKey`
+* `KeychainKey`
+* `InMemoryKey`
+* `FileKey`
+
+or you can define your own ones. [See how to do that](#custom-storages)
+
+```swift
+import KeyValueStorage
+
+let key = UserDefaultsKey<String>(key: "myKey")
+// or alternatively provide the domain
+let otherKey = UserDefaultsKey<String>(key: "myKey", domain: "sharedContainer")
+```
+
+As you can see, the key holds all the necessary information about the value:
+* The key name - `"myKey"`
+* The storage type - `UserDefaults`
+* The value type - `String`
+* The domain (*optional*) - `"sharedContainer"`
+
+
+Now all that is left is to instantiate the storage and use it:
+
+```swift
+// Instantiate the storage
+let storage = UnifiedStorage()
+
+// Saves the item and associates it with the key, 
+// or overrides the value if there is already such an item
+try await storage.save("Alice", forKey: key)
+
+// Returns the item associated with the key or returns nil if there is no such item
+let value = try await storage.fetch(forKey: key) 
+
+// Deletes the item associated with the key or does nothing if there is no such item
+try await storage.delete(forKey: key)
+
+// Sets the item identified by the key to the provided value
+try await storage.set("Bob", forKey: key) // save
+try await storage.set(nil, forKey: key) // delete
+
+// Clears only the storage associated with the specified storage and domain
+try await storage.clear(storage: InMemoryStorage.self, forDomain: "someDomain")
+
+// Clears only the storage associated with the specified storage for all domains
+try await storage.clear(storage: InMemoryStorage.self)
+
+// Clears the whole storage content
+try await storage.clear()
+```
+
+---
+## Type Inference
+
+The framework leverages the full capabilities of ***Swift Generics***, so it can infer the types of values based on the key compile-time, eliminating the need for extra checks or type casting.
+
+```swift
+struct MyType: Codable, Sendable { ... }
+
+let key = UserDefaultsKey<MyType>(key: "myKey")
+let value = try await storage.fetch(forKey: key) // inferred type for value is MyType
+try await storage.save(/* accepts only MyType*/, forKey: key)
+```
+
+---
+## Custom Storages
+
+`UnifiedStorage` has 4 built-in storage types:
+* `In-memory` - This storage type persists the items only within an app session.
+* `User-Defaults` - This storage type persists the items within the app's lifetime.
+* `File-System` -  This storage saves your key-values as separate files in your file system.
+* `Keychain` - This storage type keeps the items in secure storage and persists even after app re-installations. Supports `iCloud` synchronization.
+
+You can also define your own storage, and it will work with it seamlessly with `UnifiedStorage` out of the box.
+All you need to do is:
+1. Define your own type that conforms to the `KeyValueDataStorage` protocol:
+```swift
+class NewStorage: KeyValueDataStorage { ... }
+```
+2. Define the new key type (optional, for ease of use):
+```swift
+typealias NewStorageKey<Value: CodingValue> = UnifiedStorageKey<NewStorage, Value>
+```
+
+That's it. You can use it now as the built-in storages:
+
+```swift
+let key = NewStorageKey<UUID>(key: customKey)
+try await storage.save(UUID(), forKey: key)
+```
+
+***NOTE***! You need to handle the thread safety of your storage on your own.
+
+---
+## Xcode autocompletion 
+
+To get the advantages of Xcode autocompletion, it is recommended to declare all your keys in the extension of the `UnifiedStorageKey`, like this:
+
+```swift
+extension UnifiedStorageKey {
+    static var key1: UserDefaultsKey<Int> {
+        .init(key: "key1", domain: nil)
+    }
+    
+    static var key2: InMemoryKey<Date> {
+        .init(key: "key2", domain: "sharedContainer")
+    }
+    
+    static var key3: KeychainKey<Double> {
+        .init(key: .init(name: "key3", accessibility: .afterFirstUnlock, isSynchronizable: true), 
+              domain: .init(groupId: "groupId", teamId: "teamId"))
+    }
+    
+    static var key4: FileKey<UUID> {
+        .init(key: "key4", domain: "otherContainer")
+    }
+}
+```
+
+then Xcode will suggest all the keys specified in the extension when you put a dot:
+<img width="620" alt="Screenshot 2024-03-03 at 13 43 39" src="https://github.com/narek-sv/KeyValueStorage/assets/23353201/992873cd-1030-4c95-87cb-e3788c09e5cc">
+
+---
+## Keychain
+
+Use `accessibility` parameter to specify the security level of the keychain storage.
+By default the `.whenUnlocked` option is used. It is one of the most restrictive options and provides good data protection.
+
+You can use `.afterFirstUnlock` if you need your app to access the keychain item while in the background. Note that it is less secure than the `.whenUnlocked` option.
+
+Here are all the supported accessibility types:
+* `afterFirstUnlock`
+* `afterFirstUnlockThisDeviceOnly`
+* `whenPasscodeSetThisDeviceOnly`
+* `whenUnlocked`
+* `whenUnlockedThisDeviceOnly`
+
+Set `synchronizable` property to `true` to enable keychain items synchronization across user's multiple devices. The synchronization will work for users who have the ***Keychain*** enabled in the ***iCloud*** settings on their devices. Deleting a synchronizable item will remove it from all devices.
+
+```swift
+let key = KeychainKey<String>(key: .init(name: "key", accessibility: .afterFirstUnlock, isSynchronizable: true),
+                              domain: .init(groupId: "groupId", teamId: "teamId"))
+```
+
+---
+## Observation
+
+The `UnifiedStorage` initializer takes a `factory` parameter that conforms to the `UnifiedStorageFactory` protocol, enabling customized storage instantiation and configuration. This feature is particularly valuable for mocking storage in tests or substituting default implementations with custom ones.
+
+By default, this parameter is set to `DefaultUnifiedStorageFactory`, which omits observation capabilities to avoid excessive class burden. However, supplying an `ObservableUnifiedStorageFactory` instance as the parameter activates observation of all underlying storages for changes.
+
+
+Combine style publishers:
+```swift
+let key = InMemoryKey<String>(key: "key")
+guard let publisher = try await storage.publisher(forKey: key) else {
+    // The storage is not properly configured
+    return
+}
+
+let subscription = publisher.sink { value in
+    print(value) // String?
+}
+```
+
+Concurrency style async streams:
+```swift
+guard let stream = try await storage.stream(forKey: key) else {
+    // The storage is not properly configured
+    return
+}
+
+for await value in stream {
+    print(value) // String?
+}
+```
+
+However, it's important to note that `UnifiedStorage` can only observe changes made through its own methods.
+
+---
+## Error handling
+
+Despite the fact that all the methods of the `UnifiedStorage` are throwing, it will never throw an exception if you do all the initial setups correctly.
+
+---
+## Thread Safety
+
+All built-in types leverage the power of ***Swift Concurrency*** and are thread-safe and protected from race conditions and data racing. However, if you extend the storage with your own ones, it is your responsibility to make them thread-safe.
+
+---
+## Tests
+
+The whole framework is thoroughly validated with high-quality unit tests. 
+Additionally, it serves as an excellent demonstration of how to use the framework as intended.
 
 ---
 ## Installation
 
 ### [Swift Package Manager](https://swift.org/package-manager/)
 
-Swift Package Manager is a tool for automating the distribution of Swift code and is integrated into the `swift` compiler. 
-
 Once you have your Swift package set up, adding KeyValueStorage as a dependency is as easy as adding it to the `dependencies` value of your `Package.swift`.
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/narek-sv/KeyValueStorage.git", .upToNextMajor(from: "1.0.1"))
+    .package(url: "https://github.com/narek-sv/KeyValueStorage.git", .upToNextMajor(from: "2.0.0"))
 ]
 ```
 
 or
 
 * In Xcode select *File > Add Packages*.
-* Enter this project's URL: https://github.com/narek-sv/KeyValueStorage.git
+* Enter the project's URL: https://github.com/narek-sv/KeyValueStorage.git
 
-In any file you'd like to use KeyValueStorage in, don't forget to
-import the framework with `import KeyValueStorage`.
+In any file you'd like to use the package in, don't forget to
+import the framework:
+
+```swift
+import KeyValueStorage
+```
 
 ### [CocoaPods](https://cocoapods.org)
 
-CocoaPods is a dependency manager for Cocoa projects. For usage and installation instructions, visit their website. To integrate KeyValueStorage into your Xcode project using CocoaPods, specify it in your `Podfile`:
+To integrate KeyValueStorage into your Xcode project using CocoaPods, specify it in your `Podfile`:
 
 ```ruby
 pod 'KeyValueStorageSwift'
@@ -53,130 +270,13 @@ pod 'KeyValueStorageSwift'
 
 Then run `pod install`.
 
-In any file you'd like to use KeyValueStorage in, don't forget to
-import the framework with `import KeyValueStorageSwift`.
-
----
-## Usage
-
-### Main functionality 
-
-First, initialize the storage:
-```swift
-let storage = KeyValueStorage()
-```
-
-then declare the key by specifing the key name and the type of the item:
+In any file you'd like to use the package in, don't forget to
+import the framework:
 
 ```swift
-let key = KeyValueStorageKey<Int>(name: "myAge")
+import KeyValueStorageSwift
 ```
 
-after which you can save:
-```swift
-// Saves the item and associates it with the key or overrides the value if there is already such item. 
-
-let myAge = 21
-storage.save(myAge, forKey: key)
-```
-
-fetch:
-```swift
-// Fetches and returns the item associated with the key or returns nil if there is no such item.
-
-let fetchedAge = storage.fetch(forKey: key) 
-```
-
-delete:
-```swift
-// Deletes the item associated with the key or does nothing if there is no such item.
-
-storage.delete(forKey: key)
-```
-
-set:
-```swift
-// Sets the item identified by the key to the provided value.
-
-let newAge = 24
-storage.set(newAge, forKey: key) // save
-
-storage.set(nil, forKey: key) // delete
-```
-
-or clear the whole storage content:
-```swift
-storage.clear()
-```
-
-`KeyValueStorage` works with any type that conforms to `Codable` protocol.
-
-### Storage types 
-
-The KeyValueStorage supports 3 storage types
-* `In-memory` (This storage type persists the items only within an app session.)
-* `User-Defaults` (This storage type persists the items within the whole app lifetime.)
-* `Keychain` (This storage type keeps the items in secure storage and persists even app re-installations. Supports `iCloud` synchronization.)
-
-You specify the storage type when declaring the key:
-```swift
-let key1 = KeyValueStorageKey<Int>(name: "id", storage: .inMemory)
-let key2 = KeyValueStorageKey<Date>(name: "birthday", storage: .userDefaults)
-let key3 = KeyValueStorageKey<String>(name: "password", storage: .keychain())
-```
-If you don't specify a storage type `.userDefaults` will be used.
-
-### Xcode autocompletion 
-
-To get the advantages of the Xcode autocompletion it is recommended to declare all your keys in the extension of the `KeyValueStorageKey` like so:
-```swift
-extension KeyValueStorageKey {
-    static var key1: KeyValueStorageKey<Int> {
-        .init(name: "id", storage: .inMemory)
-    }
-    
-    static var key2: KeyValueStorageKey<Date> {
-        .init(name: "birthday", storage: .userDefaults)
-    }
-    
-    static var key3: KeyValueStorageKey<String> {
-        .init(name: "password", storage: .keychain())
-    }
-}
-```
-
-then Xcode will suggest all the keys specified in the extension when you put a dot:
-<img width="567" alt="Screen Shot 2022-08-20 at 18 04 02" src="https://user-images.githubusercontent.com/23353201/185749955-91558762-513d-46ef-83de-b836808fbb2e.png">
-
-### App Groups
-
-`KeyValueStorage` also supports working with shared containers, which allows you to share your items among different **App Extensions** or **your other Apps**. To do so, first, you need to configure your app by following the steps described in [this](https://developer.apple.com/documentation/security/keychain_services/keychain_items/sharing_access_to_keychain_items_among_a_collection_of_apps) article.
-
-Then you simply have to initialize your `KeyValueStorage` with the `init(accessGroup:teamID:)` initializer by providing your newly created `accessGroup` identifier and your development `teamID`. That's it; you are ready to use **App Groups**.
-
-### Keychain
-
-Use `accessibility` parameter to specify the security level of the keychain storage.
-By default the `.whenUnlocked` option is used. It is one of the most restrictive options and provides good data protection.
-
-```swift
-let key = KeyValueStorageKey<String>(name: "password", storage: .keychain(accessibility: .whenUnlocked))
-```
-
-You can use `.afterFirstUnlock` if you need your app to access the keychain item while in the background. Note that it is less secure than the `.whenUnlocked` option.
-
-Here are all the supported accessibility types:
-* *afterFirstUnlock*
-* *afterFirstUnlockThisDeviceOnly*
-* *whenPasscodeSetThisDeviceOnly*
-* *whenUnlocked*
-* *whenUnlockedThisDeviceOnly*
-
-Set `synchronizable` property to `true` to enable keychain items synchronization across user's multiple devices. The synchronization will work for users who have the **Keychain** enabled in the *iCloud* settings on their devices. Deleting a synchronizable item will remove it from all devices.
-
-```swift
-let key = KeyValueStorageKey<String>(name: "password", storage: .keychain(accessibility: .afterFirstUnlock, isSynchronizable: true))
-```
 ---
 ## License
 

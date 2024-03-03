@@ -6,7 +6,10 @@
 //
 
 import XCTest
+import SwiftUI
 @testable import KeyValueStorage
+@testable import KeyValueStorageWrapper
+@testable import KeyValueStorageSwiftUI
 
 #if os(macOS)
 @available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
@@ -79,21 +82,21 @@ final class KeyValueStoragePropertyWrapperTests: XCTestCase {
         @Storage(key: key1) var int1: Int?
         @Storage(key: key2) var int2: Int?
         
-        let subscription1 = $int1.sink { value in
+        let subscription1 = _int1.publisher.sink { value in
             // Then
             XCTAssertEqual(int1, int2)
             XCTAssertEqual(int1, value)
             sink1Called = true
         }
         
-        let subscription2 = $int2.sink { value in
+        let subscription2 = _int2.publisher.sink { value in
             // Then
             XCTAssertEqual(int1, int2)
             XCTAssertEqual(value, int2)
             sink2Called = true
         }
         
-        let subscription3 = $int2.sink { value in
+        let subscription3 = _int2.publisher.sink { value in
             // Then
             XCTAssertEqual(int1, int2)
             XCTAssertEqual(value, int2)
@@ -112,6 +115,25 @@ final class KeyValueStoragePropertyWrapperTests: XCTestCase {
         XCTAssertNotNil(subscription1)
         XCTAssertNotNil(subscription2)
         XCTAssertNotNil(subscription3)
+    }
+    
+    func testBinding() {
+        // Given
+        let key = KeyValueStorageKey<Int>(name: "key", storage: .inMemory)
+        @ObservedStorage(key: key) var int: Int?
+        int = 10
+
+        // When
+        @Binding var bindedInt: Int?
+        _bindedInt = $int
+        
+        // Then
+        XCTAssertEqual(bindedInt, 10)
+        
+        // When
+        bindedInt = 77
+        // Then
+        XCTAssertEqual(int, 77)
     }
 }
 

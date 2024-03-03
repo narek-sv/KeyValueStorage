@@ -14,10 +14,10 @@ open class KeyValueStorage {
     private let userDefaults: UserDefaults
     private let keychain: KeychainHelper
     private let serialQueue = DispatchQueue(label: "KeyValueStorage.default.queue", qos: .userInitiated)
-    private var serviceName: String { accessGroup.unwrapped(Self.defaultServiceName) }
-    private static var defaultServiceName: String = { Bundle.main.bundleIdentifier.unwrapped("defaultSuiteName") }()
+    private static let defaultServiceName = Bundle.main.bundleIdentifier.unwrapped("KeyValueStorage")
     private static var inMemoryStorage = [String: [String: Any]]()
-    
+    public var serviceName: String { accessGroup.unwrapped(Self.defaultServiceName) }
+
     /// `accessGroup` is used to identify which  Access Group all items belongs to. This allows using shared access between different applications.
     public let accessGroup: String?
     
