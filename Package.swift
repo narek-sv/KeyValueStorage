@@ -16,7 +16,7 @@ let package = Package(
             name: "KeyValueStorage",
             targets: ["KeyValueStorage"]),
 
-            .library(
+        .library(
             name: "KeyValueStorageLegacy",
             targets: ["KeyValueStorageLegacy"]),
         .library(
