@@ -6,7 +6,7 @@
 //
 
 import XCTest
-@testable import KeyValueStorage
+@testable import KeyValueStorageLegacy
 
 class ThreadSafetyTests: XCTestCase {
     private var storage: KeyValueStorage!

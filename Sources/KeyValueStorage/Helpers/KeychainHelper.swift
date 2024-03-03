@@ -8,29 +8,27 @@
 import Foundation
 import Security
 
+enum KeychainHelperError: Error {
+    case status(OSStatus)
+}
+
 /// A wrapper class which allows to use Keychain it in a similar manner to User Defaults.
-final class KeychainHelper {
+open class KeychainHelper: @unchecked Sendable {
     
     /// `serviceName` is used to uniquely identify this keychain accessor.
-    private(set) var serviceName: String
+    let serviceName: String
     
     /// `accessGroup` is used to identify which Keychain Access Group this entry belongs to. This allows you to use shared keychain access between different applications.
-    private(set) var accessGroup: String?
+    let accessGroup: String?
     
     init(serviceName: String, accessGroup: String? = nil) {
         self.serviceName = serviceName
         self.accessGroup = accessGroup
     }
     
-    /// Returns a Data object for a specified key.
-    ///
-    /// - parameter forKey: The key to lookup data for.
-    /// - parameter withAccessibility: Optional accessibility to use when retrieving the keychain item.
-    /// - parameter isSynchronizable: A bool that describes if the item should be synchronizable, to be synched with the iCloud. If none is provided, will default to false.
-    /// - returns: The Data object associated with the key if it exists. If no data exists, returns nil.
     func get(forKey key: String,
              withAccessibility accessibility: KeychainAccessibility? = nil,
-             isSynchronizable: Bool = false) -> Data? {
+             isSynchronizable: Bool = false) throws -> Data? {
         var keychainQueryDictionary = query(forKey: key, withAccessibility: accessibility, isSynchronizable: isSynchronizable)
         keychainQueryDictionary[KeychainHelper.matchLimit] = kSecMatchLimitOne
         keychainQueryDictionary[KeychainHelper.returnData] = kCFBooleanTrue
@@ -39,61 +37,49 @@ final class KeychainHelper {
         var result: AnyObject?
         let status = SecItemCopyMatching(keychainQueryDictionary as CFDictionary, &result)
         
-        return status == noErr ? result as? Data : nil
+        if status != errSecSuccess {
+            throw KeychainHelperError.status(status)
+        }
+        
+        return result as? Data
     }
     
-    /// Save a Data object to the keychain associated with a specified key. If data already exists for the given key, the data will be overwritten with the new value.
-    ///
-    /// - parameter value: The Data object to save.
-    /// - parameter forKey: The key to save the object under.
-    /// - parameter withAccessibility: Optional accessibility to use when setting the keychain item.
-    /// - parameter isSynchronizable: A bool that describes if the item should be synchronizable, to be synched with the iCloud. If none is provided, will default to false.
-    /// - returns: True if the save was successful, false otherwise.
-    @discardableResult
     func set(_ value: Data,
              forKey key: String,
              withAccessibility accessibility: KeychainAccessibility? = nil,
-             isSynchronizable: Bool = false) -> Bool {
+             isSynchronizable: Bool = false) throws {
         var keychainQueryDictionary = query(forKey: key, withAccessibility: accessibility, isSynchronizable: isSynchronizable)
         keychainQueryDictionary[KeychainHelper.valueData] = value
         keychainQueryDictionary[KeychainHelper.attrAccessible] = accessibility?.key ?? KeychainAccessibility.whenUnlocked.key
         
         let status = SecItemAdd(keychainQueryDictionary as CFDictionary, nil)
-        if status == errSecSuccess {
-            return true
-        } else if status == errSecDuplicateItem {
-            return update(value, forKey: key, withAccessibility: accessibility, isSynchronizable: isSynchronizable)
+        if status == errSecDuplicateItem {
+            try update(value, forKey: key, withAccessibility: accessibility, isSynchronizable: isSynchronizable)
+        } else if status != errSecSuccess {
+            throw KeychainHelperError.status(status)
         }
-        
-        return false
     }
-    
-    /// Remove an object associated with a specified key. If re-using a key but with a different accessibility, first remove the previous key value using removeObjectForKey(:withAccessibility) using the same accessibilty it was saved with.
-    ///
-    /// - parameter forKey: The key value to remove data for.
-    /// - parameter withAccessibility: Optional accessibility level to use when looking up the keychain item.
-    /// - parameter isSynchronizable: A bool that describes if the item should be synchronizable, to be synched with the iCloud. If none is provided, will default to false.
-    /// - returns: True if successful, false otherwise.
-    @discardableResult
+
     func remove(forKey key: String,
                 withAccessibility accessibility: KeychainAccessibility? = nil,
-                isSynchronizable: Bool = false) -> Bool {
+                isSynchronizable: Bool = false) throws {
         let keychainQueryDictionary = query(forKey: key, withAccessibility: accessibility, isSynchronizable: isSynchronizable)
         
         let status = SecItemDelete(keychainQueryDictionary as CFDictionary)
-        return status == errSecSuccess
+        if status != errSecSuccess {
+            throw KeychainHelperError.status(status)
+        }
     }
     
-    /// Remove all keychain data added through KeychainWrapper. This will only delete items matching the currnt ServiceName and AccessGroup if one is set.
-    /// - returns: True if successful, false otherwise.
-    @discardableResult
-    func removeAll() -> Bool {
+    func removeAll() throws {
         var keychainQueryDictionary: [String: Any] = [KeychainHelper.class: kSecClassGenericPassword]
         keychainQueryDictionary[KeychainHelper.attrService] = serviceName
         keychainQueryDictionary[KeychainHelper.attrAccessGroup] = accessGroup
         
         let status = SecItemDelete(keychainQueryDictionary as CFDictionary)
-        return status == errSecSuccess
+        if status != errSecSuccess {
+            throw KeychainHelperError.status(status)
+        }
     }
     
     // MARK: - Helpers
@@ -101,13 +87,15 @@ final class KeychainHelper {
     private func update(_ value: Data,
                         forKey key: String,
                         withAccessibility accessibility: KeychainAccessibility? = nil,
-                        isSynchronizable: Bool = false) -> Bool {
+                        isSynchronizable: Bool = false) throws {
         let updateDictionary = [KeychainHelper.valueData: value]
         var keychainQueryDictionary = query(forKey: key, withAccessibility: accessibility, isSynchronizable: isSynchronizable)
         keychainQueryDictionary[KeychainHelper.attrAccessible] = accessibility?.key
         
         let status = SecItemUpdate(keychainQueryDictionary as CFDictionary, updateDictionary as CFDictionary)
-        return status == errSecSuccess
+        if status != errSecSuccess {
+            throw KeychainHelperError.status(status)
+        }
     }
     
     private func query(forKey key: String,
@@ -144,7 +132,7 @@ extension KeychainHelper {
 
 // MARK: - Accessibility
 
-public enum KeychainAccessibility {
+public enum KeychainAccessibility: Sendable {
     case afterFirstUnlock
     case afterFirstUnlockThisDeviceOnly
     case whenPasscodeSetThisDeviceOnly

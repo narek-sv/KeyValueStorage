@@ -7,7 +7,7 @@
 
 import XCTest
 import Foundation
-@testable import UnifiedStorage
+@testable import KeyValueStorage
 
 @KeychainActor
 final class KeychainStorageTests: XCTestCase {

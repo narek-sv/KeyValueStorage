@@ -6,7 +6,7 @@
 //
 
 import Foundation
-@testable import UnifiedStorage
+@testable import KeyValueStorage
 
 final class UserDefaultsMock: UserDefaults {
     var storage = [String: Data]()

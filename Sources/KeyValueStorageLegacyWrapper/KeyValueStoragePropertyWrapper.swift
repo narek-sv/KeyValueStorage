@@ -6,7 +6,7 @@
 //
 
 import Combine
-import KeyValueStorage
+import KeyValueStorageLegacy
 
 fileprivate final class KeyValueStoragePreferences {
     static let shared = KeyValueStoragePreferences()

@@ -12,43 +12,44 @@ let package = Package(
         .tvOS(.v13)
     ],
     products: [
-        // Products define the executables and libraries a package produces, and make them visible to other packages.
         .library(
             name: "KeyValueStorage",
             targets: ["KeyValueStorage"]),
+
+            .library(
+            name: "KeyValueStorageLegacy",
+            targets: ["KeyValueStorageLegacy"]),
         .library(
-            name: "KeyValueStorageWrapper",
-            targets: ["KeyValueStorageWrapper"]),
+            name: "KeyValueStorageLegacyWrapper",
+            targets: ["KeyValueStorageLegacyWrapper"]),
         .library(
-            name: "KeyValueStorageSwiftUI",
-            targets: ["KeyValueStorageSwiftUI"]),
-        .library(
-            name: "UnifiedStorage",
-            targets: ["UnifiedStorage"]),
+            name: "KeyValueStorageLegacySwiftUI",
+            targets: ["KeyValueStorageLegacySwiftUI"]),
     ],
     targets: [
         // Targets are the basic building blocks of a package. A target can define a module or a test suite.
         // Targets can depend on other targets in this package, and on products in packages this package depends on.
         .target(
-            name: "UnifiedStorage",
+            name: "KeyValueStorage",
             dependencies: [],
             swiftSettings: [
                 .enableExperimentalFeature("StrictConcurrency"),
             ]),
-        .target(
-            name: "KeyValueStorage",
-            dependencies: []),
-        .target(
-            name: "KeyValueStorageWrapper",
-            dependencies: [.target(name: "KeyValueStorage")]),
-        .target(
-            name: "KeyValueStorageSwiftUI",
-            dependencies: [.target(name: "KeyValueStorageWrapper")]),
         .testTarget(
             name: "KeyValueStorageTests",
-            dependencies: ["KeyValueStorage", "KeyValueStorageWrapper", "KeyValueStorageSwiftUI"]),
+            dependencies: ["KeyValueStorage"]),
+        
+        .target(
+            name: "KeyValueStorageLegacy",
+            dependencies: []),
+        .target(
+            name: "KeyValueStorageLegacyWrapper",
+            dependencies: [.target(name: "KeyValueStorageLegacy")]),
+        .target(
+            name: "KeyValueStorageLegacySwiftUI",
+            dependencies: [.target(name: "KeyValueStorageLegacyWrapper")]),
         .testTarget(
-            name: "UnifiedStorageTests",
-            dependencies: ["UnifiedStorage"]),
+            name: "KeyValueStorageLegacyTests",
+            dependencies: ["KeyValueStorageLegacy", "KeyValueStorageLegacyWrapper", "KeyValueStorageLegacySwiftUI"]),
     ]
 )

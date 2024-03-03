@@ -7,7 +7,7 @@
 
 import XCTest
 import Foundation
-@testable import UnifiedStorage
+@testable import KeyValueStorage
 
 @FileActor
 final class FileStorageTests: XCTestCase {
