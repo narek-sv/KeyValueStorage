@@ -17,6 +17,6 @@ Pod::Spec.new do |spec|
   spec.source       = { :git => "https://github.com/narek-sv/KeyValueStorage.git", :tag => "v2.1.0" }
   spec.source_files = "Sources/KeyValueStorage/**/*"
   
-  spec.resource_bundles = {"KeyValueStorageSwift" => ["Sources/Resources/PrivacyInfo.xcprivacy"]}
+  spec.resource_bundles = {"KeyValueStorageSwift" => ["Sources/KeyValueStorage/Resources/PrivacyInfo.xcprivacy"]}
 
 end
