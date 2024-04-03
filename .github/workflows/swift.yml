@@ -14,7 +14,7 @@ jobs:
           swift: ["5.10"]
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: swift-actions/setup-swift@v1
+    - uses: swift-actions/setup-swift@v2
       name: Set up Swift
       with:
         swift-version: ${{ matrix.swift }}
