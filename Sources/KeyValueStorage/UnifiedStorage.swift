@@ -41,12 +41,12 @@ extension UnifiedStorageKey: Hashable {
 
 // MARK: - Unified Storage Factory
 
-public protocol UnifiedStorageFactory {
+public protocol UnifiedStorageFactory: Sendable {
     func dataStorage<Storage: KeyValueDataStorage>(for domain: Storage.Domain?) async throws -> Storage
-    func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) throws -> KeyValueCodingStorage<Storage>
+    func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) async throws -> KeyValueCodingStorage<Storage>
 }
 
-open class DefaultUnifiedStorageFactory: UnifiedStorageFactory {
+open class DefaultUnifiedStorageFactory: UnifiedStorageFactory, @unchecked Sendable {
     public func dataStorage<Storage: KeyValueDataStorage>(for domain: Storage.Domain?) async throws -> Storage {
         if let domain {
             return try await Storage(domain: domain)
@@ -55,14 +55,14 @@ open class DefaultUnifiedStorageFactory: UnifiedStorageFactory {
         return try await Storage()
     }
     
-    public func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) throws -> KeyValueCodingStorage<Storage> {
-        KeyValueCodingStorage(storage: storage)
+    public func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) async throws -> KeyValueCodingStorage<Storage> {
+        await KeyValueCodingStorage(storage: storage)
     }
 }
 
 public final class ObservableUnifiedStorageFactory: DefaultUnifiedStorageFactory {
-    public override func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) throws -> KeyValueCodingStorage<Storage> {
-        KeyValueObservableStorage(storage: storage)
+    public override func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) async throws -> KeyValueCodingStorage<Storage> {
+        await KeyValueObservableStorage(storage: storage)
     }
 }
 
@@ -157,7 +157,7 @@ public actor UnifiedStorage {
         }
         
         let dataStorage: Storage = try await factory.dataStorage(for: domain)
-        let codingStorage = try factory.codingStorage(for: dataStorage)
+        let codingStorage = try await factory.codingStorage(for: dataStorage)
         storages[underlyingKey] = codingStorage
       
         

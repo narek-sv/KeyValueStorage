@@ -9,7 +9,6 @@ import XCTest
 import Foundation
 @testable import KeyValueStorage
 
-@KeychainActor
 final class KeychainStorageTests: XCTestCase {
     static let otherStorageDomain = KeychainStorage.Domain(groupId: "xxx", teamId: "yyy")
     var standardKeychain: KeychainWrapper!
@@ -19,6 +18,7 @@ final class KeychainStorageTests: XCTestCase {
     
     #if SWIFT_PACKAGE_CAN_ATTACH_ENTITLRMENTS
     
+    @KeychainActor
     override func setUpWithError() throws {
         standardKeychain = KeychainHelper(serviceName: Bundle.main.bundleIdentifier!)
         otherKeychain = KeychainHelper(serviceName: Bundle.main.bundleIdentifier!, accessGroup: Self.otherStorageDomain.accessGroup)
@@ -31,11 +31,13 @@ final class KeychainStorageTests: XCTestCase {
         
     }
     
+    @KeychainActor
     func testKeychainDomain() {
         XCTAssertEqual(standardStorage.domain, nil)
         XCTAssertEqual(otherStorage.domain, Self.otherStorageDomain)
     }
     
+    @KeychainActor
     func testKeychainFetch() throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -101,6 +103,7 @@ final class KeychainStorageTests: XCTestCase {
         XCTAssertNil(fetched2)
     }
     
+    @KeychainActor
     func testKeychainFetchDifferentDomains() throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -168,6 +171,7 @@ final class KeychainStorageTests: XCTestCase {
         XCTAssertNil(fetched2)
     }
     
+    @KeychainActor
     func testKeychainSave() throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -199,6 +203,7 @@ final class KeychainStorageTests: XCTestCase {
         XCTAssertEqual(try standardKeychain.get(forKey: key2), data1)
     }
     
+    @KeychainActor
     func testKeychainSaveDifferentDomains() throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -228,6 +233,7 @@ final class KeychainStorageTests: XCTestCase {
         XCTAssertEqual(try otherKeychain.get(forKey: key), data2)
     }
     
+    @KeychainActor
     func testKeychainDelete() throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -261,6 +267,7 @@ final class KeychainStorageTests: XCTestCase {
         XCTAssertNil(try standardKeychain.get(forKey: key2))
     }
     
+    @KeychainActor
     func testKeychainDeleteDifferentDomains() throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -292,6 +299,7 @@ final class KeychainStorageTests: XCTestCase {
         XCTAssertNil(try otherKeychain.get(forKey: key))
     }
     
+    @KeychainActor
     func testKeychainSet() throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -332,6 +340,7 @@ final class KeychainStorageTests: XCTestCase {
         XCTAssertNil(try standardKeychain.get(forKey: key2))
     }
     
+    @KeychainActor
     func testKeychainSetDifferentDomains() throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -370,6 +379,7 @@ final class KeychainStorageTests: XCTestCase {
         XCTAssertNil(try otherKeychain.get(forKey: key))
     }
     
+    @KeychainActor
     func testKeychainClear() throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -420,6 +430,7 @@ final class KeychainStorageTests: XCTestCase {
         XCTAssertNil(try otherKeychain.get(forKey: key2))
     }
     
+    @KeychainActor
     func testThreadSafety() throws {
         // Given
         let iterations = 5000
@@ -465,6 +476,7 @@ final class KeychainStorageTests: XCTestCase {
     
     #endif
     
+    @KeychainActor
     func testDomain() {
         // Given
         let domain = KeychainStorage.Domain(groupId: "a", teamId: "b")
@@ -476,6 +488,7 @@ final class KeychainStorageTests: XCTestCase {
         XCTAssertEqual(group, "b.a")
     }
     
+    @KeychainActor
     func testInitDomains() {
         // When
         var storage = KeychainStorage()
@@ -490,6 +503,7 @@ final class KeychainStorageTests: XCTestCase {
         XCTAssertEqual(storage.domain, .init(groupId: "a", teamId: "b"))
     }
     
+    @KeychainActor
     func testInitCustomKeychain() {
         // Given
         let keychain = KeychainWrapper(serviceName: "mock")
@@ -501,6 +515,7 @@ final class KeychainStorageTests: XCTestCase {
         XCTAssertNil(storage.domain)
     }
     
+    @KeychainActor
     func testMockedFetch() {
         // Given
         let mock = KeychainHelperMock(serviceName: "mock")
@@ -552,6 +567,7 @@ final class KeychainStorageTests: XCTestCase {
         }
     }
     
+    @KeychainActor
     func testMockedSave() {
         // Given
         let mock = KeychainHelperMock(serviceName: "mock")
@@ -585,6 +601,7 @@ final class KeychainStorageTests: XCTestCase {
         }
     }
     
+    @KeychainActor
     func testMockedDelete() {
         // Given
         let mock = KeychainHelperMock(serviceName: "mock")
@@ -618,6 +635,7 @@ final class KeychainStorageTests: XCTestCase {
         }
     }
     
+    @KeychainActor
     func testMockedSet() {
         // Given
         let mock = KeychainHelperMock(serviceName: "mock")
@@ -680,6 +698,7 @@ final class KeychainStorageTests: XCTestCase {
         }
     }
     
+    @KeychainActor
     func testMockedClear() {
         // Given
         let mock = KeychainHelperMock(serviceName: "mock")

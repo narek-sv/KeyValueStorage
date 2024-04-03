@@ -9,7 +9,6 @@ import XCTest
 import Foundation
 @testable import KeyValueStorage
 
-@FileActor
 final class FileStorageTests: XCTestCase {
     static let otherStorageDomain = "other"
     var fileManager = FileManager.default
@@ -18,6 +17,7 @@ final class FileStorageTests: XCTestCase {
     var standardStorage: FileStorage!
     var otherStorage: FileStorage!
     
+    @FileActor
     override func setUpWithError() throws {
         let id = Bundle.main.bundleIdentifier!
         standardPath = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(id, isDirectory: true)
@@ -32,11 +32,13 @@ final class FileStorageTests: XCTestCase {
         otherStorage = try FileStorage(domain: Self.otherStorageDomain)
     }
     
+    @FileActor
     func testFileDomain() {
         XCTAssertEqual(standardStorage.domain, nil)
         XCTAssertEqual(otherStorage.domain, Self.otherStorageDomain)
     }
     
+    @FileActor
     func testFileFetch() throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -105,6 +107,7 @@ final class FileStorageTests: XCTestCase {
         XCTAssertNil(fetched2)
     }
     
+    @FileActor
     func testFileFetchDifferentDomains() throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -173,6 +176,7 @@ final class FileStorageTests: XCTestCase {
         XCTAssertNil(fetched2)
     }
     
+    @FileActor
     func testFileSave() throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -207,6 +211,7 @@ final class FileStorageTests: XCTestCase {
         XCTAssertEqual(fileManager.contents(atPath: filePath2), data1)
     }
     
+    @FileActor
     func testFileSaveDifferentDomains() throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -237,6 +242,7 @@ final class FileStorageTests: XCTestCase {
         XCTAssertEqual(fileManager.contents(atPath: filePath2), data2)
     }
     
+    @FileActor
     func testFileDelete() throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -273,6 +279,7 @@ final class FileStorageTests: XCTestCase {
         XCTAssertNil(fileManager.contents(atPath: filePath2))
     }
     
+    @FileActor
     func testFileDeleteDifferentDomains() throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -305,6 +312,7 @@ final class FileStorageTests: XCTestCase {
         XCTAssertNil(fileManager.contents(atPath: filePath2))
     }
     
+    @FileActor
     func testFileSet() throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -345,6 +353,7 @@ final class FileStorageTests: XCTestCase {
         XCTAssertNil(fileManager.contents(atPath: filePath2))
     }
     
+    @FileActor
     func testFileSetDifferentDomains() throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -384,6 +393,7 @@ final class FileStorageTests: XCTestCase {
         XCTAssertNil(fileManager.contents(atPath: filePath2))
     }
     
+    @FileActor
     func testFileClear() throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -438,6 +448,7 @@ final class FileStorageTests: XCTestCase {
         XCTAssertNil(fileManager.contents(atPath: filePath22))
     }
     
+    @FileActor
     func testErrorCaseDelete() {
         // Given
         let mock = FileManagerMock()
@@ -482,6 +493,7 @@ final class FileStorageTests: XCTestCase {
         }
     }
     
+    @FileActor
     func testErrorCaseSave() {
         // Given
         let mock = FileManagerMock()
@@ -548,6 +560,7 @@ final class FileStorageTests: XCTestCase {
         }
     }
     
+    @FileActor
     func testThreadSafety() throws {
         // Given
         let iterations = 5000

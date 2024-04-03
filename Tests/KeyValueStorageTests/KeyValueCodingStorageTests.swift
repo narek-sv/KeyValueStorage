@@ -9,21 +9,22 @@ import XCTest
 import Foundation
 @testable import KeyValueStorage
 
-@InMemoryActor
 final class KeyValueCodingStorageTests: XCTestCase {
     var underlyingStorage: InMemoryStorage!
     var storage: KeyValueCodingStorage<InMemoryStorage>!
     var coder: DataCoder!
 
+    @InMemoryActor
     override func setUp() async throws {
         underlyingStorage = InMemoryStorage()
         coder = JSONDataCoder()
 
-        storage = .init(storage: underlyingStorage, coder: coder)
+        storage = await .init(storage: underlyingStorage, coder: coder)
         
         InMemoryStorage.container = [nil: [:]]
     }
     
+    @InMemoryActor
     func testFetch() async throws {
         // Given
         let instance1 = CustomStruct(int: 3, string: "3", date: Date(timeIntervalSince1970: 3), inner: [Inner(id: .init())])
@@ -69,6 +70,7 @@ final class KeyValueCodingStorageTests: XCTestCase {
         XCTAssertEqual(fetched4, instance4)
     }
     
+    @InMemoryActor
     func testSave() async throws {
         // Given
         let instance1 = CustomStruct(int: 3, string: "3", date: Date(timeIntervalSince1970: 3), inner: [Inner(id: .init())])
@@ -99,6 +101,7 @@ final class KeyValueCodingStorageTests: XCTestCase {
         XCTAssertEqual(decoded4, instance4)
     }
     
+    @InMemoryActor
     func testDelete() async throws {
         // Given
         let instance1 = CustomStruct(int: 3, string: "3", date: Date(timeIntervalSince1970: 3), inner: [Inner(id: .init())])
@@ -131,6 +134,7 @@ final class KeyValueCodingStorageTests: XCTestCase {
         XCTAssertNil(InMemoryStorage.container[nil]?["key4"])
     }
     
+    @InMemoryActor
     func testSet() async throws {
         // Given
         let instance1 = CustomStruct(int: 3, string: "3", date: Date(timeIntervalSince1970: 3), inner: [Inner(id: .init())])
@@ -180,6 +184,7 @@ final class KeyValueCodingStorageTests: XCTestCase {
         XCTAssertEqual(decoded4, instance4)
     }
     
+    @InMemoryActor
     func testClear() async throws {
         // Given
         let instance1 = CustomStruct(int: 3, string: "3", date: Date(timeIntervalSince1970: 3), inner: [Inner(id: .init())])

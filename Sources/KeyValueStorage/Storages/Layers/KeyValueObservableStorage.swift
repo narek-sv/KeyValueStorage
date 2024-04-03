@@ -7,12 +7,12 @@
 
 import Combine
 
-@ObservableCodingStorageActor
+@CodingStorageActor
 private final class KeyValueObservations {
     fileprivate static var observations = [AnyHashable?: [AnyHashable: Any]]()
 }
 
-@ObservableCodingStorageActor
+@CodingStorageActor
 open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodingStorage<Storage>, @unchecked Sendable {
         
     // MARK: Observations
