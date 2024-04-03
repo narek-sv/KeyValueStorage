@@ -9,7 +9,6 @@ import XCTest
 import Foundation
 @testable import KeyValueStorage
 
-@UserDefaultsActor
 final class UserDefaultsStorageTests: XCTestCase {
     static let otherStorageDomain = "other"
     var standardUserDefaults: UserDefaults!
@@ -17,6 +16,7 @@ final class UserDefaultsStorageTests: XCTestCase {
     var standardStorage: UserDefaultsStorage!
     var otherStorage: UserDefaultsStorage!
     
+    @UserDefaultsActor
     override func setUpWithError() throws {
         standardUserDefaults = UserDefaults.standard
         otherUserDefaults = UserDefaults(suiteName: Self.otherStorageDomain)!
@@ -28,11 +28,13 @@ final class UserDefaultsStorageTests: XCTestCase {
         otherStorage = try UserDefaultsStorage(domain: Self.otherStorageDomain)
     }
     
+    @UserDefaultsActor
     func testUserDefaultsDomain() {
         XCTAssertEqual(standardStorage.domain, nil)
         XCTAssertEqual(otherStorage.domain, Self.otherStorageDomain)
     }
     
+    @UserDefaultsActor
     func testUserDefaultsFetch() {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -96,6 +98,7 @@ final class UserDefaultsStorageTests: XCTestCase {
         XCTAssertNil(fetched2)
     }
     
+    @UserDefaultsActor
     func testUserDefaultsFetchDifferentDomains() {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -160,6 +163,7 @@ final class UserDefaultsStorageTests: XCTestCase {
         XCTAssertNil(fetched2)
     }
     
+    @UserDefaultsActor
     func testUserDefaultsSave() {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -189,6 +193,7 @@ final class UserDefaultsStorageTests: XCTestCase {
         XCTAssertEqual(standardUserDefaults.data(forKey: key2), data1)
     }
     
+    @UserDefaultsActor
     func testUserDefaultsSaveDifferentDomains() {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -217,6 +222,7 @@ final class UserDefaultsStorageTests: XCTestCase {
         XCTAssertEqual(otherUserDefaults.data(forKey: key), data2)
     }
     
+    @UserDefaultsActor
     func testUserDefaultsDelete() {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -248,6 +254,7 @@ final class UserDefaultsStorageTests: XCTestCase {
         XCTAssertNil(standardUserDefaults.data(forKey: key2))
     }
     
+    @UserDefaultsActor
     func testUserDefaultsDeleteDifferentDomains() {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -278,6 +285,7 @@ final class UserDefaultsStorageTests: XCTestCase {
         XCTAssertNil(otherUserDefaults.data(forKey: key))
     }
     
+    @UserDefaultsActor
     func testUserDefaultsSet() {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -316,6 +324,7 @@ final class UserDefaultsStorageTests: XCTestCase {
         XCTAssertNil(standardUserDefaults.data(forKey: key2))
     }
     
+    @UserDefaultsActor
     func testUserDefaultsSetDifferentDomains() {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -353,6 +362,7 @@ final class UserDefaultsStorageTests: XCTestCase {
         XCTAssertNil(otherUserDefaults.data(forKey: key))
     }
     
+    @UserDefaultsActor
     func testUserDefaultsClear() {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -403,6 +413,7 @@ final class UserDefaultsStorageTests: XCTestCase {
         XCTAssertNil(otherUserDefaults.data(forKey: key2))
     }
     
+    @UserDefaultsActor
     func testInitCustomUserDefaults() {
         // Given
         let userDefaults = UserDefaults(suiteName: "mock")!
@@ -414,6 +425,7 @@ final class UserDefaultsStorageTests: XCTestCase {
         XCTAssertNil(storage.domain)
     }
     
+    @UserDefaultsActor
     func testThreadSafety() {
         // Given
         let iterations = 5000

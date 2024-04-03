@@ -9,12 +9,12 @@ import XCTest
 import Foundation
 @testable import KeyValueStorage
 
-@InMemoryActor
 final class InMemoryStorageTests: XCTestCase {
     static let otherStorageDomain = "other"
     var standardStorage: InMemoryStorage!
     var otherStorage: InMemoryStorage!
     
+    @InMemoryActor
     override func setUp() {
         standardStorage = InMemoryStorage()
         otherStorage = InMemoryStorage(domain: Self.otherStorageDomain)
@@ -22,11 +22,13 @@ final class InMemoryStorageTests: XCTestCase {
         InMemoryStorage.container = [:]
     }
     
+    @InMemoryActor
     func testInMemoryDomain() {
         XCTAssertEqual(standardStorage.domain, nil)
         XCTAssertEqual(otherStorage.domain, Self.otherStorageDomain)
     }
     
+    @InMemoryActor
     func testInMemoryFetch() {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -88,6 +90,7 @@ final class InMemoryStorageTests: XCTestCase {
         XCTAssertNil(fetched2)
     }
     
+    @InMemoryActor
     func testInMemoryFetchDifferentDomains() {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -148,6 +151,7 @@ final class InMemoryStorageTests: XCTestCase {
         XCTAssertNil(fetched2)
     }
     
+    @InMemoryActor
     func testInMemorySave() {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -177,6 +181,7 @@ final class InMemoryStorageTests: XCTestCase {
         XCTAssertEqual(InMemoryStorage.container[nil]?[key2], data1)
     }
     
+    @InMemoryActor
     func testInMemorySaveDifferentDomains() {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -205,6 +210,7 @@ final class InMemoryStorageTests: XCTestCase {
         XCTAssertEqual(InMemoryStorage.container["other"]?[key], data2)
     }
     
+    @InMemoryActor
     func testInMemoryDelete() {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -235,6 +241,7 @@ final class InMemoryStorageTests: XCTestCase {
         XCTAssertNil(InMemoryStorage.container[nil]?[key2])
     }
     
+    @InMemoryActor
     func testInMemoryDeleteDifferentDomains() {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -264,6 +271,7 @@ final class InMemoryStorageTests: XCTestCase {
         XCTAssertNil(InMemoryStorage.container["other"]?[key])
     }
     
+    @InMemoryActor
     func testInMemorySet() {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -301,6 +309,7 @@ final class InMemoryStorageTests: XCTestCase {
         XCTAssertNil(InMemoryStorage.container[nil]?[key2])
     }
     
+    @InMemoryActor
     func testInMemorySetDifferentDomains() {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -337,6 +346,7 @@ final class InMemoryStorageTests: XCTestCase {
         XCTAssertNil(InMemoryStorage.container["other"]?[key])
     }
     
+    @InMemoryActor
     func testInMemoryClear() {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
@@ -379,6 +389,7 @@ final class InMemoryStorageTests: XCTestCase {
         XCTAssertEqual(InMemoryStorage.container["other"], [:])
     }
     
+    @InMemoryActor
     func testThreadSafety() {
         // Given
         let iterations = 5000

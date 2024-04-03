@@ -10,11 +10,11 @@ import Foundation
 import Combine
 @testable import KeyValueStorage
 
-@InMemoryActor
 final class KeyValueObservableStorageTests: XCTestCase {
     var underlyingStorage: InMemoryStorage!
     var coder: DataCoder!
     
+    @InMemoryActor
     override func setUp() async throws {
         underlyingStorage = InMemoryStorage()
         coder = JSONDataCoder()
@@ -38,7 +38,7 @@ final class KeyValueObservableStorageTests: XCTestCase {
         
         var operationIndex1 = 0
         var operationIndex2 = 0
-        let storage = KeyValueObservableStorage(storage: InMemoryStorage(), coder: coder)
+        let storage = await KeyValueObservableStorage(storage: InMemoryStorage(), coder: coder)
         let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
         var subscriptions = Set<AnyCancellable>()
         await storage.publisher(forKey: key).sink(receiveValue: {
@@ -90,8 +90,8 @@ final class KeyValueObservableStorageTests: XCTestCase {
         
         var operationIndex1 = 0
         var operationIndex2 = 0
-        let storage1 = KeyValueObservableStorage(storage: InMemoryStorage(), coder: coder)
-        let storage2 = KeyValueObservableStorage(storage: InMemoryStorage(), coder: coder)
+        let storage1 = await KeyValueObservableStorage(storage: InMemoryStorage(), coder: coder)
+        let storage2 = await KeyValueObservableStorage(storage: InMemoryStorage(), coder: coder)
         let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
         var subscriptions = Set<AnyCancellable>()
         await storage1.publisher(forKey: key).sink(receiveValue: {
@@ -144,8 +144,8 @@ final class KeyValueObservableStorageTests: XCTestCase {
         
         var operationIndex1 = 0
         var operationIndex2 = 0
-        let storage1 = KeyValueObservableStorage(storage: InMemoryStorage(domain: "x"), coder: coder)
-        let storage2 = KeyValueObservableStorage(storage: InMemoryStorage(domain: "x"), coder: coder)
+        let storage1 = await KeyValueObservableStorage(storage: InMemoryStorage(domain: "x"), coder: coder)
+        let storage2 = await KeyValueObservableStorage(storage: InMemoryStorage(domain: "x"), coder: coder)
         let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
         var subscriptions = Set<AnyCancellable>()
         await storage1.publisher(forKey: key).sink(receiveValue: {
@@ -207,8 +207,8 @@ final class KeyValueObservableStorageTests: XCTestCase {
         
         var operationIndex1 = 0
         var operationIndex2 = 0
-        let storage1 = KeyValueObservableStorage(storage: InMemoryStorage(), coder: coder)
-        let storage2 = KeyValueObservableStorage(storage: InMemoryStorage(domain: "other"), coder: coder)
+        let storage1 = await KeyValueObservableStorage(storage: InMemoryStorage(), coder: coder)
+        let storage2 = await KeyValueObservableStorage(storage: InMemoryStorage(domain: "other"), coder: coder)
         let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
         var subscriptions = Set<AnyCancellable>()
         await storage1.publisher(forKey: key).sink(receiveValue: {
@@ -273,7 +273,7 @@ final class KeyValueObservableStorageTests: XCTestCase {
         let publisherExpectation = expectation(description: "testPublisherSave")
         publisherExpectation.expectedFulfillmentCount = operations.count
         
-        let storage = KeyValueObservableStorage(storage: InMemoryStorage(), coder: coder)
+        let storage = await KeyValueObservableStorage(storage: InMemoryStorage(), coder: coder)
         let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
         
         let task = Task.detached {
