@@ -106,6 +106,11 @@ public extension KeychainStorage {
     struct Domain: KeyValueDataStorageDomain {
         public let groupId: String
         public let teamId: String
+
+        public init(groupId: String, teamId: String) {
+            self.groupId = groupId
+            self.teamId = teamId
+        }
         
         public var accessGroup: String {
             teamId + "." + groupId
