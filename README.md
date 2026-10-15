@@ -294,7 +294,7 @@ Once you have your Swift package set up, adding KeyValueStorage as a dependency 
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/narek-sv/KeyValueStorage.git", .upToNextMajor(from: "2.0.0"))
+    .package(url: "https://github.com/narek-sv/KeyValueStorage.git", .upToNextMajor(from: "3.0.0"))
 ]
 ```
 
@@ -326,6 +326,11 @@ import the framework:
 ```swift
 import KeyValueStorageSwift
 ```
+
+---
+## Migrating from 2.x
+
+Version 3 stores keychain items, files and some values differently, and doesn't migrate the values saved by 2.x. See the [Changelog](CHANGELOG.md) for the breaking changes and how to move your values.
 
 ---
 ## License
