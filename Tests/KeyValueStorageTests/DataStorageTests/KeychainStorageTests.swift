@@ -430,6 +430,27 @@ final class KeychainStorageTests: XCTestCase {
         XCTAssertNil(try otherKeychain.get(forKey: key2))
     }
     
+    @KeychainActor
+    func testErrorCaseAccessGroupWithoutEntitlement() async throws {
+        // Given: sharing through an access group the app isn't entitled to, a common keychain sharing mistake
+        let storage = KeychainStorage(domain: .init(accessGroup: "not.entitled"))
+        let key = KeychainStorage.Key(name: "key")
+        
+        // When - Then: the keychain's error is reported instead of a missing value
+        XCTAssertThrowsError(try storage.fetch(forKey: key)) { assertMissingEntitlement($0) }
+        XCTAssertThrowsError(try storage.save(Data([0xAA]), forKey: key)) { assertMissingEntitlement($0) }
+        XCTAssertThrowsError(try storage.delete(forKey: key)) { assertMissingEntitlement($0) }
+        XCTAssertThrowsError(try storage.clear()) { assertMissingEntitlement($0) }
+    }
+    
+    private func assertMissingEntitlement(_ error: Error, line: UInt = #line) {
+        guard case let .os(status) = error as? KeychainStorage.Error else {
+            return XCTFail("Unexpected error \(error)", line: line)
+        }
+        
+        XCTAssertEqual(status, errSecMissingEntitlement, line: line)
+    }
+    
     func testThreadSafety() async throws {
         // Given
         let storage = standardStorage!
