@@ -19,10 +19,10 @@ open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodi
 
     public func stream<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) -> AsyncStream<Value?> {
         return AsyncStream(bufferingPolicy: .unbounded) { continuation in
-            let publisher: AnyPublisher<Value?, _> = publisher(forKey: key)
-            let subscription = publisher.sink {
+            let publisher: KeyValuePublisher<Value?> = publisher(forKey: key)
+            let subscription = Subscription(publisher.sink {
                 continuation.yield($0)
-            }
+            })
 
             continuation.onTermination = { _ in
                 subscription.cancel()
@@ -30,9 +30,9 @@ open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodi
         }
     }
     
-    public func publisher<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) -> AnyPublisher<Value?, Never> {
-        let mapPublisher = { (publisher: PassthroughSubject<Container, Never>) -> AnyPublisher<Value?, Never> in
-            publisher
+    public func publisher<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) -> KeyValuePublisher<Value?> {
+        let mapPublisher = { (publisher: PassthroughSubject<Container, Never>) -> KeyValuePublisher<Value?> in
+            KeyValuePublisher(publisher
                 .map {
                     if let value = $0.value {
                         return value as? Value
@@ -40,7 +40,7 @@ open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodi
                     
                     return nil
                 }
-                .eraseToAnyPublisher()
+                .eraseToAnyPublisher())
         }
         
         if let observation = KeyValueObservations.observations[domain]?[key],
@@ -99,4 +99,18 @@ open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodi
     }
 }
 
-extension AnyCancellable: @unchecked Sendable { }
+// MARK: - Helpers
+
+/// Keeps a stream's Combine subscription for its termination handler.
+/// Cancelling a Combine subscription is thread-safe, but `AnyCancellable` isn't marked `Sendable`.
+private final class Subscription: @unchecked Sendable {
+    private let cancellable: AnyCancellable
+    
+    init(_ cancellable: AnyCancellable) {
+        self.cancellable = cancellable
+    }
+    
+    func cancel() {
+        cancellable.cancel()
+    }
+}
