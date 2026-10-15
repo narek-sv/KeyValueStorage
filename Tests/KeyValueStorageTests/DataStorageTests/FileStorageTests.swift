@@ -20,8 +20,11 @@ final class FileStorageTests: XCTestCase {
     @FileActor
     override func setUpWithError() throws {
         let id = Bundle.main.bundleIdentifier!
-        standardPath = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(id, isDirectory: true)
-        otherPath = fileManager.containerURL(forSecurityApplicationGroupIdentifier: Self.otherStorageDomain)!.appendingPathComponent(id, isDirectory: true)
+        standardPath = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(id, isDirectory: true)
+            .appendingPathComponent("KeyValueStorage", isDirectory: true)
+        otherPath = fileManager.containerURL(forSecurityApplicationGroupIdentifier: Self.otherStorageDomain)!
+            .appendingPathComponent("KeyValueStorage", isDirectory: true)
         
         try? fileManager.createDirectory(at: standardPath, withIntermediateDirectories: true)
         try? fileManager.createDirectory(at: otherPath, withIntermediateDirectories: true)
