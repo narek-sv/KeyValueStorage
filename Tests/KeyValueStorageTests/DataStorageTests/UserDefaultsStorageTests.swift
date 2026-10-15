@@ -462,46 +462,39 @@ final class UserDefaultsStorageTests: XCTestCase {
         XCTAssertNil(storage.domain)
     }
     
-    @UserDefaultsActor
     func testThreadSafety() async {
         // Given
         let storage = standardStorage!
         let iterations = 5000
-        let promise = expectation(description: "testThreadSafety")
-        let group = DispatchGroup()
-        for _ in 1...iterations { group.enter() }
         
         // When
-        // The closures run on other threads, so they mustn't be isolated to the actor
-        DispatchQueue.concurrentPerform(iterations: iterations) { @Sendable number in
-            let operation = Int.random(in: 0...4)
-            let key = "\(Int.random(in: 1000...9999))"
-            
-            Task.detached {
-                switch operation {
-                case 0:
-                    _ = await storage.fetch(forKey: key)
-                case 1:
-                    await storage.save(.init(), forKey: key)
-                case 2:
-                    await storage.delete(forKey: key)
-                case 3:
-                    await storage.set(Bool.random() ? nil : .init(), forKey: key)
-                case 4:
-                    await storage.clear()
-                default:
-                    break
+        await withTaskGroup(of: Void.self) { group in
+            for _ in 1...iterations {
+                let operation = Int.random(in: 0...4)
+                let key = "\(Int.random(in: 1000...9999))"
+                
+                // Child tasks run in parallel on the shared thread pool, so the storage is called from many threads at once
+                group.addTask {
+                    switch operation {
+                    case 0:
+                        _ = await storage.fetch(forKey: key)
+                    case 1:
+                        await storage.save(.init(), forKey: key)
+                    case 2:
+                        await storage.delete(forKey: key)
+                    case 3:
+                        await storage.set(Bool.random() ? nil : .init(), forKey: key)
+                    case 4:
+                        await storage.clear()
+                    default:
+                        break
+                    }
                 }
-                            
-                group.leave()
             }
+            
+            // Then: waiting for all of them finishes when they do, instead of a timeout guessing how long they take
+            await group.waitForAll()
         }
-        
-        group.notify(queue: .main) { @Sendable in
-            promise.fulfill()
-        }
-        
-        await fulfillment(of: [promise], timeout: 5)
     }
 }
 

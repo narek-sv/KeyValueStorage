@@ -430,23 +430,19 @@ final class KeychainStorageTests: XCTestCase {
         XCTAssertNil(try otherKeychain.get(forKey: key2))
     }
     
-    @KeychainActor
     func testThreadSafety() async throws {
         // Given
         let storage = standardStorage!
         let iterations = 5000
-        let promise = expectation(description: "testThreadSafety")
-        let group = DispatchGroup()
-        for _ in 1...iterations { group.enter() }
         
         // When
-        // The closures run on other threads, so they mustn't be isolated to the actor
-        DispatchQueue.concurrentPerform(iterations: iterations) { @Sendable number in
-            let operation = Int.random(in: 0...4)
-            let key = KeychainStorage.Key(name: "\(Int.random(in: 1000...9999))")
-            
-            Task.detached {
-                do {
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for _ in 1...iterations {
+                let operation = Int.random(in: 0...4)
+                let key = KeychainStorage.Key(name: "\(Int.random(in: 1000...9999))")
+                
+                // Child tasks run in parallel on the shared thread pool, so the storage is called from many threads at once
+                group.addTask {
                     switch operation {
                     case 0:
                         _ = try await storage.fetch(forKey: key)
@@ -461,19 +457,12 @@ final class KeychainStorageTests: XCTestCase {
                     default:
                         break
                     }
-                } catch {
-                    XCTFail("Unexpected error")
                 }
-                            
-                group.leave()
             }
+            
+            // Then: waiting for all of them rethrows the first error, instead of a timeout guessing how long they take
+            try await group.waitForAll()
         }
-        
-        group.notify(queue: .main) { @Sendable in
-            promise.fulfill()
-        }
-        
-        await fulfillment(of: [promise], timeout: 5)
     }
     
     #endif
