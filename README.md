@@ -52,7 +52,7 @@ Enhance your development with the state-of-the-art key-value storage framework, 
 * Every value is a separate file, so reading one value never loads the others into memory, and a damaged file affects only its own value.
 * Files are replaced atomically, so a crash never leaves a value half-written.
 * Slow for small values, since every save writes and renames a file.
-* Keys must be valid file names. On macOS, keys that differ only in case share a file.
+* Keys must be valid file names, and keys that differ only in case are separate values on every platform.
 
 **SQLite** - many small and medium values, especially when an app and its extensions write the same data.
 * All values of a domain live in one database, which is much faster than separate files for small values. For large values, separate files are faster.
@@ -166,7 +166,7 @@ try await storage.save(/* accepts only MyType*/, forKey: key)
 `UnifiedStorage` has 5 built-in storage types:
 * `In-memory` - This storage type persists the items only within an app session.
 * `User-Defaults` - This storage type persists the items within the app's lifetime.
-* `File-System` -  This storage saves every value as a separate file in `Application Support/<bundle identifier>/KeyValueStorage/Files`, or in the App Group container. The file is replaced atomically, so a crash never leaves a value half-written or missing. Since the key is used as the file name, it must be a single path component: an empty key, `.`, `..`, keys containing `/` and keys longer than 255 UTF-8 bytes throw `FileStorage.Error.invalidKey`.
+* `File-System` -  This storage saves every value as a separate file in `Application Support/<bundle identifier>/KeyValueStorage/Files`, or in the App Group container. The file is replaced atomically, so a crash never leaves a value half-written or missing. Since the key is used as the file name, it must be a single path component: an empty key, `.`, `..` and keys containing `/` throw `FileStorage.Error.invalidKey`. Uppercase letters, other characters that change with case, and `%` are percent-encoded in the file name, so `Key` is saved as `%4Bey` and never shares a file with `key`, even on a case-insensitive disk. A file name can be at most 255 bytes, and an encoded character takes three bytes for each of its UTF-8 bytes, so longer keys throw `invalidKey` too.
 * `Keychain` - This storage type keeps the items in secure storage and persists even after app re-installations. Supports `iCloud` synchronization.
 * `SQLite` - This storage keeps all values of a domain in one SQLite database, `Application Support/<bundle identifier>/KeyValueStorage/SQLite/KeyValueStorage.sqlite`, or in the App Group container. Any string is a valid key, and all storages of a domain, in your app and its extensions, share the same database at the same time. Each operation is atomic across processes, but a fetch followed by a save is not: another process can save in between.
 

@@ -455,7 +455,7 @@ final class FileStorageTests: XCTestCase {
     func testInvalidKeys() async throws {
         // Given
         let data = Data([0xAA, 0xBB, 0xCC])
-        let invalidKeys = ["", ".", "..", "../escaped", "a/b", "/absolute", "a\0b", String(repeating: "a", count: 256), String(repeating: "ж", count: 128)]
+        let invalidKeys = ["", ".", "..", "../escaped", "a/b", "/absolute", "a\0b", String(repeating: "a", count: 256), String(repeating: "ж", count: 128), String(repeating: "A", count: 86)]
         try standardStorage.save(data, forKey: "valid")
         
         for key in invalidKeys {
@@ -487,7 +487,7 @@ final class FileStorageTests: XCTestCase {
     func testValidEdgeCaseKeys() async throws {
         // Given
         let data = Data([0xAA, 0xBB, 0xCC])
-        let keys = [String(repeating: "a", count: 255), String(repeating: "ж", count: 127), "ключ", "🔑", ".hidden", "key.", " padded ", "with space", "a:b"]
+        let keys = [String(repeating: "a", count: 255), String(repeating: "ж", count: 127), String(repeating: "A", count: 85), "ключ", "🔑", ".hidden", "key.", " padded ", "with space", "a:b"]
         
         for key in keys {
             // When
@@ -884,25 +884,68 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testKeyCaseSensitivityFollowsFileSystem() async throws {
+    func testKeysThatDifferOnlyInCaseAreSeparate() async throws {
         // Given
         let root = makeTemporaryRoot()
         let storage = FileStorage(fileManager: fileManager, root: root)
-        try storage.save(Data([0xAA]), forKey: "Key")
-        let isCaseSensitive = try root.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]).volumeSupportsCaseSensitiveNames ?? true
+        let keys = ["key", "Key", "KEY", "σ", "ς", "Σ"]
         
         // When
-        try storage.save(Data([0xBB]), forKey: "key")
+        for (index, key) in keys.enumerated() {
+            try storage.save(Data([UInt8(index)]), forKey: key)
+        }
         
         // Then
-        if isCaseSensitive {
-            XCTAssertEqual(try storage.fetch(forKey: "Key"), Data([0xAA]))
-            XCTAssertEqual(try storage.fetch(forKey: "key"), Data([0xBB]))
-        } else {
-            // Keys that differ only in case share a file on case-insensitive volumes (the macOS default)
-            XCTAssertEqual(try storage.fetch(forKey: "Key"), Data([0xBB]))
-            XCTAssertEqual(try fileManager.contentsOfDirectory(atPath: root.path).count, 1)
+        for (index, key) in keys.enumerated() {
+            XCTAssertEqual(try storage.fetch(forKey: key), Data([UInt8(index)]), "key \(key)")
         }
+        XCTAssertEqual(try fileManager.contentsOfDirectory(atPath: root.path).count, keys.count)
+        
+        // When
+        try storage.delete(forKey: "key")
+        
+        // Then
+        XCTAssertNil(try storage.fetch(forKey: "key"))
+        XCTAssertEqual(try storage.fetch(forKey: "Key"), Data([1]))
+    }
+    
+    @FileActor
+    func testFileNamesEncodeCharactersThatChangeWithCase() async throws {
+        // Given
+        let root = makeTemporaryRoot()
+        let storage = FileStorage(fileManager: fileManager, root: root)
+        let fileNames = [
+            "key": "key",
+            "Key": "%4Bey",
+            "userID": "user%49%44",
+            "100%": "100%25",
+            "ключ": "ключ",
+            "Ключ": "%D0%9Aлюч",
+            "straße": "stra%C3%9Fe",
+            "🔑 1_a.b": "🔑 1_a.b"
+        ]
+        
+        // When
+        for key in fileNames.keys {
+            try storage.save(Data([0xAA]), forKey: key)
+        }
+        
+        // Then
+        XCTAssertEqual(Set(try fileManager.contentsOfDirectory(atPath: root.path)), Set(fileNames.values))
+    }
+    
+    @FileActor
+    func testCanonicallyEquivalentKeysShareAFile() async throws {
+        // Given
+        let root = makeTemporaryRoot()
+        let storage = FileStorage(fileManager: fileManager, root: root)
+        
+        // When
+        try storage.save(Data([0xAA]), forKey: "Cafe\u{301} E\u{301}")
+        
+        // Then
+        XCTAssertEqual(try storage.fetch(forKey: "Caf\u{E9} \u{C9}"), Data([0xAA]))
+        XCTAssertEqual(try fileManager.contentsOfDirectory(atPath: root.path), ["%43af\u{E9} %C3%89"])
     }
     
     @FileActor
