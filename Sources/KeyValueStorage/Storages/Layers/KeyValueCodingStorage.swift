@@ -32,7 +32,7 @@ extension KeyValueCodingStorageKey: Hashable {
     
     public func hash(into hasher: inout Hasher) {
         hasher.combine(key)
-        hasher.combine(String(describing: codingType))
+        hasher.combine(ObjectIdentifier(codingType))
     }
 }
 
