@@ -31,6 +31,17 @@ Enhance your development with the state-of-the-art key-value storage framework, 
 
 By providing corresponding `domain`s to each type of storage, you can enable the sharing of storage spaces. Alternatively, by doing so, you can also keep the containers isolated.
 
+Here is what a `domain` means for each built-in storage:
+
+| Storage | Domain | Where the values live |
+| --- | --- | --- |
+| `UserDefaultsKey` | App Group ID, e.g. `"group.com.company.app"` | `UserDefaults(suiteName:)` of that group |
+| `FileKey` | App Group ID | `<group container>/KeyValueStorage` |
+| `KeychainKey` | `.init(groupId: "com.company.shared", teamId: "ABCDE12345")` | Access group `ABCDE12345.com.company.shared`, service `KeyValueStorage.com.company.shared` |
+| `InMemoryKey` | Any string | A separate namespace in the current process |
+
+None of these locations depend on the bundle identifier, so your app and its extensions read and write the same values.
+
 ---
 ## Usage
 
@@ -81,15 +92,12 @@ try await storage.delete(forKey: key)
 try await storage.set("Bob", forKey: key) // save
 try await storage.set(nil, forKey: key) // delete
 
-// Clears only the storage associated with the specified storage and domain
-try await storage.clear(storage: InMemoryStorage.self, forDomain: "someDomain")
-
-// Clears only the storage associated with the specified storage for all domains
-try await storage.clear(storage: InMemoryStorage.self)
-
-// Clears the whole storage content
-try await storage.clear()
+// Removes everything stored in the specified storage and domain,
+// including the values saved in previous launches
+try await storage.clear(storage: KeychainStorage.self, forDomain: nil)
 ```
+
+***NOTE***! Clearing `UserDefaultsStorage` removes ***every*** value of its domain, including the values that weren't saved through `KeyValueStorage`.
 
 ---
 ## Type Inference
@@ -110,7 +118,7 @@ try await storage.save(/* accepts only MyType*/, forKey: key)
 `UnifiedStorage` has 4 built-in storage types:
 * `In-memory` - This storage type persists the items only within an app session.
 * `User-Defaults` - This storage type persists the items within the app's lifetime.
-* `File-System` -  This storage saves your key-values as separate files in your file system.
+* `File-System` -  This storage saves every value as a separate file in `Application Support/<bundle identifier>/KeyValueStorage`, or in the App Group container. The file is replaced atomically, so a crash never leaves a value half-written or missing. Since the key is used as the file name, it must be a single path component: an empty key, `.`, `..`, keys containing `/` and keys longer than 255 UTF-8 bytes throw `FileStorage.Error.invalidKey`.
 * `Keychain` - This storage type keeps the items in secure storage and persists even after app re-installations. Supports `iCloud` synchronization.
 
 You can also define your own storage, and it will work with it seamlessly with `UnifiedStorage` out of the box.
@@ -177,12 +185,41 @@ Here are all the supported accessibility types:
 * `whenUnlocked`
 * `whenUnlockedThisDeviceOnly`
 
+The accessibility is applied every time a value is saved, so changing it for an existing key takes effect on the next save.
+
 Set `synchronizable` property to `true` to enable keychain items synchronization across user's multiple devices. The synchronization will work for users who have the ***Keychain*** enabled in the ***iCloud*** settings on their devices. Deleting a synchronizable item will remove it from all devices.
 
 ```swift
 let key = KeychainKey<String>(key: .init(name: "key", accessibility: .afterFirstUnlock, isSynchronizable: true),
                               domain: .init(groupId: "groupId", teamId: "teamId"))
 ```
+
+Items without a domain are saved under the `KeyValueStorage` service. Items with a domain use `KeyValueStorage.<groupId>` by default, or the `service` you provide, for example to read the items that other code already saved:
+
+```swift
+let key = KeychainKey<String>(key: .init(name: "authToken"),
+                              domain: .init(groupId: "groupId", teamId: "teamId", service: "com.company.auth"))
+```
+
+Clearing the keychain storage removes the synchronizable items too.
+
+---
+## Coding
+
+Values are encoded with `RawDataCoder` by default. It stores `Data` as is and `String` as UTF-8, which keeps large values fast and compact, and lets you read raw values saved by other code. Every other type is encoded with its fallback coder, `JSONDataCoder` unless you provide another one.
+
+There are 3 built-in coders:
+* `RawDataCoder(fallback:)` - Raw `Data` and `String`, the fallback coder for the rest.
+* `JSONDataCoder` - JSON for every type.
+* `PropertyListDataCoder` - Binary property lists for every type. Pass a `PropertyListEncoder` with the `.xml` output format to get XML.
+
+Pass the coder to the factory, or conform your own type to `DataCoder`:
+
+```swift
+let storage = UnifiedStorage(factory: DefaultUnifiedStorageFactory(coder: PropertyListDataCoder()))
+```
+
+***NOTE***! The value type comes from the key, it isn't saved with the value. Changing the value type of an existing key can make its stored value undecodable, or, for `Data` and `String`, be read without an error.
 
 ---
 ## Observation
@@ -191,6 +228,11 @@ The `UnifiedStorage` initializer takes a `factory` parameter that conforms to th
 
 By default, this parameter is set to `DefaultUnifiedStorageFactory`, which omits observation capabilities to avoid excessive class burden. However, supplying an `ObservableUnifiedStorageFactory` instance as the parameter activates observation of all underlying storages for changes.
 
+```swift
+let storage = UnifiedStorage(factory: ObservableUnifiedStorageFactory())
+```
+
+Publishers and streams start with the currently stored value, or `nil` if there's none, followed by every change. Pass `includingCurrentValue: false` to get only the changes.
 
 Combine style publishers:
 ```swift
@@ -200,9 +242,11 @@ guard let publisher = try await storage.publisher(forKey: key) else {
     return
 }
 
-let subscription = publisher.sink { value in
-    print(value) // String?
-}
+let subscription = publisher
+    .receive(on: DispatchQueue.main)
+    .sink { value in
+        print(value) // String?
+    }
 ```
 
 Concurrency style async streams:
@@ -217,12 +261,18 @@ for await value in stream {
 }
 ```
 
-However, it's important to note that `UnifiedStorage` can only observe changes made through its own methods.
+Changes are delivered on a background executor, so move to the main thread before updating the UI. Streams resume on the executor of the task that iterates them.
+
+However, it's important to note that only the changes made through observable storages of the current process are published. Changes made by other processes (for example, App Extensions), by storages without observation, or written directly to `UserDefaults`, the keychain or files aren't.
 
 ---
 ## Error handling
 
-Despite the fact that all the methods of the `UnifiedStorage` are throwing, it will never throw an exception if you do all the initial setups correctly.
+All the methods of the `UnifiedStorage` are throwing. Even with a correct setup, some errors can't be avoided and are worth handling:
+* `KeychainStorage.Error.os` - for example, `errSecInteractionNotAllowed` while the device is locked and the item is only accessible `.whenUnlocked`.
+* `FileStorage.Error` - an invalid key, missing permissions, or a file that is protected while the device is locked.
+* `DecodingError` - the stored data doesn't match the key's value type, for example after changing the type of an existing key.
+* `UserDefaultsStorage.Error` and `FileStorage.Error.failedToInitSharedDirectory` - the App Group isn't configured for the target.
 
 ---
 ## Thread Safety
