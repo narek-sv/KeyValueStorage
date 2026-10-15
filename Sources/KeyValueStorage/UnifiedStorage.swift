@@ -47,7 +47,12 @@ public protocol UnifiedStorageFactory: Sendable {
 }
 
 open class DefaultUnifiedStorageFactory: UnifiedStorageFactory, @unchecked Sendable {
-    public init() { }
+    let coder: DataCoder
+    
+    /// - Parameter coder: Encodes the values of every storage the factory creates.
+    public init(coder: DataCoder = RawDataCoder()) {
+        self.coder = coder
+    }
     
     open func dataStorage<Storage: KeyValueDataStorage>(for domain: Storage.Domain?) async throws -> Storage {
         if let domain {
@@ -58,13 +63,13 @@ open class DefaultUnifiedStorageFactory: UnifiedStorageFactory, @unchecked Senda
     }
     
     open func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) async throws -> KeyValueCodingStorage<Storage> {
-        KeyValueCodingStorage(storage: storage)
+        KeyValueCodingStorage(storage: storage, coder: coder)
     }
 }
 
 public final class ObservableUnifiedStorageFactory: DefaultUnifiedStorageFactory, @unchecked Sendable {
     public override func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) async throws -> KeyValueCodingStorage<Storage> {
-        KeyValueObservableStorage(storage: storage)
+        KeyValueObservableStorage(storage: storage, coder: coder)
     }
 }
 

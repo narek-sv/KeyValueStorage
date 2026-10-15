@@ -25,6 +25,22 @@ final class PublicAPITests: XCTestCase {
         XCTAssertNotNil(observablePublisher)
     }
 
+    func testFactoriesAcceptACoder() async throws {
+        // Given
+        let storage = UnifiedStorage(factory: ObservableUnifiedStorageFactory(coder: PropertyListDataCoder()))
+        let key = InMemoryKey<String>(key: "publicAPICoder")
+        
+        // When
+        try await storage.save("value", forKey: key)
+        let fetched = try await storage.fetch(forKey: key)
+        let publisher = try await storage.publisher(forKey: key)
+        
+        // Then
+        XCTAssertEqual(fetched, "value")
+        XCTAssertNotNil(publisher)
+        _ = UnifiedStorage(factory: DefaultUnifiedStorageFactory(coder: JSONDataCoder()))
+    }
+    
     func testDefaultFactoryIsSubclassable() async throws {
         // Given
         let factory = CountingFactory()

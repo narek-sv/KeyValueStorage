@@ -278,6 +278,41 @@ final class UnifiedStorageTests: XCTestCase {
         XCTAssertNil(fetched)
     }
     
+    func testFactoriesUseTheGivenCoder() async throws {
+        for makeFactory in [{ DefaultUnifiedStorageFactory(coder: $0) }, { ObservableUnifiedStorageFactory(coder: $0) }] as [(DataCoder) -> DefaultUnifiedStorageFactory] {
+            // Given
+            let coder = CountingCoder()
+            let storage = UnifiedStorage(factory: makeFactory(coder))
+            let key = InMemoryKey<Int>(key: "coder")
+            
+            // When
+            try await storage.save(42, forKey: key)
+            let fetched = try await storage.fetch(forKey: key)
+            
+            // Then
+            XCTAssertEqual(fetched, 42)
+            XCTAssertEqual(coder.encodeCalls, 1)
+            XCTAssertEqual(coder.decodeCalls, 1)
+            try await storage.delete(forKey: key)
+        }
+    }
+    
+    func testFactoriesUseRawDataCoderByDefault() async throws {
+        for factory in [DefaultUnifiedStorageFactory(), ObservableUnifiedStorageFactory()] {
+            // Given
+            let storage = UnifiedStorage(factory: factory)
+            let underlyingStorage = await InMemoryStorage(domain: "factoryCoder")
+            
+            // When
+            try await storage.save(Data([0xAA]), forKey: InMemoryKey<Data>(key: "data", domain: "factoryCoder"))
+            
+            // Then
+            let stored = await underlyingStorage.fetch(forKey: "data")
+            XCTAssertEqual(stored, Data([0xAA]))
+            await underlyingStorage.clear()
+        }
+    }
+    
     func testKeyHashing() {
         // Given
         let key = InMemoryKey<String>(key: "key", domain: "domain")
@@ -362,6 +397,23 @@ final class UnifiedStorageTests: XCTestCase {
         // Then
         XCTAssertNotNil(publisher)
         XCTAssertNotNil(stream)
+    }
+}
+
+/// Counts how often it encodes and decodes.
+final class CountingCoder: DataCoder, @unchecked Sendable {
+    private(set) var encodeCalls = 0
+    private(set) var decodeCalls = 0
+    private let coder = JSONDataCoder()
+    
+    func encode<Value: CodingValue>(_ value: Value) async throws -> Data {
+        encodeCalls += 1
+        return try coder.encode(value)
+    }
+    
+    func decode<Value: CodingValue>(_ data: Data) async throws -> Value {
+        decodeCalls += 1
+        return try coder.decode(data)
     }
 }
 
