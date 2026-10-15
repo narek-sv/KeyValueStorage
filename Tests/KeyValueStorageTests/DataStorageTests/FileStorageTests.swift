@@ -36,13 +36,13 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testFileDomain() {
+    func testFileDomain() async {
         XCTAssertEqual(standardStorage.domain, nil)
         XCTAssertEqual(otherStorage.domain, Self.otherStorageDomain)
     }
     
     @FileActor
-    func testFileFetch() throws {
+    func testFileFetch() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -111,7 +111,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testFileFetchDifferentDomains() throws {
+    func testFileFetchDifferentDomains() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -180,7 +180,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testFileSave() throws {
+    func testFileSave() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -215,7 +215,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testFileSaveDifferentDomains() throws {
+    func testFileSaveDifferentDomains() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -246,7 +246,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testFileDelete() throws {
+    func testFileDelete() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -283,7 +283,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testFileDeleteDifferentDomains() throws {
+    func testFileDeleteDifferentDomains() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -316,7 +316,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testFileSet() throws {
+    func testFileSet() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -357,7 +357,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testFileSetDifferentDomains() throws {
+    func testFileSetDifferentDomains() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -397,7 +397,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testFileClear() throws {
+    func testFileClear() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -452,7 +452,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testInvalidKeys() throws {
+    func testInvalidKeys() async throws {
         // Given
         let data = Data([0xAA, 0xBB, 0xCC])
         let invalidKeys = ["", ".", "..", "../escaped", "a/b", "/absolute", "a\0b", String(repeating: "a", count: 256), String(repeating: "ж", count: 128)]
@@ -484,7 +484,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testValidEdgeCaseKeys() throws {
+    func testValidEdgeCaseKeys() async throws {
         // Given
         let data = Data([0xAA, 0xBB, 0xCC])
         let keys = [String(repeating: "a", count: 255), String(repeating: "ж", count: 127), "ключ", "🔑", ".hidden", "key.", " padded ", "with space", "a:b"]
@@ -505,7 +505,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testErrorCaseDelete() {
+    func testErrorCaseDelete() async {
         // Given
         let mock = FileManagerMock()
         let storage = FileStorage(fileManager: mock, root: URL(string: "root")!)
@@ -550,7 +550,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testErrorCaseSave() throws {
+    func testErrorCaseSave() async throws {
         // Given
         let mock = FileManagerMock()
         let storage = FileStorage(fileManager: mock, root: temporaryURL())
@@ -597,7 +597,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testSaveCreatesMissingDirectory() throws {
+    func testSaveCreatesMissingDirectory() async throws {
         // Given
         let root = temporaryURL()
         let storage = FileStorage(fileManager: fileManager, root: root)
@@ -620,7 +620,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testErrorCaseFetch() throws {
+    func testErrorCaseFetch() async throws {
         // Given
         let root = temporaryURL()
         let storage = FileStorage(fileManager: fileManager, root: root)
@@ -646,7 +646,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testErrorCaseClear() throws {
+    func testErrorCaseClear() async throws {
         try XCTSkipIf(getuid() == 0, "File permissions are not enforced for root")
         
         // Given
@@ -691,7 +691,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testDefaultLocation() throws {
+    func testDefaultLocation() async throws {
         // Given
         let id = Bundle.main.bundleIdentifier!
         let documentsPath = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(id).path
@@ -712,7 +712,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testSharedLocationDoesNotDependOnBundleIdentifier() throws {
+    func testSharedLocationDoesNotDependOnBundleIdentifier() async throws {
         // Given
         let expectedPath = fileManager.containerURL(forSecurityApplicationGroupIdentifier: Self.otherStorageDomain)!
             .appendingPathComponent("KeyValueStorage")
@@ -731,7 +731,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testCustomRoot() throws {
+    func testCustomRoot() async throws {
         // Given
         let root = makeTemporaryRoot()
         let storage = FileStorage(fileManager: fileManager, root: root)
@@ -745,7 +745,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testValueRoundTrips() throws {
+    func testValueRoundTrips() async throws {
         // Given
         let values = [
             Data(),
@@ -770,7 +770,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testOverwriteNeverExposesMissingOrPartialValue() throws {
+    func testOverwriteNeverExposesMissingOrPartialValue() async throws {
         // Given
         let root = makeTemporaryRoot()
         let storage = FileStorage(fileManager: fileManager, root: root)
@@ -792,7 +792,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testSaveLeavesOnlyValueFiles() throws {
+    func testSaveLeavesOnlyValueFiles() async throws {
         // Given
         let root = makeTemporaryRoot()
         let storage = FileStorage(fileManager: fileManager, root: root)
@@ -807,7 +807,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testInstancesSharingRootSeeEachOthersChanges() throws {
+    func testInstancesSharingRootSeeEachOthersChanges() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -842,7 +842,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testOperationsWithoutSavedValuesDontCreateDirectory() throws {
+    func testOperationsWithoutSavedValuesDontCreateDirectory() async throws {
         // Given
         let root = makeTemporaryRoot()
         let storage = FileStorage(fileManager: fileManager, root: root)
@@ -860,7 +860,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testClearRemovesEverythingInsideRoot() throws {
+    func testClearRemovesEverythingInsideRoot() async throws {
         // Given
         let data = Data([0xAA, 0xBB, 0xCC])
         let root = makeTemporaryRoot()
@@ -884,7 +884,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testKeyCaseSensitivityFollowsFileSystem() throws {
+    func testKeyCaseSensitivityFollowsFileSystem() async throws {
         // Given
         let root = makeTemporaryRoot()
         let storage = FileStorage(fileManager: fileManager, root: root)
@@ -906,7 +906,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testErrorCaseRootIsAFile() throws {
+    func testErrorCaseRootIsAFile() async throws {
         // Given
         let file = try makeTemporaryFile()
         let storage = FileStorage(fileManager: fileManager, root: file)
@@ -925,7 +925,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testErrorCaseReadOnlyDirectory() throws {
+    func testErrorCaseReadOnlyDirectory() async throws {
         try XCTSkipIf(getuid() == 0, "File permissions are not enforced for root")
         
         // Given
@@ -956,7 +956,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testErrorCaseUnreadableFile() throws {
+    func testErrorCaseUnreadableFile() async throws {
         try XCTSkipIf(getuid() == 0, "File permissions are not enforced for root")
         
         // Given
@@ -979,7 +979,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testThreadSafety() throws {
+    func testThreadSafety() async throws {
         // Given
         let storage = standardStorage!
         let iterations = 5000
@@ -988,7 +988,8 @@ final class FileStorageTests: XCTestCase {
         for _ in 1...iterations { group.enter() }
         
         // When
-        DispatchQueue.concurrentPerform(iterations: iterations) { number in
+        // The closures run on other threads, so they mustn't be isolated to the actor
+        DispatchQueue.concurrentPerform(iterations: iterations) { @Sendable number in
             let operation = Int.random(in: 0...4)
             let key = "\(Int.random(in: 1000...9999))"
             
@@ -1016,11 +1017,11 @@ final class FileStorageTests: XCTestCase {
             }
         }
         
-        group.notify(queue: .main) {
+        group.notify(queue: .main) { @Sendable in
             promise.fulfill()
         }
         
-        wait(for: [promise], timeout: 5)
+        await fulfillment(of: [promise], timeout: 5)
     }
     
     private func assertOtherError(_ error: Error, _ code: CocoaError.Code? = nil, line: UInt = #line) {

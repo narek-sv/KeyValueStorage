@@ -29,13 +29,13 @@ final class UserDefaultsStorageTests: XCTestCase {
     }
     
     @UserDefaultsActor
-    func testUserDefaultsDomain() {
+    func testUserDefaultsDomain() async {
         XCTAssertEqual(standardStorage.domain, nil)
         XCTAssertEqual(otherStorage.domain, Self.otherStorageDomain)
     }
     
     @UserDefaultsActor
-    func testUserDefaultsFetch() {
+    func testUserDefaultsFetch() async {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -99,7 +99,7 @@ final class UserDefaultsStorageTests: XCTestCase {
     }
     
     @UserDefaultsActor
-    func testUserDefaultsFetchDifferentDomains() {
+    func testUserDefaultsFetchDifferentDomains() async {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -164,7 +164,7 @@ final class UserDefaultsStorageTests: XCTestCase {
     }
     
     @UserDefaultsActor
-    func testUserDefaultsSave() {
+    func testUserDefaultsSave() async {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -194,7 +194,7 @@ final class UserDefaultsStorageTests: XCTestCase {
     }
     
     @UserDefaultsActor
-    func testUserDefaultsSaveDifferentDomains() {
+    func testUserDefaultsSaveDifferentDomains() async {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -223,7 +223,7 @@ final class UserDefaultsStorageTests: XCTestCase {
     }
     
     @UserDefaultsActor
-    func testUserDefaultsDelete() {
+    func testUserDefaultsDelete() async {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -255,7 +255,7 @@ final class UserDefaultsStorageTests: XCTestCase {
     }
     
     @UserDefaultsActor
-    func testUserDefaultsDeleteDifferentDomains() {
+    func testUserDefaultsDeleteDifferentDomains() async {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -286,7 +286,7 @@ final class UserDefaultsStorageTests: XCTestCase {
     }
     
     @UserDefaultsActor
-    func testUserDefaultsSet() {
+    func testUserDefaultsSet() async {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -325,7 +325,7 @@ final class UserDefaultsStorageTests: XCTestCase {
     }
     
     @UserDefaultsActor
-    func testUserDefaultsSetDifferentDomains() {
+    func testUserDefaultsSetDifferentDomains() async {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -363,7 +363,7 @@ final class UserDefaultsStorageTests: XCTestCase {
     }
     
     @UserDefaultsActor
-    func testUserDefaultsClear() {
+    func testUserDefaultsClear() async {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -414,7 +414,7 @@ final class UserDefaultsStorageTests: XCTestCase {
     }
     
     @UserDefaultsActor
-    func testClearCustomUserDefaults() {
+    func testClearCustomUserDefaults() async {
         // Given
         let suiteName = "custom"
         let userDefaults = UserDefaults(suiteName: suiteName)!
@@ -435,7 +435,7 @@ final class UserDefaultsStorageTests: XCTestCase {
     }
     
     @UserDefaultsActor
-    func testClearRemovesValuesNotSavedThroughStorage() {
+    func testClearRemovesValuesNotSavedThroughStorage() async {
         // Given
         standardUserDefaults.set("value", forKey: "foreign")
         otherUserDefaults.set("value", forKey: "foreign")
@@ -451,7 +451,7 @@ final class UserDefaultsStorageTests: XCTestCase {
     }
     
     @UserDefaultsActor
-    func testInitCustomUserDefaults() {
+    func testInitCustomUserDefaults() async {
         // Given
         let userDefaults = UserDefaults(suiteName: "mock")!
         
@@ -463,7 +463,7 @@ final class UserDefaultsStorageTests: XCTestCase {
     }
     
     @UserDefaultsActor
-    func testThreadSafety() {
+    func testThreadSafety() async {
         // Given
         let storage = standardStorage!
         let iterations = 5000
@@ -472,7 +472,8 @@ final class UserDefaultsStorageTests: XCTestCase {
         for _ in 1...iterations { group.enter() }
         
         // When
-        DispatchQueue.concurrentPerform(iterations: iterations) { number in
+        // The closures run on other threads, so they mustn't be isolated to the actor
+        DispatchQueue.concurrentPerform(iterations: iterations) { @Sendable number in
             let operation = Int.random(in: 0...4)
             let key = "\(Int.random(in: 1000...9999))"
             
@@ -496,11 +497,11 @@ final class UserDefaultsStorageTests: XCTestCase {
             }
         }
         
-        group.notify(queue: .main) {
+        group.notify(queue: .main) { @Sendable in
             promise.fulfill()
         }
         
-        wait(for: [promise], timeout: 5)
+        await fulfillment(of: [promise], timeout: 5)
     }
 }
 

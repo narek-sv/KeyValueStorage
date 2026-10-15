@@ -32,13 +32,13 @@ final class KeychainStorageTests: XCTestCase {
     }
     
     @KeychainActor
-    func testKeychainDomain() {
+    func testKeychainDomain() async {
         XCTAssertEqual(standardStorage.domain, nil)
         XCTAssertEqual(otherStorage.domain, Self.otherStorageDomain)
     }
     
     @KeychainActor
-    func testKeychainFetch() throws {
+    func testKeychainFetch() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -104,7 +104,7 @@ final class KeychainStorageTests: XCTestCase {
     }
     
     @KeychainActor
-    func testKeychainFetchDifferentDomains() throws {
+    func testKeychainFetchDifferentDomains() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -172,7 +172,7 @@ final class KeychainStorageTests: XCTestCase {
     }
     
     @KeychainActor
-    func testKeychainSave() throws {
+    func testKeychainSave() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -204,7 +204,7 @@ final class KeychainStorageTests: XCTestCase {
     }
     
     @KeychainActor
-    func testKeychainSaveDifferentDomains() throws {
+    func testKeychainSaveDifferentDomains() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -234,7 +234,7 @@ final class KeychainStorageTests: XCTestCase {
     }
     
     @KeychainActor
-    func testKeychainDelete() throws {
+    func testKeychainDelete() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -268,7 +268,7 @@ final class KeychainStorageTests: XCTestCase {
     }
     
     @KeychainActor
-    func testKeychainDeleteDifferentDomains() throws {
+    func testKeychainDeleteDifferentDomains() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -300,7 +300,7 @@ final class KeychainStorageTests: XCTestCase {
     }
     
     @KeychainActor
-    func testKeychainSet() throws {
+    func testKeychainSet() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -341,7 +341,7 @@ final class KeychainStorageTests: XCTestCase {
     }
     
     @KeychainActor
-    func testKeychainSetDifferentDomains() throws {
+    func testKeychainSetDifferentDomains() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -380,7 +380,7 @@ final class KeychainStorageTests: XCTestCase {
     }
     
     @KeychainActor
-    func testKeychainClear() throws {
+    func testKeychainClear() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -431,7 +431,7 @@ final class KeychainStorageTests: XCTestCase {
     }
     
     @KeychainActor
-    func testThreadSafety() throws {
+    func testThreadSafety() async throws {
         // Given
         let storage = standardStorage!
         let iterations = 5000
@@ -440,7 +440,8 @@ final class KeychainStorageTests: XCTestCase {
         for _ in 1...iterations { group.enter() }
         
         // When
-        DispatchQueue.concurrentPerform(iterations: iterations) { number in
+        // The closures run on other threads, so they mustn't be isolated to the actor
+        DispatchQueue.concurrentPerform(iterations: iterations) { @Sendable number in
             let operation = Int.random(in: 0...4)
             let key = KeychainStorage.Key(name: "\(Int.random(in: 1000...9999))")
             
@@ -468,17 +469,17 @@ final class KeychainStorageTests: XCTestCase {
             }
         }
         
-        group.notify(queue: .main) {
+        group.notify(queue: .main) { @Sendable in
             promise.fulfill()
         }
         
-        wait(for: [promise], timeout: 5)
+        await fulfillment(of: [promise], timeout: 5)
     }
     
     #endif
     
     @KeychainActor
-    func testDomain() {
+    func testDomain() async {
         // Given
         var domain = KeychainStorage.Domain(groupId: "a", teamId: "b")
         
@@ -501,7 +502,7 @@ final class KeychainStorageTests: XCTestCase {
     }
     
     @KeychainActor
-    func testAppGroupDomain() {
+    func testAppGroupDomain() async {
         // Given
         let domain = KeychainStorage.Domain(accessGroup: "group.com.company.app")
         
@@ -512,7 +513,7 @@ final class KeychainStorageTests: XCTestCase {
     }
     
     @KeychainActor
-    func testInitDomains() {
+    func testInitDomains() async {
         // When
         var storage = KeychainStorage()
         
@@ -527,7 +528,7 @@ final class KeychainStorageTests: XCTestCase {
     }
     
     @KeychainActor
-    func testInitCustomKeychain() {
+    func testInitCustomKeychain() async {
         // Given
         let keychain = KeychainWrapper(serviceName: "mock")
         
@@ -590,7 +591,7 @@ final class KeychainStorageTests: XCTestCase {
     }
     
     @KeychainActor
-    func testMockedFetch() {
+    func testMockedFetch() async {
         // Given
         let mock = KeychainHelperMock(serviceName: "mock")
         let storage = KeychainStorage(keychain: mock)
@@ -642,7 +643,7 @@ final class KeychainStorageTests: XCTestCase {
     }
     
     @KeychainActor
-    func testMockedSave() {
+    func testMockedSave() async {
         // Given
         let mock = KeychainHelperMock(serviceName: "mock")
         let storage = KeychainStorage(keychain: mock)
@@ -676,7 +677,7 @@ final class KeychainStorageTests: XCTestCase {
     }
     
     @KeychainActor
-    func testMockedDelete() {
+    func testMockedDelete() async {
         // Given
         let mock = KeychainHelperMock(serviceName: "mock")
         let storage = KeychainStorage(keychain: mock)
@@ -710,7 +711,7 @@ final class KeychainStorageTests: XCTestCase {
     }
     
     @KeychainActor
-    func testMockedSet() {
+    func testMockedSet() async {
         // Given
         let mock = KeychainHelperMock(serviceName: "mock")
         let storage = KeychainStorage(keychain: mock)
@@ -773,7 +774,7 @@ final class KeychainStorageTests: XCTestCase {
     }
     
     @KeychainActor
-    func testMockedClear() {
+    func testMockedClear() async {
         // Given
         let mock = KeychainHelperMock(serviceName: "mock")
         let storage = KeychainStorage(keychain: mock)
