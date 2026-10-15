@@ -97,11 +97,17 @@ open class FileStorage: KeyValueDataStorage, @unchecked Sendable {
     
     public func clear() throws {
         try execute {
-            if let fileNames = try? fileManager.contentsOfDirectory(atPath: root.path) {
-                for fileName in fileNames {
-                    let path = root.appendingPathComponent(fileName).path
-                    try deleteFileIfExists(path: path)
-                }
+            let fileNames: [String]
+            do {
+                fileNames = try fileManager.contentsOfDirectory(atPath: root.path)
+            } catch CocoaError.fileReadNoSuchFile {
+                // Nothing has been saved yet
+                return
+            }
+            
+            for fileName in fileNames {
+                let path = root.appendingPathComponent(fileName).path
+                try deleteFileIfExists(path: path)
             }
         }
     }

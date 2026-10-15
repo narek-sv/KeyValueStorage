@@ -646,6 +646,53 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
+    func testErrorCaseClear() throws {
+        try XCTSkipIf(getuid() == 0, "File permissions are not enforced for root")
+        
+        // Given
+        let root = makeTemporaryRoot()
+        let storage = FileStorage(fileManager: fileManager, root: root)
+        
+        // When
+        XCTAssertNoThrow(try storage.clear())
+        
+        // Then
+        XCTAssertFalse(fileManager.fileExists(atPath: root.path))
+        
+        // Given
+        try storage.save(Data([0xAA]), forKey: "key")
+        try fileManager.setAttributes([.posixPermissions: 0o000], ofItemAtPath: root.path)
+        
+        // When
+        XCTAssertThrowsError(try storage.clear()) { error in
+            // Then
+            guard case let .other(innerError as CocoaError) = error as? FileStorage.Error else {
+                return XCTFail("Unexpected error \(error)")
+            }
+            
+            XCTAssertEqual(innerError.code, CocoaError.fileReadNoPermission)
+        }
+        
+        // Given
+        try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: root.path)
+        let file = temporaryURL()
+        try Data().write(to: file)
+        addTeardownBlock { [fileManager] in try? fileManager.removeItem(at: file) }
+        let blockedStorage = FileStorage(fileManager: fileManager, root: file)
+        
+        // When
+        XCTAssertThrowsError(try blockedStorage.clear()) { error in
+            // Then
+            guard case .other = error as? FileStorage.Error else {
+                return XCTFail("Unexpected error \(error)")
+            }
+        }
+        
+        // Then
+        XCTAssertEqual(try storage.fetch(forKey: "key"), Data([0xAA]))
+    }
+    
+    @FileActor
     func testThreadSafety() throws {
         // Given
         let iterations = 5000
@@ -687,6 +734,17 @@ final class FileStorageTests: XCTestCase {
         }
         
         wait(for: [promise], timeout: 5)
+    }
+    
+    /// A not yet created directory, removed after the test even if its permissions were changed.
+    private func makeTemporaryRoot() -> URL {
+        let root = temporaryURL()
+        addTeardownBlock { [fileManager] in
+            try? fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: root.path)
+            try? fileManager.removeItem(at: root)
+        }
+        
+        return root
     }
     
     private func temporaryURL() -> URL {
