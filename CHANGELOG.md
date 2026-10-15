@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.0.0
+## 3.0.0 - 2026-10-15
 
 Version 3 fixes data loss, security and concurrency issues, which required changing where and how values are stored. **Values saved by 2.x are not migrated automatically**; see [Migrating from 2.x](#migrating-from-2x).
 
