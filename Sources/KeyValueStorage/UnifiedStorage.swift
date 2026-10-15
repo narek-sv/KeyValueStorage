@@ -113,25 +113,11 @@ public actor UnifiedStorage {
         try await storage.delete(forKey: .init(key: key.key, codingType: key.codingType))
     }
     
+    /// Removes everything stored in the given storage and domain.
+    /// The storage is loaded on demand, so this also clears values saved in previous launches.
     public func clear<Storage: KeyValueDataStorage>(storage: Storage.Type, forDomain domain: Storage.Domain?) async throws {
         let storage: KeyValueCodingStorage<Storage> = try await self.storage(for: domain)
         try await storage.clear()
-    }
-    
-    public func clear<Storage: KeyValueDataStorage>(storage: Storage.Type) async throws {
-        for storage in storages.values {
-            if let casted = storage as? KeyValueCodingStorage<Storage> {
-                try await casted.clear()
-            }
-        }
-    }
-    
-    public func clear() async throws {
-        for storage in storages.values {
-            if let casted = storage as? Clearing {
-                try await casted.clear()
-            }
-        }
     }
     
     // MARK: - Observation
