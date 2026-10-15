@@ -19,6 +19,10 @@ Enhance your development with the state-of-the-art key-value storage framework, 
 
 ## Choosing a Storage
 
+Every storage works through the same API: declare a typed key, then save, fetch, delete and observe its value with `UnifiedStorage`. Five storages are built in: In Memory, User Defaults, Keychain, File System and SQLite. You can add your own storage by conforming to `KeyValueDataStorage` (see [Custom Storages](#custom-storages)), and your own encoding by conforming to `DataCoder` (see [Coding](#coding)). Values can be shared with your app's extensions and your other apps (see [Setup](#setup)), and observed for changes (see [Observation](#observation)).
+
+Here's how the built-in storages compare:
+
 | | In Memory | User Defaults | Keychain | File System | SQLite |
 | --- | --- | --- | --- | --- | --- |
 | **Survives app restart** | ❌ | ✅ | ✅ (usually reinstalls too) | ✅ | ✅ |
@@ -72,11 +76,31 @@ Quick guide:
 * Temporary state and tests → `InMemoryKey`
 
 ---
-## App Groups
+## Setup
 
-`KeyValueStorage` also supports working with shared containers, which allows you to share your items among different ***App Extensions*** or ***your other Apps***. To do so, first, you need to configure your app by following the steps described in [this](https://developer.apple.com/documentation/security/keychain_services/keychain_items/sharing_access_to_keychain_items_among_a_collection_of_apps) article.
+`KeyValueStorage` works out of the box: keys without a domain need no setup, except for the keychain on macOS. If you want to share values among your apps and extensions, you need a little setup in Xcode first. Here's what each setup is for:
 
-By providing corresponding `domain`s to each type of storage, you can enable the sharing of storage spaces. Alternatively, by doing so, you can also keep the containers isolated.
+* [App Groups](#app-groups) - share values of any storage with your extensions and your other apps.
+* [Keychain Sharing](#keychain-sharing) - share keychain items through a keychain access group instead of an App Group.
+* [iCloud Keychain](#icloud-keychain) - sync keychain items across the user's devices.
+* [macOS](#macos) - use the keychain storage in a macOS app.
+* [Privacy Manifest](#privacy-manifest) - nothing to do: what the library declares for the App Store review.
+
+### App Groups
+
+You need this when your app and its extensions, or several of your apps, read and write the same values. An App Group gives them a shared container for User Defaults, files and SQLite databases, and a shared keychain access group.
+
+1. In Xcode, select your app target, open **Signing & Capabilities**, click **+ Capability** and add **App Groups**.
+2. Add a group, for example `group.com.company.app`. On macOS, use the group exactly as the capability shows it.
+3. Add the capability to every extension and app that shares the values, and select the same group.
+4. Use the group as the domain of the keys:
+
+```swift
+let onboarded = UserDefaultsKey<Bool>(key: "onboarded", domain: "group.com.company.app")
+let token = KeychainKey<String>(key: .init(name: "token"), domain: .init(accessGroup: "group.com.company.app"))
+```
+
+A target without the group doesn't see the shared values: User Defaults quietly keeps its own values, and the keychain throws `errSecMissingEntitlement`.
 
 Here is what a `domain` means for each built-in storage:
 
@@ -90,6 +114,29 @@ Here is what a `domain` means for each built-in storage:
 
 None of these locations depend on the bundle identifier, so your app and its extensions read and write the same values. File and SQLite storage each use their own folder in `KeyValueStorage`, so clearing one never touches the other's data.
 
+### Keychain Sharing
+
+You need this only to share keychain items through a keychain access group instead of an App Group, for example because some of the apps that share the items don't belong to the same App Group.
+
+1. Add the **Keychain Sharing** capability to every app and extension that shares the items.
+2. Add the same group to each of them, for example `com.company.shared`. Xcode prefixes it with your team ID.
+3. Use the group and your team ID as the domain: `.init(groupId: "com.company.shared", teamId: "ABCDE12345")`. Your team ID is in the membership details of your Apple Developer account.
+
+### iCloud Keychain
+
+You need this to make keychain items available on all the user's devices. Create their keys with `isSynchronizable: true`. There's no capability to add, but:
+* Items sync only for users who turned on iCloud Keychain on their devices.
+* Synchronizable items can't use the accessibility options that end in `ThisDeviceOnly`.
+* Deleting a synchronizable item, or clearing the storage, removes it from all the user's devices.
+
+### macOS
+
+You need this to use the keychain storage in a macOS app. The keychain storage uses the data protection keychain, like on iOS, which needs your app to be signed with a development team: select a team under **Signing & Capabilities**. Command-line tools, and apps that aren't signed with a team, get `errSecMissingEntitlement`.
+
+### Privacy Manifest
+
+There's nothing to set up. `KeyValueStorage` includes a privacy manifest that declares its use of the User Defaults API with the reason `C56D.1`, which covers a library that reads and writes User Defaults only when your app asks it to. Declare your app's own use of the API in your app's privacy manifest.
+
 ---
 ## Usage
 
@@ -102,6 +149,7 @@ First, you need to declare the key. You can use one of the built-in types:
 * `KeychainKey`
 * `InMemoryKey`
 * `FileKey`
+* `SQLiteKey`
 
 or you can define your own ones. [See how to do that](#custom-storages)
 
@@ -236,14 +284,14 @@ Here are all the supported accessibility types:
 
 The accessibility is applied every time a value is saved, so changing it for an existing key takes effect on the next save.
 
-Set `synchronizable` property to `true` to enable keychain items synchronization across user's multiple devices. The synchronization will work for users who have the ***Keychain*** enabled in the ***iCloud*** settings on their devices. Deleting a synchronizable item will remove it from all devices.
+Set `isSynchronizable` to `true` to sync the item across the user's devices through iCloud Keychain. See [iCloud Keychain](#icloud-keychain) for what it requires.
 
 ```swift
 let key = KeychainKey<String>(key: .init(name: "key", accessibility: .afterFirstUnlock, isSynchronizable: true),
                               domain: .init(groupId: "groupId", teamId: "teamId"))
 ```
 
-To share items with your other apps and extensions, use an App Group they all belong to, or a Keychain Sharing group:
+To share items with your other apps and extensions, use an App Group they all belong to, or a Keychain Sharing group. Set up the capability first, see [Setup](#setup):
 
 ```swift
 // An App Group, written as in the App Groups capability, without a team prefix
@@ -332,7 +380,8 @@ All the methods of the `UnifiedStorage` are throwing. Even with a correct setup,
 * `FileStorage.Error` - an invalid key, missing permissions, or a file that is protected while the device is locked.
 * `SQLiteStorage.Error.sqlite` - the database file is damaged, or another process kept it busy for longer than a second.
 * `DecodingError` - the stored data doesn't match the key's value type, for example after changing the type of an existing key.
-* `UserDefaultsStorage.Error`, `FileStorage.Error.failedToInitSharedDirectory` and `SQLiteStorage.Error.failedToInitSharedDirectory` - the App Group isn't configured for the target.
+* `FileStorage.Error.failedToInitSharedDirectory` and `SQLiteStorage.Error.failedToInitSharedDirectory` - the system has no container for the App Group, for example when the target isn't in the group.
+* `UserDefaultsStorage.Error` - the domain is a name `UserDefaults` doesn't allow: your app's own bundle identifier, or `NSGlobalDomain`.
 
 ---
 ## Thread Safety
