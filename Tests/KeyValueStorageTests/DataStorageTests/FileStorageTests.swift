@@ -455,7 +455,7 @@ final class FileStorageTests: XCTestCase {
     func testInvalidKeys() throws {
         // Given
         let data = Data([0xAA, 0xBB, 0xCC])
-        let invalidKeys = ["", ".", "..", "../escaped", "a/b", "/absolute", "a\0b", String(repeating: "a", count: 256)]
+        let invalidKeys = ["", ".", "..", "../escaped", "a/b", "/absolute", "a\0b", String(repeating: "a", count: 256), String(repeating: "ж", count: 128)]
         try standardStorage.save(data, forKey: "valid")
         
         for key in invalidKeys {
@@ -487,7 +487,7 @@ final class FileStorageTests: XCTestCase {
     func testValidEdgeCaseKeys() throws {
         // Given
         let data = Data([0xAA, 0xBB, 0xCC])
-        let keys = [String(repeating: "a", count: 255), "ключ", ".hidden", "with space", "a:b"]
+        let keys = [String(repeating: "a", count: 255), String(repeating: "ж", count: 127), "ключ", "🔑", ".hidden", "key.", " padded ", "with space", "a:b"]
         
         for key in keys {
             // When
@@ -693,6 +693,294 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
+    func testDefaultLocation() throws {
+        // Given
+        let id = Bundle.main.bundleIdentifier!
+        let documentsPath = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(id).path
+        let expectedPath = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(id)
+            .appendingPathComponent(FileStorage.directoryName)
+            .appendingPathComponent("key")
+            .path
+        
+        // When
+        try standardStorage.save(Data([0xAA]), forKey: "key")
+        
+        // Then
+        XCTAssertEqual(FileStorage.directoryName, "KeyValueStorage")
+        XCTAssertEqual(fileManager.contents(atPath: expectedPath), Data([0xAA]))
+        XCTAssertFalse(fileManager.fileExists(atPath: documentsPath))
+    }
+    
+    @FileActor
+    func testSharedLocationDoesNotDependOnBundleIdentifier() throws {
+        // Given
+        let expectedPath = fileManager.containerURL(forSecurityApplicationGroupIdentifier: Self.otherStorageDomain)!
+            .appendingPathComponent(FileStorage.directoryName)
+            .appendingPathComponent("key")
+            .path
+        
+        // When
+        try otherStorage.save(Data([0xAA]), forKey: "key")
+        let sameDomainStorage = try FileStorage(domain: Self.otherStorageDomain)
+        
+        // Then
+        XCTAssertEqual(fileManager.contents(atPath: expectedPath), Data([0xAA]))
+        XCTAssertFalse(expectedPath.contains(Bundle.main.bundleIdentifier!))
+        XCTAssertEqual(try sameDomainStorage.fetch(forKey: "key"), Data([0xAA]))
+    }
+    
+    @FileActor
+    func testCustomRoot() throws {
+        // Given
+        let root = makeTemporaryRoot()
+        let storage = FileStorage(fileManager: fileManager, root: root)
+        
+        // When
+        try storage.save(Data([0xAA]), forKey: "key")
+        
+        // Then
+        XCTAssertNil(storage.domain)
+        XCTAssertEqual(fileManager.contents(atPath: root.appendingPathComponent("key").path), Data([0xAA]))
+    }
+    
+    @FileActor
+    func testValueRoundTrips() throws {
+        // Given
+        let values = [
+            Data(),
+            Data((0...255).map { UInt8($0) }),
+            Data((0..<1_048_576).map { UInt8(truncatingIfNeeded: $0 &* 31) })
+        ]
+        
+        for value in values {
+            // When
+            try standardStorage.save(value, forKey: "key")
+            
+            // Then
+            XCTAssertEqual(try standardStorage.fetch(forKey: "key"), value)
+        }
+        
+        // When
+        try standardStorage.save(Data(), forKey: "empty")
+        
+        // Then
+        XCTAssertEqual(try standardStorage.fetch(forKey: "empty"), Data())
+        XCTAssertNotNil(try standardStorage.fetch(forKey: "empty"))
+    }
+    
+    @FileActor
+    func testOverwriteNeverExposesMissingOrPartialValue() throws {
+        // Given
+        let root = makeTemporaryRoot()
+        let storage = FileStorage(fileManager: fileManager, root: root)
+        let values = [Data(repeating: 0x01, count: 64 * 1024), Data(repeating: 0x02, count: 256 * 1024)]
+        try storage.save(values[0], forKey: "key")
+        let reader = ConcurrentReader(url: root.appendingPathComponent("key"), expectedValues: values)
+        
+        // When
+        reader.start()
+        for index in 0..<300 {
+            try storage.save(values[index % 2], forKey: "key")
+        }
+        let result = reader.stop()
+        
+        // Then
+        XCTAssertGreaterThan(result.reads, 0)
+        XCTAssertEqual(result.missing, 0)
+        XCTAssertEqual(result.partial, 0)
+    }
+    
+    @FileActor
+    func testSaveLeavesOnlyValueFiles() throws {
+        // Given
+        let root = makeTemporaryRoot()
+        let storage = FileStorage(fileManager: fileManager, root: root)
+        
+        // When
+        for index in 0..<100 {
+            try storage.save(Data([UInt8(index)]), forKey: "key\(index % 10)")
+        }
+        
+        // Then
+        XCTAssertEqual(Set(try fileManager.contentsOfDirectory(atPath: root.path)), Set((0..<10).map { "key\($0)" }))
+    }
+    
+    @FileActor
+    func testInstancesSharingRootSeeEachOthersChanges() throws {
+        // Given
+        let data1 = Data([0xAA, 0xBB, 0xCC])
+        let data2 = Data([0xDD, 0xEE, 0xFF])
+        let root = makeTemporaryRoot()
+        let first = FileStorage(fileManager: fileManager, root: root)
+        let second = FileStorage(fileManager: fileManager, root: root)
+        
+        // When
+        try first.save(data1, forKey: "key")
+        
+        // Then
+        XCTAssertEqual(try second.fetch(forKey: "key"), data1)
+        
+        // When
+        try second.save(data2, forKey: "key")
+        
+        // Then
+        XCTAssertEqual(try first.fetch(forKey: "key"), data2)
+        
+        // When
+        try second.delete(forKey: "key")
+        
+        // Then
+        XCTAssertNil(try first.fetch(forKey: "key"))
+        
+        // When
+        try first.save(data1, forKey: "other")
+        try second.clear()
+        
+        // Then
+        XCTAssertNil(try first.fetch(forKey: "other"))
+    }
+    
+    @FileActor
+    func testOperationsWithoutSavedValuesDontCreateDirectory() throws {
+        // Given
+        let root = makeTemporaryRoot()
+        let storage = FileStorage(fileManager: fileManager, root: root)
+        
+        // When
+        let fetched = try storage.fetch(forKey: "key")
+        try storage.delete(forKey: "key")
+        try storage.set(nil, forKey: "key")
+        try storage.clear()
+        XCTAssertThrowsError(try storage.save(Data([0xAA]), forKey: ""))
+        
+        // Then
+        XCTAssertNil(fetched)
+        XCTAssertFalse(fileManager.fileExists(atPath: root.path))
+    }
+    
+    @FileActor
+    func testClearRemovesEverythingInsideRoot() throws {
+        // Given
+        let data = Data([0xAA, 0xBB, 0xCC])
+        let root = makeTemporaryRoot()
+        let storage = FileStorage(fileManager: fileManager, root: root)
+        try storage.save(data, forKey: "key")
+        try storage.save(data, forKey: ".hidden")
+        try fileManager.createDirectory(at: root.appendingPathComponent("folder/nested"), withIntermediateDirectories: true)
+        try data.write(to: root.appendingPathComponent("folder/nested/file"))
+        
+        // When
+        try storage.clear()
+        
+        // Then
+        XCTAssertEqual(try fileManager.contentsOfDirectory(atPath: root.path), [])
+        
+        // When
+        try storage.save(data, forKey: "key")
+        
+        // Then
+        XCTAssertEqual(try storage.fetch(forKey: "key"), data)
+    }
+    
+    @FileActor
+    func testKeyCaseSensitivityFollowsFileSystem() throws {
+        // Given
+        let root = makeTemporaryRoot()
+        let storage = FileStorage(fileManager: fileManager, root: root)
+        try storage.save(Data([0xAA]), forKey: "Key")
+        let isCaseSensitive = try root.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]).volumeSupportsCaseSensitiveNames ?? true
+        
+        // When
+        try storage.save(Data([0xBB]), forKey: "key")
+        
+        // Then
+        if isCaseSensitive {
+            XCTAssertEqual(try storage.fetch(forKey: "Key"), Data([0xAA]))
+            XCTAssertEqual(try storage.fetch(forKey: "key"), Data([0xBB]))
+        } else {
+            // Keys that differ only in case share a file on case-insensitive volumes (the macOS default)
+            XCTAssertEqual(try storage.fetch(forKey: "Key"), Data([0xBB]))
+            XCTAssertEqual(try fileManager.contentsOfDirectory(atPath: root.path).count, 1)
+        }
+    }
+    
+    @FileActor
+    func testErrorCaseRootIsAFile() throws {
+        // Given
+        let file = temporaryURL()
+        try Data().write(to: file)
+        addTeardownBlock { [fileManager] in try? fileManager.removeItem(at: file) }
+        let storage = FileStorage(fileManager: fileManager, root: file)
+        
+        // When
+        XCTAssertThrowsError(try storage.fetch(forKey: "key")) { error in
+            // Then
+            assertOtherError(error)
+        }
+        
+        // When
+        XCTAssertThrowsError(try storage.delete(forKey: "key")) { error in
+            // Then
+            assertOtherError(error)
+        }
+    }
+    
+    @FileActor
+    func testErrorCaseReadOnlyDirectory() throws {
+        try XCTSkipIf(getuid() == 0, "File permissions are not enforced for root")
+        
+        // Given
+        let data1 = Data([0xAA, 0xBB, 0xCC])
+        let data2 = Data([0xDD, 0xEE, 0xFF])
+        let root = makeTemporaryRoot()
+        let storage = FileStorage(fileManager: fileManager, root: root)
+        try storage.save(data1, forKey: "key")
+        try fileManager.setAttributes([.posixPermissions: 0o555], ofItemAtPath: root.path)
+        let operations: [() throws -> Void] = [
+            { try storage.save(data2, forKey: "new") },
+            { try storage.save(data2, forKey: "key") },
+            { try storage.delete(forKey: "key") },
+            { try storage.clear() }
+        ]
+        
+        for operation in operations {
+            // When
+            XCTAssertThrowsError(try operation()) { error in
+                // Then
+                assertOtherError(error, CocoaError.fileWriteNoPermission)
+            }
+        }
+        
+        // Then
+        XCTAssertEqual(try storage.fetch(forKey: "key"), data1)
+        XCTAssertNil(try storage.fetch(forKey: "new"))
+    }
+    
+    @FileActor
+    func testErrorCaseUnreadableFile() throws {
+        try XCTSkipIf(getuid() == 0, "File permissions are not enforced for root")
+        
+        // Given
+        let root = makeTemporaryRoot()
+        let storage = FileStorage(fileManager: fileManager, root: root)
+        try storage.save(Data([0xAA, 0xBB, 0xCC]), forKey: "key")
+        try fileManager.setAttributes([.posixPermissions: 0o000], ofItemAtPath: root.appendingPathComponent("key").path)
+        
+        // When
+        XCTAssertThrowsError(try storage.fetch(forKey: "key")) { error in
+            // Then
+            assertOtherError(error, CocoaError.fileReadNoPermission)
+        }
+        
+        // When
+        try storage.delete(forKey: "key")
+        
+        // Then
+        XCTAssertNil(try storage.fetch(forKey: "key"))
+    }
+    
+    @FileActor
     func testThreadSafety() throws {
         // Given
         let iterations = 5000
@@ -736,6 +1024,16 @@ final class FileStorageTests: XCTestCase {
         wait(for: [promise], timeout: 5)
     }
     
+    private func assertOtherError(_ error: Error, _ code: CocoaError.Code? = nil, line: UInt = #line) {
+        guard case let .other(innerError) = error as? FileStorage.Error else {
+            return XCTFail("Unexpected error \(error)", line: line)
+        }
+        
+        if let code {
+            XCTAssertEqual((innerError as? CocoaError)?.code, code, line: line)
+        }
+    }
+    
     /// A not yet created directory, removed after the test even if its permissions were changed.
     private func makeTemporaryRoot() -> URL {
         let root = temporaryURL()
@@ -757,6 +1055,58 @@ final class FileStorageTests: XCTestCase {
         }
         
         XCTAssertEqual(invalidKey, key, line: line)
+    }
+}
+
+/// Reads a file in a tight loop on its own thread, outside the storage's actor, like another process would.
+private final class ConcurrentReader: @unchecked Sendable {
+    private let url: URL
+    private let expectedValues: [Data]
+    private let lock = NSLock()
+    private let finished = DispatchSemaphore(value: 0)
+    private var isRunning = true
+    private var reads = 0
+    private var missing = 0
+    private var partial = 0
+    
+    init(url: URL, expectedValues: [Data]) {
+        self.url = url
+        self.expectedValues = expectedValues
+    }
+    
+    func start() {
+        Thread.detachNewThread { [self] in
+            while running() {
+                let data = try? Data(contentsOf: url)
+                lock.lock()
+                reads += 1
+                if let data {
+                    partial += expectedValues.contains(data) ? 0 : 1
+                } else {
+                    missing += 1
+                }
+                lock.unlock()
+            }
+            
+            finished.signal()
+        }
+    }
+    
+    func stop() -> (reads: Int, missing: Int, partial: Int) {
+        lock.lock()
+        isRunning = false
+        lock.unlock()
+        finished.wait()
+        
+        lock.lock()
+        defer { lock.unlock() }
+        return (reads, missing, partial)
+    }
+    
+    private func running() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return isRunning
     }
 }
 
