@@ -15,16 +15,6 @@ let package = Package(
         .library(
             name: "KeyValueStorage",
             targets: ["KeyValueStorage"]),
-
-//        .library(
-//            name: "KeyValueStorageLegacy",
-//            targets: ["KeyValueStorageLegacy"]),
-//        .library(
-//            name: "KeyValueStorageLegacyWrapper",
-//            targets: ["KeyValueStorageLegacyWrapper"]),
-//        .library(
-//            name: "KeyValueStorageLegacySwiftUI",
-//            targets: ["KeyValueStorageLegacySwiftUI"]),
     ],
     targets: [
         // Targets are the basic building blocks of a package. A target can define a module or a test suite.
@@ -39,18 +29,5 @@ let package = Package(
         .testTarget(
             name: "KeyValueStoragePublicAPITests",
             dependencies: ["KeyValueStorage"]),
-        
-//        .target(
-//            name: "KeyValueStorageLegacy",
-//            dependencies: []),
-//        .target(
-//            name: "KeyValueStorageLegacyWrapper",
-//            dependencies: [.target(name: "KeyValueStorageLegacy")]),
-//        .target(
-//            name: "KeyValueStorageLegacySwiftUI",
-//            dependencies: [.target(name: "KeyValueStorageLegacyWrapper")]),
-//        .testTarget(
-//            name: "KeyValueStorageLegacyTests",
-//            dependencies: ["KeyValueStorageLegacy", "KeyValueStorageLegacyWrapper", "KeyValueStorageLegacySwiftUI"]),
     ]
 )
