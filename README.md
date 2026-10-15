@@ -3,7 +3,6 @@
 ![Build & Test](https://github.com/narek-sv/KeyValueStorage/actions/workflows/swift.yml/badge.svg)
 [![Coverage](https://img.shields.io/badge/coverage->=90%25-brightgreen)](https://github.com/narek-sv/KeyValueStorage/actions/workflows/swift.yml)
 [![Swift Package Manager compatible](https://img.shields.io/badge/Swift%20Package%20Manager-compatible-success.svg)](https://github.com/apple/swift-package-manager)
-[![CocoaPods compatible](https://img.shields.io/cocoapods/v/KeyValueStorageSwift)](https://cocoapods.org/pods/KeyValueStorageSwift)
 
 ---
 
@@ -369,23 +368,6 @@ import the framework:
 
 ```swift
 import KeyValueStorage
-```
-
-### [CocoaPods](https://cocoapods.org)
-
-To integrate KeyValueStorage into your Xcode project using CocoaPods, specify it in your `Podfile`:
-
-```ruby
-pod 'KeyValueStorageSwift'
-```
-
-Then run `pod install`.
-
-In any file you'd like to use the package in, don't forget to
-import the framework:
-
-```swift
-import KeyValueStorageSwift
 ```
 
 ---
