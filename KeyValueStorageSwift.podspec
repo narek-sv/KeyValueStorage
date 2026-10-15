@@ -18,5 +18,6 @@ Pod::Spec.new do |spec|
   spec.source_files = "Sources/KeyValueStorage/**/*"
   
   spec.resource_bundles = {"KeyValueStorageSwift" => ["Sources/KeyValueStorage/Resources/PrivacyInfo.xcprivacy"]}
+  spec.library = "sqlite3"
 
 end

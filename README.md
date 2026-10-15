@@ -20,9 +20,9 @@ Enhance your development with the state-of-the-art key-value storage framework, 
 
 ## Built-in Storage Types
 
-| | | | |
-| --- | --- | --- | --- |
-| **In Memory** | **User Defaults** | **Keychain** | **File System** |
+| | | | | |
+| --- | --- | --- | --- | --- |
+| **In Memory** | **User Defaults** | **Keychain** | **File System** | **SQLite** |
 
 ---
 ## App Groups
@@ -37,6 +37,7 @@ Here is what a `domain` means for each built-in storage:
 | --- | --- | --- |
 | `UserDefaultsKey` | App Group ID, e.g. `"group.com.company.app"` | `UserDefaults(suiteName:)` of that group |
 | `FileKey` | App Group ID | `<group container>/KeyValueStorage` |
+| `SQLiteKey` | App Group ID | `<group container>/KeyValueStorage.sqlite` |
 | `KeychainKey` | `.init(groupId: "com.company.shared", teamId: "ABCDE12345")` | Access group `ABCDE12345.com.company.shared`, service `KeyValueStorage.com.company.shared` |
 | `InMemoryKey` | Any string | A separate namespace in the current process |
 
@@ -115,11 +116,12 @@ try await storage.save(/* accepts only MyType*/, forKey: key)
 ---
 ## Custom Storages
 
-`UnifiedStorage` has 4 built-in storage types:
+`UnifiedStorage` has 5 built-in storage types:
 * `In-memory` - This storage type persists the items only within an app session.
 * `User-Defaults` - This storage type persists the items within the app's lifetime.
 * `File-System` -  This storage saves every value as a separate file in `Application Support/<bundle identifier>/KeyValueStorage`, or in the App Group container. The file is replaced atomically, so a crash never leaves a value half-written or missing. Since the key is used as the file name, it must be a single path component: an empty key, `.`, `..`, keys containing `/` and keys longer than 255 UTF-8 bytes throw `FileStorage.Error.invalidKey`.
 * `Keychain` - This storage type keeps the items in secure storage and persists even after app re-installations. Supports `iCloud` synchronization.
+* `SQLite` - This storage keeps all values of a domain in one SQLite database, `Application Support/<bundle identifier>/KeyValueStorage.sqlite`, or in the App Group container. Any string is a valid key, and an app and its extensions can use the same database at the same time.
 
 You can also define your own storage, and it will work with it seamlessly with `UnifiedStorage` out of the box.
 All you need to do is:
@@ -271,8 +273,9 @@ However, it's important to note that only the changes made through observable st
 All the methods of the `UnifiedStorage` are throwing. Even with a correct setup, some errors can't be avoided and are worth handling:
 * `KeychainStorage.Error.os` - for example, `errSecInteractionNotAllowed` while the device is locked and the item is only accessible `.whenUnlocked`.
 * `FileStorage.Error` - an invalid key, missing permissions, or a file that is protected while the device is locked.
+* `SQLiteStorage.Error.sqlite` - the database file is damaged, or another process kept it busy for longer than a second.
 * `DecodingError` - the stored data doesn't match the key's value type, for example after changing the type of an existing key.
-* `UserDefaultsStorage.Error` and `FileStorage.Error.failedToInitSharedDirectory` - the App Group isn't configured for the target.
+* `UserDefaultsStorage.Error`, `FileStorage.Error.failedToInitSharedDirectory` and `SQLiteStorage.Error.failedToInitSharedDirectory` - the App Group isn't configured for the target.
 
 ---
 ## Thread Safety
