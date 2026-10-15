@@ -56,7 +56,11 @@ final class RawDataCoderTests: XCTestCase {
     }
     
     func testOtherTypesUseFallback() async throws {
-        for fallback in [JSONDataCoder() as DataCoder, PropertyListDataCoder()] {
+        // JSONEncoder doesn't keep the order of keys stable, so the bytes are only comparable when the keys are sorted
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        
+        for fallback in [JSONDataCoder(encoder: encoder) as DataCoder, PropertyListDataCoder()] {
             // Given
             let coder = RawDataCoder(fallback: fallback)
             
