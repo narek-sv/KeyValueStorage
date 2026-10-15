@@ -16,10 +16,12 @@ open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodi
         
     // MARK: Observations
 
-    @CodingStorageActor
-    public func stream<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) -> AsyncStream<Value?> {
+    /// - Parameter includingCurrentValue: Whether the stream starts with the currently stored value, or `nil` if there's none.
+    ///   Reading it can throw, for example when the stored data can't be decoded.
+    public func stream<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>,
+                                           includingCurrentValue: Bool = true) async throws -> AsyncStream<Value?> {
+        let publisher = try await publisher(forKey: key, includingCurrentValue: includingCurrentValue)
         return AsyncStream(bufferingPolicy: .unbounded) { continuation in
-            let publisher: KeyValuePublisher<Value?> = publisher(forKey: key)
             let subscription = Subscription(publisher.sink {
                 continuation.yield($0)
             })
@@ -30,40 +32,25 @@ open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodi
         }
     }
     
-    @CodingStorageActor
-    public func publisher<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) -> KeyValuePublisher<Value?> {
-        let mapPublisher = { (publisher: PassthroughSubject<Container, Never>) -> KeyValuePublisher<Value?> in
-            KeyValuePublisher(publisher
-                .map {
-                    if let value = $0.value {
-                        return value as? Value
-                    }
-                    
-                    return nil
-                }
-                .eraseToAnyPublisher())
+    /// - Parameter includingCurrentValue: Whether the publisher first emits the currently stored value, or `nil` if there's none.
+    ///   Reading it can throw, for example when the stored data can't be decoded.
+    public func publisher<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>,
+                                              includingCurrentValue: Bool = true) async throws -> KeyValuePublisher<Value?> {
+        let observation = await register(forKey: key)
+        let token = ObservationToken { [self] in
+            Task { @CodingStorageActor in
+                self.release(observation, forKey: key)
+            }
         }
         
-        if let observation = KeyValueObservations.observations[domain]?[key],
-           let publisher = observation as? PassthroughSubject<Container, Never> {
-            return mapPublisher(publisher)
+        // The observation is registered before reading, so a value saved meanwhile wins over the one read here
+        if includingCurrentValue, let version = await observation.versionIfUnknown() {
+            let value = try await fetch(forKey: key)
+            await observation.seed(value, ifUnchangedSince: version)
         }
         
-        if KeyValueObservations.observations[domain] == nil {
-            KeyValueObservations.observations[domain] = [:]
-        }
-        
-        let publisher = PassthroughSubject<Container, Never>()
-        KeyValueObservations.observations[domain]?[key] = publisher
-        return mapPublisher(publisher)
+        return await makePublisher(for: observation, token: token, includingCurrentValue: includingCurrentValue)
     }
-    
-/* AsyncPublisher emits most of the value changes*/
-//    @available(macOS 12.0, iOS 15.0, tvOS 15.0, watchOS 8.0, *)
-//    public func asyncPublisher<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) 
-//    async -> AsyncPublisher<AnyPublisher<Value?, Never>> {
-//        AsyncPublisher(publisher(forKey: key))
-//    }
     
     // MARK: Main Functionality
     
@@ -85,28 +72,111 @@ open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodi
     // MARK: Helpers
     
     @CodingStorageActor
+    private func makePublisher<Value: CodingValue>(for observation: Observation,
+                                                   token: ObservationToken,
+                                                   includingCurrentValue: Bool) -> KeyValuePublisher<Value?> {
+        // The subject replays its state on subscription, so dropping it leaves only later changes
+        let states = includingCurrentValue
+            ? observation.subject.eraseToAnyPublisher()
+            : observation.subject.dropFirst().eraseToAnyPublisher()
+        
+        return KeyValuePublisher(states
+            .compactMap { state in
+                withExtendedLifetime(token) {
+                    state.value(as: Value.self, includingSeeded: includingCurrentValue)
+                }
+            }
+            .eraseToAnyPublisher())
+    }
+    
+    @CodingStorageActor
+    private func register<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) -> Observation {
+        if let observation = KeyValueObservations.observations[domain]?[key] as? Observation {
+            observation.references += 1
+            return observation
+        }
+        
+        let observation = Observation()
+        observation.references = 1
+        KeyValueObservations.observations[domain, default: [:]][key] = observation
+        return observation
+    }
+    
+    /// Removes the observation once no publisher or subscription uses it, so it doesn't keep the last value in memory.
+    @CodingStorageActor
+    private func release<Value: CodingValue>(_ observation: Observation, forKey key: KeyValueCodingStorageKey<Storage, Value>) {
+        observation.references -= 1
+        guard observation.references == 0, KeyValueObservations.observations[domain]?[key] as? Observation === observation else {
+            return
+        }
+        
+        KeyValueObservations.observations[domain]?[key] = nil
+        if KeyValueObservations.observations[domain]?.isEmpty == true {
+            KeyValueObservations.observations[domain] = nil
+        }
+    }
+    
+    @CodingStorageActor
     private func send<Value: CodingValue>(_ value: Value?, forKey key: KeyValueCodingStorageKey<Storage, Value>) {
-        publisher(for: key)?.send(.init(value: value))
+        (KeyValueObservations.observations[domain]?[key] as? Observation)?.change(to: value)
     }
     
     @CodingStorageActor
     private func sendNilToAll() {
         for observation in (KeyValueObservations.observations[domain] ?? [:]).values {
-            if let publisher = observation as? PassthroughSubject<Container, Never> {
-                publisher.send(.init())
-            }
+            (observation as? Observation)?.change(to: nil)
         }
-    }
-    
-    @CodingStorageActor
-    private func publisher(for key: AnyHashable) -> PassthroughSubject<Container, Never>? {
-        KeyValueObservations.observations[domain]?[key] as? PassthroughSubject<Container, Never>
     }
     
     // MARK: Inner Hidden Types
     
-    private struct Container {
-        var value: Any?
+    /// The observed state of one key. Nested in the generic class, so storages of different types never share it.
+    @CodingStorageActor
+    private final class Observation {
+        let subject = CurrentValueSubject<State, Never>(.unknown)
+        var references = 0
+        private var version = 0
+        
+        func versionIfUnknown() -> Int? {
+            if case .unknown = subject.value {
+                return version
+            }
+            
+            return nil
+        }
+        
+        func seed<Value: Sendable>(_ value: Value?, ifUnchangedSince version: Int) {
+            guard self.version == version, case .unknown = subject.value else {
+                return
+            }
+            
+            subject.send(.seeded(value))
+        }
+        
+        func change(to value: Any?) {
+            version += 1
+            subject.send(.changed(value))
+        }
+    }
+    
+    private enum State {
+        /// Nothing has been read or changed yet
+        case unknown
+        /// Read from the storage for a subscriber that wants the current value
+        case seeded(Any?)
+        /// Saved, deleted or cleared through an observable storage
+        case changed(Any?)
+        
+        func value<Value>(as type: Value.Type, includingSeeded: Bool) -> Value?? {
+            switch self {
+            case .unknown:
+                return nil
+            case let .seeded(value):
+                return includingSeeded ? .some(value as? Value) : nil
+            case let .changed(value):
+                return .some(value as? Value)
+            }
+        }
     }
 }
 
@@ -123,5 +193,18 @@ private final class Subscription: @unchecked Sendable {
     
     func cancel() {
         cancellable.cancel()
+    }
+}
+
+/// Lives as long as an observation's publisher, or any subscription to it, and releases the observation afterwards.
+private final class ObservationToken: Sendable {
+    private let onRelease: @Sendable () -> Void
+    
+    init(onRelease: @escaping @Sendable () -> Void) {
+        self.onRelease = onRelease
+    }
+    
+    deinit {
+        onRelease()
     }
 }
