@@ -383,6 +383,70 @@ final class SQLiteStorageTests: XCTestCase {
         }
     }
     
+    @SQLiteActor
+    func testErrorCaseDatabaseIsADirectory() async throws {
+        // Given
+        let root = makeTemporaryRoot()
+        try fileManager.createDirectory(at: root.appendingPathComponent(SQLiteStorage.databaseName), withIntermediateDirectories: true)
+        
+        // When
+        XCTAssertThrowsError(try SQLiteStorage(fileManager: fileManager, root: root)) { error in
+            // Then
+            assertSQLiteError(error, SQLITE_CANTOPEN)
+        }
+    }
+    
+    @SQLiteActor
+    func testErrorCaseDatabaseLockedByAnotherConnection() async throws {
+        // Given
+        let root = makeTemporaryRoot()
+        let storage = try SQLiteStorage(fileManager: fileManager, root: root)
+        try storage.save(Data([0xAA]), forKey: "key")
+        let other = try openConnection(root: root)
+        defer { sqlite3_close_v2(other) }
+        XCTAssertEqual(sqlite3_exec(other, "BEGIN EXCLUSIVE", nil, nil, nil), SQLITE_OK)
+        
+        // When
+        let start = Date()
+        XCTAssertThrowsError(try storage.save(Data([0xBB]), forKey: "key")) { error in
+            // Then: the save waits for the busy timeout before failing, like during another process's long write
+            assertSQLiteError(error, SQLITE_BUSY)
+        }
+        XCTAssertGreaterThanOrEqual(Date().timeIntervalSince(start), 0.9)
+        XCTAssertEqual(try storage.fetch(forKey: "key"), Data([0xAA]), "Readers don't wait for the writer in WAL mode")
+        
+        // When
+        XCTAssertEqual(sqlite3_exec(other, "ROLLBACK", nil, nil, nil), SQLITE_OK)
+        try storage.save(Data([0xBB]), forKey: "key")
+        
+        // Then
+        XCTAssertEqual(try storage.fetch(forKey: "key"), Data([0xBB]))
+    }
+    
+    @SQLiteActor
+    func testErrorCaseTableRemoved() async throws {
+        // Given
+        let root = makeTemporaryRoot()
+        let storage = try SQLiteStorage(fileManager: fileManager, root: root)
+        try storage.save(Data([0xAA]), forKey: "key")
+        let other = try openConnection(root: root)
+        defer { sqlite3_close_v2(other) }
+        XCTAssertEqual(sqlite3_exec(other, "DROP TABLE KeyValueStorage", nil, nil, nil), SQLITE_OK)
+        
+        // When - Then
+        XCTAssertThrowsError(try storage.fetch(forKey: "key")) { assertSQLiteError($0, SQLITE_ERROR) }
+        XCTAssertThrowsError(try storage.save(Data([0xBB]), forKey: "key")) { assertSQLiteError($0, SQLITE_ERROR) }
+        XCTAssertThrowsError(try storage.delete(forKey: "key")) { assertSQLiteError($0, SQLITE_ERROR) }
+        XCTAssertThrowsError(try storage.clear()) { assertSQLiteError($0, SQLITE_ERROR) }
+        
+        // When
+        let reopened = try SQLiteStorage(fileManager: fileManager, root: root)
+        try reopened.save(Data([0xBB]), forKey: "key")
+        
+        // Then: opening the database creates the table again
+        XCTAssertEqual(try reopened.fetch(forKey: "key"), Data([0xBB]))
+    }
+    
     func testThreadSafety() async throws {
         // Given
         let storage = standardStorage!
@@ -419,6 +483,22 @@ final class SQLiteStorageTests: XCTestCase {
     }
     
     // MARK: Helpers
+    
+    /// A second connection to the storage's database, like another process would open.
+    private func openConnection(root: URL) throws -> OpaquePointer {
+        var database: OpaquePointer?
+        XCTAssertEqual(sqlite3_open_v2(root.appendingPathComponent(SQLiteStorage.databaseName).path, &database, SQLITE_OPEN_READWRITE, nil), SQLITE_OK)
+        return try XCTUnwrap(database)
+    }
+    
+    private func assertSQLiteError(_ error: Error, _ expectedCode: Int32, line: UInt = #line) {
+        guard case let .sqlite(code, message) = error as? SQLiteStorage.Error else {
+            return XCTFail("Unexpected error \(error)", line: line)
+        }
+        
+        XCTAssertEqual(code, expectedCode, message, line: line)
+        XCTAssertFalse(message.isEmpty, line: line)
+    }
     
     /// A not yet created directory, removed after the test.
     private func makeTemporaryRoot() -> URL {
