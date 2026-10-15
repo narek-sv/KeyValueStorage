@@ -8,7 +8,7 @@
 import Foundation
 @testable import KeyValueStorage
 
-final class InMemoryMock: InMemoryStorage {
+final class InMemoryMock: InMemoryStorage, @unchecked Sendable {
     private(set) var saveCalled = false
     private(set) var fetchCalled = false
     private(set) var deleteCalled = false

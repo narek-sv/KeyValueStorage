@@ -362,12 +362,7 @@ final class CountingUnifiedStorageFactory: DefaultUnifiedStorageFactory, @unchec
     }
     
     override func dataStorage<Storage: KeyValueDataStorage>(for domain: Storage.Domain?) async throws -> Storage {
-        lock.lock()
-        calls += 1
-        let shouldFail = failures > 0
-        failures -= 1
-        lock.unlock()
-        
+        let shouldFail = registerCall()
         try await Task.sleep(nanoseconds: 10_000_000)
         if shouldFail {
             throw CocoaError(.featureUnsupported)
@@ -375,9 +370,18 @@ final class CountingUnifiedStorageFactory: DefaultUnifiedStorageFactory, @unchec
         
         return try await super.dataStorage(for: domain)
     }
+    
+    /// Returns whether this call should fail.
+    private func registerCall() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        calls += 1
+        failures -= 1
+        return failures >= 0
+    }
 }
 
-final class MockedUnifiedStorageFactory: DefaultUnifiedStorageFactory {
+final class MockedUnifiedStorageFactory: DefaultUnifiedStorageFactory, @unchecked Sendable {
     override func dataStorage<Storage: KeyValueDataStorage>(for domain: Storage.Domain?) async throws -> Storage {
         switch Storage.self {
         case is InMemoryMock.Type:

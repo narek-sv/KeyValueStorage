@@ -465,6 +465,7 @@ final class UserDefaultsStorageTests: XCTestCase {
     @UserDefaultsActor
     func testThreadSafety() {
         // Given
+        let storage = standardStorage!
         let iterations = 5000
         let promise = expectation(description: "testThreadSafety")
         let group = DispatchGroup()
@@ -478,15 +479,15 @@ final class UserDefaultsStorageTests: XCTestCase {
             Task.detached {
                 switch operation {
                 case 0:
-                    _ = await self.standardStorage.fetch(forKey: key)
+                    _ = await storage.fetch(forKey: key)
                 case 1:
-                    await self.standardStorage.save(.init(), forKey: key)
+                    await storage.save(.init(), forKey: key)
                 case 2:
-                    await self.standardStorage.delete(forKey: key)
+                    await storage.delete(forKey: key)
                 case 3:
-                    await self.standardStorage.set(Bool.random() ? nil : .init(), forKey: key)
+                    await storage.set(Bool.random() ? nil : .init(), forKey: key)
                 case 4:
-                    await self.standardStorage.clear()
+                    await storage.clear()
                 default:
                     break
                 }
