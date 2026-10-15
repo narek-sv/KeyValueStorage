@@ -399,6 +399,26 @@ extension KeyValueObservableStorageTests {
         subscription.cancel()
     }
     
+    func testValueSavedWhileReadingCurrentValueWinsOverReadValue() async throws {
+        // Given
+        let underlyingStorage = SlowReadStorage()
+        await underlyingStorage.save(try await coder.encode(1), forKey: "key")
+        let storage = KeyValueObservableStorage(storage: underlyingStorage, coder: coder)
+        let key = KeyValueCodingStorageKey<SlowReadStorage, Int>(key: "key")
+        let values = Recorded<Int?>()
+        
+        // When: a save overtakes the read of the current value
+        let publisher = Task { try await storage.publisher(forKey: key) }
+        await underlyingStorage.waitUntilReading()
+        try await storage.save(2, forKey: key)
+        await underlyingStorage.finishReading()
+        let subscription = try await publisher.value.sink { values.append($0) }
+        
+        // Then: the value that was read is older, so it doesn't replace the saved one
+        XCTAssertEqual(values.all, [2])
+        subscription.cancel()
+    }
+    
     func testReadingCurrentValueDoesntNotifyChangeSubscribers() async throws {
         // Given
         let storage = KeyValueObservableStorage(storage: await InMemoryStorage(domain: "seeding"), coder: coder)
@@ -496,6 +516,64 @@ extension KeyValueObservableStorageTests {
         for _ in 0..<3 {
             await Task { @CodingStorageActor in }.value
         }
+    }
+}
+
+/// Takes the stored value, then waits until the test lets the read return, like a slow read that a save overtakes.
+private actor SlowReadStorage: KeyValueDataStorage {
+    typealias Key = String
+    typealias Domain = String
+    enum Error: Swift.Error { }
+    
+    nonisolated let domain: Domain?
+    private var values = [Key: Data]()
+    private var pausedRead: CheckedContinuation<Void, Never>?
+    private var readStarted: CheckedContinuation<Void, Never>?
+    
+    init() {
+        self.domain = nil
+    }
+    
+    init(domain: Domain) {
+        self.domain = domain
+    }
+    
+    func fetch(forKey key: Key) async -> Data? {
+        let value = values[key]
+        readStarted?.resume()
+        readStarted = nil
+        await withCheckedContinuation { pausedRead = $0 }
+        return value
+    }
+    
+    func save(_ value: Data, forKey key: Key) {
+        values[key] = value
+    }
+    
+    func set(_ value: Data?, forKey key: Key) {
+        values[key] = value
+    }
+    
+    func delete(forKey key: Key) {
+        values[key] = nil
+    }
+    
+    func clear() {
+        values.removeAll()
+    }
+    
+    /// Returns once a read has taken the stored value and is waiting.
+    func waitUntilReading() async {
+        guard pausedRead == nil else {
+            return
+        }
+        
+        await withCheckedContinuation { readStarted = $0 }
+    }
+    
+    func finishReading() {
+        pausedRead?.resume()
+        pausedRead = nil
     }
 }
 
