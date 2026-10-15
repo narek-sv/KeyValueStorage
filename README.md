@@ -8,6 +8,8 @@
 
 Enhance your development with the state-of-the-art key-value storage framework, meticulously designed for speed, safety, and simplicity. Leveraging Swift's advanced error handling and concurrency features, the framework ensures thread-safe interactions, bolstered by a robust, modular, and protocol-oriented architecture. Unique to the solution, types of values are encoded within the keys, enabling compile-time type inference and eliminating the need for unnecessary casting. It is designed with App Groups in mind, facilitating seamless data sharing between your apps and extensions. Experience a testable, easily integrated storage solution that redefines efficiency and ease of use.
 
+**No dependencies.** `KeyValueStorage` works on its own: it uses only frameworks that come with the system, Foundation, Security, Combine and SQLite, so adding it brings no other packages into your project.
+
 
 ---
 ## Supported Platforms
