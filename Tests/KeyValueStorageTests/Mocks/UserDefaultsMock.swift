@@ -22,8 +22,8 @@ final class UserDefaultsMock: UserDefaults {
         storage[defaultName] = nil
     }
     
-    override func removePersistentDomain(forName domainName: String) {
-        storage.removeAll()
+    override func dictionaryRepresentation() -> [String : Any] {
+        storage
     }
 }
 
