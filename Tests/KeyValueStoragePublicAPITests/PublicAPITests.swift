@@ -38,6 +38,20 @@ final class PublicAPITests: XCTestCase {
         XCTAssertEqual(factory.codingStorageCalls, 1)
     }
     
+    func testRawDataCoderIsConfigurable() async throws {
+        // Given
+        let coder = RawDataCoder(fallback: PropertyListDataCoder())
+        
+        // When
+        let string = try await coder.encode("token")
+        let int = try await coder.encode(42)
+        let expectedInt = try PropertyListDataCoder().encode(42)
+        
+        // Then
+        XCTAssertEqual(string, Data("token".utf8))
+        XCTAssertEqual(int, expectedInt)
+    }
+    
     @KeychainActor
     func testKeychainIsConfigurable() {
         // Given
