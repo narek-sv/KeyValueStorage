@@ -35,6 +35,20 @@ final class UserDefaultsStorageTests: XCTestCase {
     }
     
     @UserDefaultsActor
+    func testErrorCaseDomainIsTheAppItself() async {
+        // Given: UserDefaults doesn't allow the app's own bundle identifier as the name of a shared domain
+        let domain = Bundle.main.bundleIdentifier!
+        
+        // When
+        XCTAssertThrowsError(try UserDefaultsStorage(domain: domain)) { error in
+            // Then
+            guard case .failedToInitSharedDefaults = error as? UserDefaultsStorage.Error else {
+                return XCTFail("Unexpected error \(error)")
+            }
+        }
+    }
+    
+    @UserDefaultsActor
     func testUserDefaultsFetch() async {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
