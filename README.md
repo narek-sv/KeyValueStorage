@@ -36,12 +36,12 @@ Here is what a `domain` means for each built-in storage:
 | Storage | Domain | Where the values live |
 | --- | --- | --- |
 | `UserDefaultsKey` | App Group ID, e.g. `"group.com.company.app"` | `UserDefaults(suiteName:)` of that group |
-| `FileKey` | App Group ID | `<group container>/KeyValueStorage` |
-| `SQLiteKey` | App Group ID | `<group container>/KeyValueStorage.sqlite` |
+| `FileKey` | App Group ID | `<group container>/KeyValueStorage/Files` |
+| `SQLiteKey` | App Group ID | `<group container>/KeyValueStorage/SQLite/KeyValueStorage.sqlite` |
 | `KeychainKey` | `.init(groupId: "com.company.shared", teamId: "ABCDE12345")` | Access group `ABCDE12345.com.company.shared`, service `KeyValueStorage.com.company.shared` |
 | `InMemoryKey` | Any string | A separate namespace in the current process |
 
-None of these locations depend on the bundle identifier, so your app and its extensions read and write the same values.
+None of these locations depend on the bundle identifier, so your app and its extensions read and write the same values. File and SQLite storage each use their own folder in `KeyValueStorage`, so clearing one never touches the other's data.
 
 ---
 ## Usage
@@ -119,9 +119,9 @@ try await storage.save(/* accepts only MyType*/, forKey: key)
 `UnifiedStorage` has 5 built-in storage types:
 * `In-memory` - This storage type persists the items only within an app session.
 * `User-Defaults` - This storage type persists the items within the app's lifetime.
-* `File-System` -  This storage saves every value as a separate file in `Application Support/<bundle identifier>/KeyValueStorage`, or in the App Group container. The file is replaced atomically, so a crash never leaves a value half-written or missing. Since the key is used as the file name, it must be a single path component: an empty key, `.`, `..`, keys containing `/` and keys longer than 255 UTF-8 bytes throw `FileStorage.Error.invalidKey`.
+* `File-System` -  This storage saves every value as a separate file in `Application Support/<bundle identifier>/KeyValueStorage/Files`, or in the App Group container. The file is replaced atomically, so a crash never leaves a value half-written or missing. Since the key is used as the file name, it must be a single path component: an empty key, `.`, `..`, keys containing `/` and keys longer than 255 UTF-8 bytes throw `FileStorage.Error.invalidKey`.
 * `Keychain` - This storage type keeps the items in secure storage and persists even after app re-installations. Supports `iCloud` synchronization.
-* `SQLite` - This storage keeps all values of a domain in one SQLite database, `Application Support/<bundle identifier>/KeyValueStorage.sqlite`, or in the App Group container. Any string is a valid key, and an app and its extensions can use the same database at the same time.
+* `SQLite` - This storage keeps all values of a domain in one SQLite database, `Application Support/<bundle identifier>/KeyValueStorage/SQLite/KeyValueStorage.sqlite`, or in the App Group container. Any string is a valid key, and all storages of a domain, in your app and its extensions, share the same database at the same time. Each operation is atomic across processes, but a fetch followed by a save is not: another process can save in between.
 
 You can also define your own storage, and it will work with it seamlessly with `UnifiedStorage` out of the box.
 All you need to do is:
