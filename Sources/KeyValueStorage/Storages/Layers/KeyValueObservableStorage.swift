@@ -88,8 +88,9 @@ open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodi
             ? observation.subject.eraseToAnyPublisher()
             : observation.subject.dropFirst().eraseToAnyPublisher()
         
+        // Combine runs the closure on the subscriber's thread when replaying, so it mustn't be isolated to the actor
         return KeyValuePublisher(states
-            .compactMap { state in
+            .compactMap { @Sendable state in
                 withExtendedLifetime(token) {
                     state.value(as: Value.self, includingSeeded: includingCurrentValue)
                 }
