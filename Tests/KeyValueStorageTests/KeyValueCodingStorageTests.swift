@@ -134,6 +134,24 @@ final class KeyValueCodingStorageTests: XCTestCase {
         XCTAssertNil(InMemoryStorage.container[nil]?["key4"])
     }
     
+    func testKeyHashing() {
+        // Given
+        let key = KeyValueCodingStorageKey<InMemoryStorage, String>(key: "key")
+        let differentKeys: [AnyHashable] = [
+            KeyValueCodingStorageKey<InMemoryStorage, String>(key: "other"),
+            KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key"),
+            KeyValueCodingStorageKey<UserDefaultsStorage, String>(key: "key")
+        ]
+        
+        // When
+        let set = Set([AnyHashable(key), AnyHashable(KeyValueCodingStorageKey<InMemoryStorage, String>(key: "key"))] + differentKeys)
+        
+        // Then
+        XCTAssertEqual(key, KeyValueCodingStorageKey<InMemoryStorage, String>(key: "key"))
+        XCTAssertEqual(key.hashValue, KeyValueCodingStorageKey<InMemoryStorage, String>(key: "key").hashValue)
+        XCTAssertEqual(set.count, differentKeys.count + 1)
+    }
+    
     @InMemoryActor
     func testSet() async throws {
         // Given

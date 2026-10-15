@@ -278,6 +278,26 @@ final class UnifiedStorageTests: XCTestCase {
         XCTAssertNil(fetched)
     }
     
+    func testKeyHashing() {
+        // Given
+        let key = InMemoryKey<String>(key: "key", domain: "domain")
+        let differentKeys: [AnyHashable] = [
+            InMemoryKey<String>(key: "other", domain: "domain"),
+            InMemoryKey<String>(key: "key", domain: "other"),
+            InMemoryKey<String>(key: "key"),
+            InMemoryKey<Int>(key: "key", domain: "domain"),
+            UserDefaultsKey<String>(key: "key", domain: "domain")
+        ]
+        
+        // When
+        let set = Set([AnyHashable(key), AnyHashable(InMemoryKey<String>(key: "key", domain: "domain"))] + differentKeys)
+        
+        // Then
+        XCTAssertEqual(key, InMemoryKey<String>(key: "key", domain: "domain"))
+        XCTAssertEqual(key.hashValue, InMemoryKey<String>(key: "key", domain: "domain").hashValue)
+        XCTAssertEqual(set.count, differentKeys.count + 1)
+    }
+    
     func testConcurrentFirstAccessCreatesStorageOnce() async throws {
         // Given
         let factory = CountingUnifiedStorageFactory()

@@ -34,8 +34,8 @@ extension UnifiedStorageKey: Hashable {
     public func hash(into hasher: inout Hasher) {
         hasher.combine(key)
         hasher.combine(domain)
-        hasher.combine(String(describing: codingType))
-        hasher.combine(String(describing: storageType))
+        hasher.combine(ObjectIdentifier(codingType))
+        hasher.combine(ObjectIdentifier(storageType))
     }
 }
 
@@ -182,7 +182,7 @@ extension UnifiedStorage {
         
         func hash(into hasher: inout Hasher) {
             hasher.combine(domain)
-            hasher.combine(String(describing: storageType))
+            hasher.combine(ObjectIdentifier(storageType))
         }
     }
 }
