@@ -449,6 +449,59 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
+    func testInvalidKeys() throws {
+        // Given
+        let data = Data([0xAA, 0xBB, 0xCC])
+        let invalidKeys = ["", ".", "..", "../escaped", "a/b", "/absolute", "a\0b", String(repeating: "a", count: 256)]
+        try standardStorage.save(data, forKey: "valid")
+        
+        for key in invalidKeys {
+            // When
+            XCTAssertThrowsError(try standardStorage.save(data, forKey: key)) { error in
+                // Then
+                assertInvalidKey(error, key)
+            }
+            
+            // When
+            XCTAssertThrowsError(try standardStorage.fetch(forKey: key)) { error in
+                // Then
+                assertInvalidKey(error, key)
+            }
+            
+            // When
+            XCTAssertThrowsError(try standardStorage.delete(forKey: key)) { error in
+                // Then
+                assertInvalidKey(error, key)
+            }
+        }
+        
+        // Then
+        XCTAssertEqual(try standardStorage.fetch(forKey: "valid"), data)
+        XCTAssertFalse(fileManager.fileExists(atPath: standardPath.deletingLastPathComponent().appendingPathComponent("escaped").path))
+    }
+    
+    @FileActor
+    func testValidEdgeCaseKeys() throws {
+        // Given
+        let data = Data([0xAA, 0xBB, 0xCC])
+        let keys = [String(repeating: "a", count: 255), "ключ", ".hidden", "with space", "a:b"]
+        
+        for key in keys {
+            // When
+            try standardStorage.save(data, forKey: key)
+            
+            // Then
+            XCTAssertEqual(try standardStorage.fetch(forKey: key), data)
+            
+            // When
+            try standardStorage.delete(forKey: key)
+            
+            // Then
+            XCTAssertNil(try standardStorage.fetch(forKey: key))
+        }
+    }
+    
+    @FileActor
     func testErrorCaseDelete() {
         // Given
         let mock = FileManagerMock()
@@ -602,6 +655,14 @@ final class FileStorageTests: XCTestCase {
         }
         
         wait(for: [promise], timeout: 5)
+    }
+    
+    private func assertInvalidKey(_ error: Error, _ key: String, line: UInt = #line) {
+        guard case let .invalidKey(invalidKey) = error as? FileStorage.Error else {
+            return XCTFail("Unexpected error \(error)", line: line)
+        }
+        
+        XCTAssertEqual(invalidKey, key, line: line)
     }
 }
 

@@ -51,18 +51,19 @@ open class FileStorage: KeyValueDataStorage, @unchecked Sendable {
     // MARK: Main Functionality
     
     public func fetch(forKey key: Key) throws -> Data? {
-        fileManager.contents(atPath: directory(for: key).path)
+        try execute {
+            try fileManager.contents(atPath: url(for: key).path)
+        }
     }
     
     public func save(_ value: Data, forKey key: Key) throws {
         try execute {
-            let directory = directory(for: key)
-            let directoryPath = directory.path
+            let path = try url(for: key).path
             
             try createDirectoryIfDoesntExist(path: root.path)
-            try deleteFileIfExists(path: directoryPath)
+            try deleteFileIfExists(path: path)
             
-            if !fileManager.createFile(atPath: directoryPath, contents: value) {
+            if !fileManager.createFile(atPath: path, contents: value) {
                 throw Error.failedToSave
             }
         }
@@ -70,7 +71,7 @@ open class FileStorage: KeyValueDataStorage, @unchecked Sendable {
     
     public func delete(forKey key: Key) throws {
         try execute {
-            try deleteFileIfExists(path: directory(for: key).path)
+            try deleteFileIfExists(path: url(for: key).path)
         }
     }
     
@@ -115,8 +116,20 @@ open class FileStorage: KeyValueDataStorage, @unchecked Sendable {
         }
     }
     
-    private func directory(for key: Key) -> URL {
-        root.appendingPathComponent(key)
+    /// The key is used as the file name, so it must be a single path component that can't escape `root`.
+    private func url(for key: Key) throws -> URL {
+        let isValid = !key.isEmpty
+            && key != "."
+            && key != ".."
+            && !key.contains("/")
+            && !key.contains("\0")
+            && key.utf8.count <= 255
+        
+        guard isValid else {
+            throw Error.invalidKey(key)
+        }
+        
+        return root.appendingPathComponent(key, isDirectory: false)
     }
     
     private func convert(error: Swift.Error) -> Error {
@@ -147,6 +160,7 @@ public extension FileStorage {
         case failedToSave
         case failedToInitSharedDirectory
         case failedToFindDocumentsDirectory
+        case invalidKey(String)
         case other(Swift.Error)
     }
 }
