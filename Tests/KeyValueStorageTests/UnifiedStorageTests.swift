@@ -177,28 +177,6 @@ final class UnifiedStorageTests: XCTestCase {
         try await storage.save("newData7", forKey: key7)
         try await storage.save("newData8", forKey: key8)
         
-        try await storage.clear(storage: KeychainStorage.self)
-        
-        fetched1 = try await storage.fetch(forKey: key1)
-        fetched2 = try await storage.fetch(forKey: key2)
-        fetched3 = try await storage.fetch(forKey: key3)
-        fetched4 = try await storage.fetch(forKey: key4)
-        fetched5 = try await storage.fetch(forKey: key5)
-        fetched6 = try await storage.fetch(forKey: key6)
-        fetched7 = try await storage.fetch(forKey: key7)
-        fetched8 = try await storage.fetch(forKey: key8)
-        
-        // Then
-        XCTAssertEqual(fetched1, "newData1")
-        XCTAssertEqual(fetched2, "newData2")
-        XCTAssertEqual(fetched3, "newData3")
-        XCTAssertEqual(fetched4, "newData4")
-        XCTAssertEqual(fetched5, "newData5")
-        XCTAssertEqual(fetched6, "newData6")
-        XCTAssertEqual(fetched7, "newData7")
-        XCTAssertEqual(fetched8, "newData8")
-        
-        // When
         try await storage.clear(storage: InMemoryStorage.self, forDomain: nil)
         
         fetched1 = try await storage.fetch(forKey: key1)
@@ -221,7 +199,7 @@ final class UnifiedStorageTests: XCTestCase {
         XCTAssertEqual(fetched8, "newData8")
         
         // When
-        try await storage.clear(storage: InMemoryStorage.self)
+        try await storage.clear(storage: InMemoryStorage.self, forDomain: "other")
         
         fetched1 = try await storage.fetch(forKey: key1)
         fetched2 = try await storage.fetch(forKey: key2)
@@ -243,7 +221,29 @@ final class UnifiedStorageTests: XCTestCase {
         XCTAssertEqual(fetched8, "newData8")
         
         // When
-        try await storage.clear()
+        try await storage.clear(storage: UserDefaultsStorage.self, forDomain: nil)
+        
+        fetched1 = try await storage.fetch(forKey: key1)
+        fetched2 = try await storage.fetch(forKey: key2)
+        fetched3 = try await storage.fetch(forKey: key3)
+        fetched4 = try await storage.fetch(forKey: key4)
+        fetched5 = try await storage.fetch(forKey: key5)
+        fetched6 = try await storage.fetch(forKey: key6)
+        fetched7 = try await storage.fetch(forKey: key7)
+        fetched8 = try await storage.fetch(forKey: key8)
+        
+        // Then
+        XCTAssertNil(fetched1)
+        XCTAssertNil(fetched2)
+        XCTAssertNil(fetched3)
+        XCTAssertNil(fetched4)
+        XCTAssertNil(fetched5)
+        XCTAssertNil(fetched6)
+        XCTAssertEqual(fetched7, "newData7")
+        XCTAssertEqual(fetched8, "newData8")
+        
+        // When
+        try await storage.clear(storage: UserDefaultsStorage.self, forDomain: "other")
         
         fetched1 = try await storage.fetch(forKey: key1)
         fetched2 = try await storage.fetch(forKey: key2)
@@ -263,6 +263,19 @@ final class UnifiedStorageTests: XCTestCase {
         XCTAssertNil(fetched6)
         XCTAssertNil(fetched7)
         XCTAssertNil(fetched8)
+    }
+    
+    func testClearStorageOnFreshInstance() async throws {
+        // Given
+        let key = InMemoryKey<String>(key: "key", domain: "other")
+        try await UnifiedStorage().save("value", forKey: key)
+        
+        // When
+        try await UnifiedStorage().clear(storage: InMemoryStorage.self, forDomain: "other")
+        
+        // Then
+        let fetched = try await UnifiedStorage().fetch(forKey: key)
+        XCTAssertNil(fetched)
     }
     
     func testNonObservable() async throws {
