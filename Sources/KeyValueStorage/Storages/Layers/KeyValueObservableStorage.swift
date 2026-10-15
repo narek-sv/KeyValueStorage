@@ -12,6 +12,14 @@ private final class KeyValueObservations {
     fileprivate static var observations = [AnyHashable?: [AnyHashable: Any]]()
 }
 
+/// A coding storage that publishes the changes made through it.
+///
+/// - Changes are delivered serially on `CodingStorageActor`, not on the main thread.
+///   Use `receive(on: DispatchQueue.main)`, or hop to the main actor, before updating UI.
+///   Streams resume on the executor of the task that iterates them.
+/// - Only changes made through observable storages in this process are published, from any instance.
+///   Changes from other processes (such as app extensions), from storages created without observation,
+///   or written directly to `UserDefaults`, the keychain or files aren't.
 open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodingStorage<Storage>, @unchecked Sendable {
         
     // MARK: Observations
