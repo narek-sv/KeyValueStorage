@@ -10,23 +10,23 @@ import Foundation
 @testable import KeyValueStorage
 
 final class DataCodersTests: XCTestCase {
-    func testJSONCoding() async throws {
+    func testJSONCoding() throws {
         // Given
         let coder = JSONDataCoder()
         let codable1 = "rootObject"
         let codable2 = ["rootObject"]
 
         // When
-        let encoded1 = try await coder.encode(codable1)
-        let encoded2 = try await coder.encode(codable2)
+        let encoded1 = try coder.encode(codable1)
+        let encoded2 = try coder.encode(codable2)
 
         // Then
         XCTAssertFalse(encoded1.isEmpty)
         XCTAssertFalse(encoded2.isEmpty)
         
         // When
-        let decoded1 = try await coder.decode(encoded1) as String
-        let decoded2 = try await coder.decode(encoded2) as [String]
+        let decoded1 = try coder.decode(encoded1) as String
+        let decoded2 = try coder.decode(encoded2) as [String]
 
         // Then
         XCTAssertEqual(decoded1, codable1)
@@ -35,19 +35,19 @@ final class DataCodersTests: XCTestCase {
         
     }
     
-    func testPropertyListCoding() async throws {
+    func testPropertyListCoding() throws {
         // Given
         let coder = PropertyListDataCoder()
         let date = Date(timeIntervalSince1970: 1_700_000_000)
         
         // When
-        let decodedString = try await coder.decode(coder.encode("rootObject")) as String
-        let decodedInt = try await coder.decode(coder.encode(42)) as Int
-        let decodedBool = try await coder.decode(coder.encode(true)) as Bool
-        let decodedDate = try await coder.decode(coder.encode(date)) as Date
-        let decodedData = try await coder.decode(coder.encode(Data([0xAA]))) as Data
-        let decodedArray = try await coder.decode(coder.encode(["rootObject"])) as [String]
-        let decodedDictionary = try await coder.decode(coder.encode(["key": 1])) as [String: Int]
+        let decodedString = try coder.decode(coder.encode("rootObject")) as String
+        let decodedInt = try coder.decode(coder.encode(42)) as Int
+        let decodedBool = try coder.decode(coder.encode(true)) as Bool
+        let decodedDate = try coder.decode(coder.encode(date)) as Date
+        let decodedData = try coder.decode(coder.encode(Data([0xAA]))) as Data
+        let decodedArray = try coder.decode(coder.encode(["rootObject"])) as [String]
+        let decodedDictionary = try coder.decode(coder.encode(["key": 1])) as [String: Int]
         
         // Then
         XCTAssertEqual(decodedString, "rootObject")
@@ -59,7 +59,7 @@ final class DataCodersTests: XCTestCase {
         XCTAssertEqual(decodedDictionary, ["key": 1])
     }
     
-    func testPropertyListFormat() async throws {
+    func testPropertyListFormat() throws {
         // Given
         let encoder = PropertyListEncoder()
         encoder.outputFormat = .xml
@@ -67,9 +67,9 @@ final class DataCodersTests: XCTestCase {
         let xmlCoder = PropertyListDataCoder(encoder: encoder)
         
         // When
-        let binary = try await binaryCoder.encode("rootObject")
-        let xml = try await xmlCoder.encode("rootObject")
-        let decoded = try await binaryCoder.decode(xml) as String
+        let binary = try binaryCoder.encode("rootObject")
+        let xml = try xmlCoder.encode("rootObject")
+        let decoded = try binaryCoder.decode(xml) as String
         
         // Then
         XCTAssertTrue(binary.starts(with: Data("bplist00".utf8)))
@@ -77,7 +77,7 @@ final class DataCodersTests: XCTestCase {
         XCTAssertEqual(decoded, "rootObject")
     }
     
-    func testPropertyListDecodingRequiresExactlyOneValue() async throws {
+    func testPropertyListDecodingRequiresExactlyOneValue() throws {
         // Given
         let coder = PropertyListDataCoder()
         let encoder = PropertyListEncoder()
@@ -85,7 +85,7 @@ final class DataCodersTests: XCTestCase {
         for values in [[String](), ["a", "b"]] {
             do {
                 // When
-                _ = try await coder.decode(encoder.encode(values)) as String
+                _ = try coder.decode(encoder.encode(values)) as String
                 XCTFail("Expected error")
             } catch DecodingError.dataCorrupted {
                 // Then

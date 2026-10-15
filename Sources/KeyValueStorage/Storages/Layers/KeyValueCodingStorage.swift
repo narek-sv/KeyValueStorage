@@ -38,7 +38,8 @@ extension KeyValueCodingStorageKey: Hashable {
 
 // MARK: - Coding Storage
 
-@CodingStorageActor
+/// Encodes values and passes them to the underlying data storage.
+/// It holds only immutable state, so it doesn't need an actor: encoding runs in parallel on the callers' tasks.
 open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Sendable {
     
     // MARK: Properties
@@ -91,6 +92,7 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
 
 // MARK: - Global Actors
 
+/// Serializes the observation registry and the delivery of changes to `KeyValueObservableStorage` subscribers.
 @globalActor
 public final class CodingStorageActor {
     public actor Actor { }

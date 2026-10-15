@@ -12,11 +12,11 @@ private final class KeyValueObservations {
     fileprivate static var observations = [AnyHashable?: [AnyHashable: Any]]()
 }
 
-@CodingStorageActor
 open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodingStorage<Storage>, @unchecked Sendable {
         
     // MARK: Observations
 
+    @CodingStorageActor
     public func stream<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) -> AsyncStream<Value?> {
         return AsyncStream(bufferingPolicy: .unbounded) { continuation in
             let publisher: KeyValuePublisher<Value?> = publisher(forKey: key)
@@ -30,6 +30,7 @@ open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodi
         }
     }
     
+    @CodingStorageActor
     public func publisher<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) -> KeyValuePublisher<Value?> {
         let mapPublisher = { (publisher: PassthroughSubject<Container, Never>) -> KeyValuePublisher<Value?> in
             KeyValuePublisher(publisher
@@ -68,17 +69,28 @@ open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodi
     
     public override func save<Value: CodingValue>(_ value: Value, forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws {
         try await super.save(value, forKey: key)
-        publisher(for: key)?.send(.init(value: value))
+        await send(value, forKey: key)
     }
     
     public override func delete<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws {
         try await super.delete(forKey: key)
-        publisher(for: key)?.send(.init())
+        await send(nil, forKey: key)
     }
     
     public override func clear() async throws {
         try await super.clear()
-
+        await sendNilToAll()
+    }
+    
+    // MARK: Helpers
+    
+    @CodingStorageActor
+    private func send<Value: CodingValue>(_ value: Value?, forKey key: KeyValueCodingStorageKey<Storage, Value>) {
+        publisher(for: key)?.send(.init(value: value))
+    }
+    
+    @CodingStorageActor
+    private func sendNilToAll() {
         for observation in (KeyValueObservations.observations[domain] ?? [:]).values {
             if let publisher = observation as? PassthroughSubject<Container, Never> {
                 publisher.send(.init())
@@ -86,8 +98,7 @@ open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodi
         }
     }
     
-    // MARK: Helpers
-    
+    @CodingStorageActor
     private func publisher(for key: AnyHashable) -> PassthroughSubject<Container, Never>? {
         KeyValueObservations.observations[domain]?[key] as? PassthroughSubject<Container, Never>
     }

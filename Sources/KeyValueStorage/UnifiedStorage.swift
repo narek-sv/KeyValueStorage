@@ -58,13 +58,13 @@ open class DefaultUnifiedStorageFactory: UnifiedStorageFactory, @unchecked Senda
     }
     
     open func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) async throws -> KeyValueCodingStorage<Storage> {
-        await KeyValueCodingStorage(storage: storage)
+        KeyValueCodingStorage(storage: storage)
     }
 }
 
 public final class ObservableUnifiedStorageFactory: DefaultUnifiedStorageFactory, @unchecked Sendable {
     public override func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) async throws -> KeyValueCodingStorage<Storage> {
-        await KeyValueObservableStorage(storage: storage)
+        KeyValueObservableStorage(storage: storage)
     }
 }
 
@@ -93,43 +93,43 @@ public actor UnifiedStorage {
     
     // MARK: Main Functionality
     
-    public func fetch<Storage: KeyValueDataStorage, Value: CodingValue>(forKey key: Key<Storage, Value>) async throws -> Value? {
+    public nonisolated func fetch<Storage: KeyValueDataStorage, Value: CodingValue>(forKey key: Key<Storage, Value>) async throws -> Value? {
         let storage: KeyValueCodingStorage<Storage> = try await storage(for: key.domain)
         return try await storage.fetch(forKey: .init(key: key.key))
     }
     
-    public func save<Storage: KeyValueDataStorage, Value: CodingValue>(_ value: Value, forKey key: Key<Storage, Value>) async throws {
+    public nonisolated func save<Storage: KeyValueDataStorage, Value: CodingValue>(_ value: Value, forKey key: Key<Storage, Value>) async throws {
         let storage: KeyValueCodingStorage<Storage> = try await storage(for: key.domain)
         try await storage.save(value, forKey: .init(key: key.key))
     }
     
-    public func set<Storage: KeyValueDataStorage, Value: CodingValue>(_ value: Value?, forKey key: Key<Storage, Value>) async throws {
+    public nonisolated func set<Storage: KeyValueDataStorage, Value: CodingValue>(_ value: Value?, forKey key: Key<Storage, Value>) async throws {
         let storage: KeyValueCodingStorage<Storage> = try await storage(for: key.domain)
         try await storage.set(value, forKey: .init(key: key.key))
     }
     
-    public func delete<Storage: KeyValueDataStorage, Value: CodingValue>(forKey key: Key<Storage, Value>) async throws {
+    public nonisolated func delete<Storage: KeyValueDataStorage, Value: CodingValue>(forKey key: Key<Storage, Value>) async throws {
         let storage: KeyValueCodingStorage<Storage> = try await storage(for: key.domain)
         try await storage.delete(forKey: .init(key: key.key, codingType: key.codingType))
     }
     
     /// Removes everything stored in the given storage and domain.
     /// The storage is loaded on demand, so this also clears values saved in previous launches.
-    public func clear<Storage: KeyValueDataStorage>(storage: Storage.Type, forDomain domain: Storage.Domain?) async throws {
+    public nonisolated func clear<Storage: KeyValueDataStorage>(storage: Storage.Type, forDomain domain: Storage.Domain?) async throws {
         let storage: KeyValueCodingStorage<Storage> = try await self.storage(for: domain)
         try await storage.clear()
     }
     
     // MARK: - Observation
     
-    public func publisher<Storage: KeyValueDataStorage, Value: CodingValue>(forKey key: Key<Storage, Value>)
+    public nonisolated func publisher<Storage: KeyValueDataStorage, Value: CodingValue>(forKey key: Key<Storage, Value>)
     async throws -> KeyValuePublisher<Value?>? {
         let storage: KeyValueCodingStorage<Storage> = try await storage(for: key.domain)
         let codingKey = KeyValueCodingStorageKey<Storage, Value>(key: key.key)
         return await (storage as? KeyValueObservableStorage<Storage>)?.publisher(forKey: codingKey)
     }
     
-    public func stream<Storage: KeyValueDataStorage, Value: CodingValue>(forKey key: Key<Storage, Value>)
+    public nonisolated func stream<Storage: KeyValueDataStorage, Value: CodingValue>(forKey key: Key<Storage, Value>)
     async throws -> AsyncStream<Value?>? {
         let storage: KeyValueCodingStorage<Storage> = try await storage(for: key.domain)
         let codingKey = KeyValueCodingStorageKey<Storage, Value>(key: key.key)
