@@ -35,15 +35,13 @@ jobs:
     - name: Build
       run: swift build -v
     - name: Test
-      run: swift test -v --enable-code-coverage
+      run: swift test -v
       env:
         # Print the crashed thread when a test crashes
         SWIFT_BACKTRACE: enable=yes,interactive=no,color=no,threads=crashed
     - name: Show crash reports
       if: failure()
       run: cat ~/Library/Logs/DiagnosticReports/*.ips 2>/dev/null || echo "No crash reports"
-    - name: Upload to Codecov
-      uses: codecov/codecov-action@v3
 
   platforms:
     # The other platforms with the latest Xcode; the iOS Simulator follows iOS rules, such as for file names
