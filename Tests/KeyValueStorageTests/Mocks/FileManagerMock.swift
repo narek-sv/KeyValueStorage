@@ -11,7 +11,6 @@ final class FileManagerMock: FileManager {
     var storage = [String: Data]()
     var removeItemError: CocoaError?
     var createDirectoryError: CocoaError?
-    var createFileError: CocoaError?
     
     override func removeItem(atPath path: String) throws {
         if let removeItemError {
@@ -25,10 +24,5 @@ final class FileManagerMock: FileManager {
         if let createDirectoryError {
             throw createDirectoryError
         }
-    }
-    
-    override func createFile(atPath path: String, contents data: Data?, attributes attr: [FileAttributeKey : Any]? = nil) -> Bool {
-        storage[path] = data
-        return createFileError == nil
     }
 }
