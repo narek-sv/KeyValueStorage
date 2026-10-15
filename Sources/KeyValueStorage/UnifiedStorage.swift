@@ -78,7 +78,7 @@ public actor UnifiedStorage {
     
     // MARK: Properties
     
-    private var storages = [AnyHashable?: Any]()
+    private var storages = [AnyHashable: Any]()
     private let factory: UnifiedStorageFactory
 
     // MARK: Initializers
@@ -138,18 +138,30 @@ public actor UnifiedStorage {
     
     // MARK: Helpers
     
+    /// Caches the creation task before awaiting it, so concurrent first calls share one storage instead of
+    /// each creating their own while the actor is suspended. Failures aren't cached, so a later call can retry.
     private func storage<Storage: KeyValueDataStorage>(for domain: Storage.Domain?) async throws -> KeyValueCodingStorage<Storage> {
         let underlyingKey = UnderlyingStorageKey<Storage>(domain: domain)
-        if let storage = storages[underlyingKey], let casted = storage as? KeyValueCodingStorage<Storage> {
-            return casted
+        if let task = storages[underlyingKey] as? Task<KeyValueCodingStorage<Storage>, Error> {
+            return try await task.value
         }
         
-        let dataStorage: Storage = try await factory.dataStorage(for: domain)
-        let codingStorage = try await factory.codingStorage(for: dataStorage)
-        storages[underlyingKey] = codingStorage
-      
+        let factory = factory
+        let task = Task {
+            let dataStorage: Storage = try await factory.dataStorage(for: domain)
+            return try await factory.codingStorage(for: dataStorage)
+        }
+        storages[underlyingKey] = task
         
-        return codingStorage
+        do {
+            return try await task.value
+        } catch {
+            if let cached = storages[underlyingKey] as? Task<KeyValueCodingStorage<Storage>, Error>, cached == task {
+                storages[underlyingKey] = nil
+            }
+            
+            throw error
+        }
     }
 }
 

@@ -278,6 +278,48 @@ final class UnifiedStorageTests: XCTestCase {
         XCTAssertNil(fetched)
     }
     
+    func testConcurrentFirstAccessCreatesStorageOnce() async throws {
+        // Given
+        let factory = CountingUnifiedStorageFactory()
+        let storage = UnifiedStorage(factory: factory)
+        let key = InMemoryKey<Int>(key: "key")
+        
+        // When
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for _ in 0..<64 {
+                group.addTask { _ = try await storage.fetch(forKey: key) }
+            }
+            
+            try await group.waitForAll()
+        }
+        
+        // Then
+        XCTAssertEqual(factory.dataStorageCalls, 1)
+    }
+    
+    func testFailedStorageCreationIsRetried() async throws {
+        // Given
+        let factory = CountingUnifiedStorageFactory(failures: 1)
+        let storage = UnifiedStorage(factory: factory)
+        let key = InMemoryKey<Int>(key: "key")
+        
+        do {
+            // When
+            _ = try await storage.fetch(forKey: key)
+            XCTFail("Expected error")
+        } catch {
+            // Then
+            XCTAssertEqual(error as? CocoaError, CocoaError(.featureUnsupported))
+        }
+        
+        // When
+        let fetched = try await storage.fetch(forKey: key)
+        
+        // Then
+        XCTAssertNil(fetched)
+        XCTAssertEqual(factory.dataStorageCalls, 2)
+    }
+    
     func testNonObservable() async throws {
         // Given
         var stoarge = UnifiedStorage(factory: DefaultUnifiedStorageFactory())
@@ -300,6 +342,38 @@ final class UnifiedStorageTests: XCTestCase {
         // Then
         XCTAssertNotNil(publisher)
         XCTAssertNotNil(stream)
+    }
+}
+
+/// Creates storages slowly, like a storage that opens a database, and can fail the first calls.
+final class CountingUnifiedStorageFactory: DefaultUnifiedStorageFactory, @unchecked Sendable {
+    private let lock = NSLock()
+    private var failures: Int
+    private var calls = 0
+    
+    var dataStorageCalls: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return calls
+    }
+    
+    init(failures: Int = 0) {
+        self.failures = failures
+    }
+    
+    override func dataStorage<Storage: KeyValueDataStorage>(for domain: Storage.Domain?) async throws -> Storage {
+        lock.lock()
+        calls += 1
+        let shouldFail = failures > 0
+        failures -= 1
+        lock.unlock()
+        
+        try await Task.sleep(nanoseconds: 10_000_000)
+        if shouldFail {
+            throw CocoaError(.featureUnsupported)
+        }
+        
+        return try await super.dataStorage(for: domain)
     }
 }
 
