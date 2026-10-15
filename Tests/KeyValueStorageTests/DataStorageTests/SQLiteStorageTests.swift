@@ -25,6 +25,14 @@ final class SQLiteStorageTests: XCTestCase {
         try otherStorage.clear()
     }
     
+    // XCTest keeps every test case alive until the run ends, so close the connections now
+    // instead of running out of file descriptors when tests are repeated
+    @SQLiteActor
+    override func tearDown() async throws {
+        standardStorage = nil
+        otherStorage = nil
+    }
+    
     @SQLiteActor
     func testSQLiteDomain() async {
         XCTAssertEqual(standardStorage.domain, nil)
