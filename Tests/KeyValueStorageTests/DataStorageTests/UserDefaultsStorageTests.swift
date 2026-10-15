@@ -17,7 +17,7 @@ final class UserDefaultsStorageTests: XCTestCase {
     var otherStorage: UserDefaultsStorage!
     
     @UserDefaultsActor
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         standardUserDefaults = UserDefaults.standard
         otherUserDefaults = UserDefaults(suiteName: Self.otherStorageDomain)!
         

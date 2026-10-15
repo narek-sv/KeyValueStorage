@@ -19,7 +19,7 @@ final class KeychainStorageTests: XCTestCase {
     #if SWIFT_PACKAGE_CAN_ATTACH_ENTITLEMENTS
     
     @KeychainActor
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         standardKeychain = KeychainWrapper(serviceName: KeychainStorage.defaultService)
         otherKeychain = KeychainWrapper(serviceName: Self.otherStorageDomain.service, accessGroup: Self.otherStorageDomain.accessGroup)
 
@@ -433,6 +433,7 @@ final class KeychainStorageTests: XCTestCase {
     @KeychainActor
     func testThreadSafety() throws {
         // Given
+        let storage = standardStorage!
         let iterations = 5000
         let promise = expectation(description: "testThreadSafety")
         let group = DispatchGroup()
@@ -447,15 +448,15 @@ final class KeychainStorageTests: XCTestCase {
                 do {
                     switch operation {
                     case 0:
-                        _ = try await self.standardStorage.fetch(forKey: key)
+                        _ = try await storage.fetch(forKey: key)
                     case 1:
-                        try await self.standardStorage.save(.init(), forKey: key)
+                        try await storage.save(.init(), forKey: key)
                     case 2:
-                        try await self.standardStorage.delete(forKey: key)
+                        try await storage.delete(forKey: key)
                     case 3:
-                        try await self.standardStorage.set(Bool.random() ? nil : .init(), forKey: key)
+                        try await storage.set(Bool.random() ? nil : .init(), forKey: key)
                     case 4:
-                        try await self.standardStorage.clear()
+                        try await storage.clear()
                     default:
                         break
                     }

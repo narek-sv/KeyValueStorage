@@ -270,7 +270,7 @@ extension KeyValueCodingStorageTests {
         let inner: [Inner]
     }
     
-    class CustomClass: Codable, Equatable {
+    final class CustomClass: Codable, Equatable, Sendable {
         let int: Int
         let string: String
         let date: Date
@@ -291,7 +291,8 @@ extension KeyValueCodingStorageTests {
         }
     }
     
-    actor CustomActor: Codable, Equatable {
+    // The decoder is only used during the call, so passing it to the actor's initializer is safe
+    actor CustomActor: Encodable, @preconcurrency Decodable, Equatable {
         let int: Int
         let string: String
         let date: Date

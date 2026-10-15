@@ -18,7 +18,7 @@ final class FileStorageTests: XCTestCase {
     var otherStorage: FileStorage!
     
     @FileActor
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         let id = Bundle.main.bundleIdentifier!
         standardPath = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(id, isDirectory: true)
@@ -1036,9 +1036,10 @@ final class FileStorageTests: XCTestCase {
     /// A not yet created directory, removed after the test even if its permissions were changed.
     private func makeTemporaryRoot() -> URL {
         let root = temporaryURL()
-        addTeardownBlock { [fileManager] in
-            try? fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: root.path)
-            try? fileManager.removeItem(at: root)
+        // FileManager isn't Sendable, so the block can't capture it
+        addTeardownBlock {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: root.path)
+            try? FileManager.default.removeItem(at: root)
         }
         
         return root
@@ -1048,8 +1049,8 @@ final class FileStorageTests: XCTestCase {
     private func makeTemporaryFile() throws -> URL {
         let file = temporaryURL()
         try Data().write(to: file)
-        addTeardownBlock { [fileManager] in
-            try? fileManager.removeItem(at: file)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: file)
         }
         
         return file

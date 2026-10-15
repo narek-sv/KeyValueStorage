@@ -15,7 +15,7 @@ final class InMemoryStorageTests: XCTestCase {
     var otherStorage: InMemoryStorage!
     
     @InMemoryActor
-    override func setUp() {
+    override func setUp() async throws {
         standardStorage = InMemoryStorage()
         otherStorage = InMemoryStorage(domain: Self.otherStorageDomain)
         
