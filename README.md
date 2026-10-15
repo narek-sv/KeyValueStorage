@@ -24,7 +24,7 @@ Enhance your development with the state-of-the-art key-value storage framework, 
 | --- | --- | --- | --- | --- | --- |
 | **Survives app restart** | ❌ | ✅ | ✅ (usually reinstalls too) | ✅ | ✅ |
 | **Suitable for secrets** | ❌ | ❌ | ✅ | ❌ | ❌ |
-| **Shared with your other apps and extensions** | ❌ | ✅ App Group | ✅ Access group | ✅ App Group | ✅ App Group |
+| **Shared with your other apps and extensions** | ❌ | ✅ App Group | ✅ App Group or Keychain Sharing group | ✅ App Group | ✅ App Group |
 | **Syncs across the user's devices** | ❌ | ❌ | ✅ iCloud Keychain (`isSynchronizable`) | ❌ | ❌ |
 | **Best value size** | Any | Small | Small | Large | Small to medium |
 | **Speed** | Fastest | Very fast | Slowest | Slow for small values, fastest for large ones | Fast for small values |
@@ -42,7 +42,7 @@ Enhance your development with the state-of-the-art key-value storage framework, 
 
 **Keychain** - tokens, passwords and other secrets.
 * Encrypted by the system, with `accessibility` controlling when the items can be read, for example only while the device is unlocked.
-* Can sync through iCloud Keychain (`isSynchronizable`) and be shared with other apps and extensions through access groups.
+* Can sync through iCloud Keychain (`isSynchronizable`) and be shared with other apps and extensions through an App Group or a Keychain Sharing group.
 * Every call goes through a system service, so it's the slowest storage. Use it for small secrets only.
 * Items usually survive an app reinstall, and may be unreadable while the device is locked.
 
@@ -86,7 +86,7 @@ Here is what a `domain` means for each built-in storage:
 | `UserDefaultsKey` | App Group ID, e.g. `"group.com.company.app"` | `UserDefaults(suiteName:)` of that group |
 | `FileKey` | App Group ID | `<group container>/KeyValueStorage/Files` |
 | `SQLiteKey` | App Group ID | `<group container>/KeyValueStorage/SQLite/KeyValueStorage.sqlite` |
-| `KeychainKey` | `.init(groupId: "com.company.shared", teamId: "ABCDE12345")` | Access group `ABCDE12345.com.company.shared`, service `KeyValueStorage.com.company.shared` |
+| `KeychainKey` | `.init(accessGroup: "group.com.company.app")` for an App Group, or `.init(groupId: "com.company.shared", teamId: "ABCDE12345")` for a Keychain Sharing group | That access group, with the service `KeyValueStorage.<access group>` |
 | `InMemoryKey` | Any string | A separate namespace in the current process |
 
 None of these locations depend on the bundle identifier, so your app and its extensions read and write the same values. File and SQLite storage each use their own folder in `KeyValueStorage`, so clearing one never touches the other's data.
@@ -244,7 +244,17 @@ let key = KeychainKey<String>(key: .init(name: "key", accessibility: .afterFirst
                               domain: .init(groupId: "groupId", teamId: "teamId"))
 ```
 
-Items without a domain are saved under the `KeyValueStorage` service. Items with a domain use `KeyValueStorage.<groupId>` by default, or the `service` you provide, for example to read the items that other code already saved:
+To share items with your other apps and extensions, use an App Group they all belong to, or a Keychain Sharing group:
+
+```swift
+// An App Group, written as in the App Groups capability, without a team prefix
+let key = KeychainKey<String>(key: .init(name: "token"), domain: .init(accessGroup: "group.com.company.app"))
+
+// A Keychain Sharing group, which the access group prefixes with your team ID
+let otherKey = KeychainKey<String>(key: .init(name: "token"), domain: .init(groupId: "com.company.shared", teamId: "ABCDE12345"))
+```
+
+Items without a domain are saved under the `KeyValueStorage` service. Items with a domain use `KeyValueStorage.<access group>` by default, or the `service` you provide, for example to read the items that other code already saved:
 
 ```swift
 let key = KeychainKey<String>(key: .init(name: "authToken"),
@@ -319,7 +329,7 @@ However, it's important to note that only the changes made through observable st
 ## Error handling
 
 All the methods of the `UnifiedStorage` are throwing. Even with a correct setup, some errors can't be avoided and are worth handling:
-* `KeychainStorage.Error.os` - for example, `errSecInteractionNotAllowed` while the device is locked and the item is only accessible `.whenUnlocked`.
+* `KeychainStorage.Error.os` - for example, `errSecInteractionNotAllowed` while the device is locked and the item is only accessible `.whenUnlocked`, or `errSecMissingEntitlement` when the domain's access group isn't in the app's entitlements.
 * `FileStorage.Error` - an invalid key, missing permissions, or a file that is protected while the device is locked.
 * `SQLiteStorage.Error.sqlite` - the database file is damaged, or another process kept it busy for longer than a second.
 * `DecodingError` - the stored data doesn't match the key's value type, for example after changing the type of an existing key.

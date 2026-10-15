@@ -487,8 +487,9 @@ final class KeychainStorageTests: XCTestCase {
         // Then
         XCTAssertEqual(group, "b.a")
         XCTAssertEqual(KeychainStorage.defaultService, "KeyValueStorage")
-        XCTAssertEqual(domain.service, "KeyValueStorage.a")
+        XCTAssertEqual(domain.service, "KeyValueStorage.b.a")
         XCTAssertNotEqual(domain.service, KeychainStorage.defaultService)
+        XCTAssertEqual(domain, KeychainStorage.Domain(accessGroup: "b.a"))
         
         // When
         domain = KeychainStorage.Domain(groupId: "a", teamId: "b", service: "custom")
@@ -496,6 +497,17 @@ final class KeychainStorageTests: XCTestCase {
         // Then
         XCTAssertEqual(domain.service, "custom")
         XCTAssertNotEqual(domain, KeychainStorage.Domain(groupId: "a", teamId: "b"))
+    }
+    
+    @KeychainActor
+    func testAppGroupDomain() {
+        // Given
+        let domain = KeychainStorage.Domain(accessGroup: "group.com.company.app")
+        
+        // Then
+        XCTAssertEqual(domain.accessGroup, "group.com.company.app")
+        XCTAssertEqual(domain.service, "KeyValueStorage.group.com.company.app")
+        XCTAssertEqual(KeychainStorage.Domain(accessGroup: "group.com.company.app", service: "custom").service, "custom")
     }
     
     @KeychainActor

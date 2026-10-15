@@ -6,7 +6,7 @@ Version 3 fixes data loss, security and concurrency issues, which required chang
 
 ### Breaking changes
 
-- **Keychain:** items without a domain are saved under the `KeyValueStorage` service instead of the bundle identifier, and items with a domain under `KeyValueStorage.<groupId>` or `Domain.service`.
+- **Keychain:** items without a domain are saved under the `KeyValueStorage` service instead of the bundle identifier, and items with a domain under `KeyValueStorage.<access group>` or `Domain.service`.
 - **Keychain:** a key without accessibility saves its items as `.whenUnlocked`, and every save applies the key's accessibility to the existing item.
 - **Files:** values are stored in `Application Support/<bundle identifier>/KeyValueStorage/Files` and `<group container>/KeyValueStorage/Files`, instead of `Documents/<bundle identifier>` and `<group container>/<bundle identifier>`.
 - **Files:** invalid keys throw `FileStorage.Error.invalidKey`. `failedToSave` is removed, failures are reported as `.other`, and `failedToFindDocumentsDirectory` is renamed to `failedToFindApplicationSupportDirectory`.
@@ -39,7 +39,7 @@ Version 3 fixes data loss, security and concurrency issues, which required chang
 - `RawDataCoder(fallback:)`, the new default coder.
 - `DefaultUnifiedStorageFactory(coder:)` and `ObservableUnifiedStorageFactory(coder:)`.
 - `includingCurrentValue` for `publisher(forKey:)` and `stream(forKey:)`.
-- `KeychainStorage.Domain(groupId:teamId:service:)`, `KeychainStorage.defaultService`, and a public `KeychainWrapper` to use custom services.
+- `KeychainStorage.Domain(accessGroup:service:)`, which also accepts an App Group as the keychain access group, `Domain(groupId:teamId:service:)` for Keychain Sharing groups, `KeychainStorage.defaultService`, and a public `KeychainWrapper` to use custom services.
 - `FileStorage.directoryName` and `SQLiteStorage.directoryName`, the names of their folders in `KeyValueStorage`.
 
 ### Performance
