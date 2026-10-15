@@ -54,11 +54,15 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       name: Checkout
-    - name: Test on the iOS Simulator
+    - name: Choose an iOS Simulator
       run: |
         # The first iPhone of the newest iOS, since the installed simulators differ between runner images
-        DEVICE=$(xcrun simctl list devices available --json | jq -r '.devices | to_entries | map(select(.key | test("SimRuntime\\.iOS-"))) | sort_by(.key | capture("iOS-(?<major>[0-9]+)-(?<minor>[0-9]+)") | [(.major | tonumber), (.minor | tonumber)]) | last | .value | map(select(.name | startswith("iPhone"))) | first | .udid')
-        xcodebuild test -scheme KeyValueStorage -destination "platform=iOS Simulator,id=$DEVICE"
+        echo "DEVICE=$(xcrun simctl list devices available --json | jq -r '.devices | to_entries | map(select(.key | test("SimRuntime\\.iOS-"))) | sort_by(.key | capture("iOS-(?<major>[0-9]+)-(?<minor>[0-9]+)") | [(.major | tonumber), (.minor | tonumber)]) | last | .value | map(select(.name | startswith("iPhone"))) | first | .udid')" >> "$GITHUB_ENV"
+    - name: Test on the iOS Simulator
+      run: xcodebuild test -scheme KeyValueStorage -destination "platform=iOS Simulator,id=$DEVICE"
+    - name: Test the keychain in a host app on the iOS Simulator
+      # Only an app can have the keychain entitlements, so these tests run in Tests/KeychainHost
+      run: xcodebuild test -project Tests/KeychainHost/KeychainHost.xcodeproj -scheme KeychainHost -destination "platform=iOS Simulator,id=$DEVICE"
     - name: Build for tvOS
       run: xcodebuild build -scheme KeyValueStorage -destination "generic/platform=tvOS"
     - name: Build for watchOS
