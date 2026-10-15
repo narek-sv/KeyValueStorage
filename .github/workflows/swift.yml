@@ -10,14 +10,17 @@ jobs:
   build:
     strategy:
         matrix:
-          os: [macos-14]
-          swift: ["5.10"]
+          include:
+            # The oldest supported version, Swift 6.0
+            - os: macos-15
+              xcode: Xcode_16
+            # The latest Xcode on the runners
+            - os: macos-26
+              xcode: Xcode_26.6
     runs-on: ${{ matrix.os }}
+    env:
+      DEVELOPER_DIR: /Applications/${{ matrix.xcode }}.app/Contents/Developer
     steps:
-    - uses: swift-actions/setup-swift@v2
-      name: Set up Swift
-      with:
-        swift-version: ${{ matrix.swift }}
     - name: Get Swift version
       run: swift --version
     - uses: actions/checkout@v4

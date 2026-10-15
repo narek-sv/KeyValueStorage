@@ -7,6 +7,7 @@ Version 3 fixes data loss, security and concurrency issues, which required chang
 ### Breaking changes
 
 - **Installation:** CocoaPods is no longer supported. Add the package with Swift Package Manager.
+- **Installation:** Swift 6.0 (Xcode 16) or later is required, and the library is compiled in the Swift 6 language mode.
 - **Keychain:** items without a domain are saved under the `KeyValueStorage` service instead of the bundle identifier, and items with a domain under `KeyValueStorage.<access group>` or `Domain.service`.
 - **Keychain:** a key without accessibility saves its items as `.whenUnlocked`, and every save applies the key's accessibility to the existing item.
 - **Files:** values are stored in `Application Support/<bundle identifier>/KeyValueStorage/Files` and `<group container>/KeyValueStorage/Files`, instead of `Documents/<bundle identifier>` and `<group container>/<bundle identifier>`.

@@ -1,4 +1,4 @@
-// swift-tools-version:5.10
+// swift-tools-version:6.0
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
@@ -32,22 +32,13 @@ let package = Package(
         .target(
             name: "KeyValueStorage",
             dependencies: [],
-            resources: [.process("Resources/PrivacyInfo.xcprivacy")],
-            swiftSettings: [
-                .enableExperimentalFeature("StrictConcurrency"),
-            ]),
+            resources: [.process("Resources/PrivacyInfo.xcprivacy")]),
         .testTarget(
             name: "KeyValueStorageTests",
-            dependencies: ["KeyValueStorage"],
-            swiftSettings: [
-                .enableExperimentalFeature("StrictConcurrency"),
-            ]),
+            dependencies: ["KeyValueStorage"]),
         .testTarget(
             name: "KeyValueStoragePublicAPITests",
-            dependencies: ["KeyValueStorage"],
-            swiftSettings: [
-                .enableExperimentalFeature("StrictConcurrency"),
-            ]),
+            dependencies: ["KeyValueStorage"]),
         
 //        .target(
 //            name: "KeyValueStorageLegacy",
