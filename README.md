@@ -145,6 +145,15 @@ There's nothing to set up. `KeyValueStorage` includes a privacy manifest that de
 The framework is capable of working with any type that conforms to `Codable` and `Sendable`.
 The concept here is that first you need to declare the key. It contains every piece of information about how and where the value is stored.
 
+***NOTE***! If your target uses `MainActor` as its default actor isolation, which new Xcode 26 projects do, the `Codable` conformances of your types belong to the main actor. `KeyValueStorage` encodes and decodes values off the main actor, so using such a type as a value fails to compile with `main actor-isolated conformance of 'User' to 'Decodable' cannot satisfy conformance requirement for a 'Sendable' type parameter`. Mark the type, or only its conformance, as `nonisolated`:
+
+```swift
+nonisolated struct User: Codable { ... }
+
+// or
+struct User: nonisolated Codable { ... }
+```
+
 First, you need to declare the key. You can use one of the built-in types:
 
 * `UserDefaultsKey`
