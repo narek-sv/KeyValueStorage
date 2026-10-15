@@ -83,6 +83,28 @@ final class PublicAPITests: XCTestCase {
         XCTAssertEqual(domain.service, keychain.serviceName)
         XCTAssertEqual(domain.accessGroup, keychain.accessGroup)
     }
+    
+    func testDomainIsReadableOutsideTheStorageActor() async throws {
+        // Given
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: root)
+        }
+        
+        let keychainDomain = KeychainStorage.Domain(accessGroup: "group.shared")
+        let inMemory = await InMemoryStorage(domain: "publicAPIDomain")
+        let userDefaults = try await UserDefaultsStorage(domain: "publicAPIDomain")
+        let keychain = await KeychainStorage(domain: keychainDomain)
+        let file = await FileStorage(fileManager: .default, root: root)
+        let sqlite = try await SQLiteStorage(fileManager: .default, root: root)
+        
+        // When - Then: read without await, like KeyValueCodingStorage does
+        XCTAssertEqual(inMemory.domain, "publicAPIDomain")
+        XCTAssertEqual(userDefaults.domain, "publicAPIDomain")
+        XCTAssertEqual(keychain.domain, keychainDomain)
+        XCTAssertNil(file.domain)
+        XCTAssertNil(sqlite.domain)
+    }
 }
 
 private final class KeychainWrapperSpy: KeychainWrapper, @unchecked Sendable {

@@ -16,7 +16,7 @@ open class SQLiteStorage: KeyValueDataStorage, @unchecked Sendable {
     // MARK: Properties
     
     private let connection: Connection
-    public let domain: Domain?
+    public nonisolated let domain: Domain?
     
     // MARK: Initializers
     
