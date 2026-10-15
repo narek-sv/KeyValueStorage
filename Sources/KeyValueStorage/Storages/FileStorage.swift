@@ -129,18 +129,36 @@ open class FileStorage: KeyValueDataStorage, @unchecked Sendable {
     
     /// The key is used as the file name, so it must be a single path component that can't escape `root`.
     private func url(for key: Key) throws -> URL {
+        let fileName = Self.fileName(for: key)
         let isValid = !key.isEmpty
             && key != "."
             && key != ".."
             && !key.contains("/")
             && !key.contains("\0")
-            && key.utf8.count <= 255
+            && fileName.utf8.count <= 255
         
         guard isValid else {
             throw Error.invalidKey(key)
         }
         
-        return root.appendingPathComponent(key, isDirectory: false)
+        return root.appendingPathComponent(fileName, isDirectory: false)
+    }
+    
+    /// Percent-encodes `%` and every character that changes under case folding, such as uppercase letters,
+    /// so keys that differ only in case get separate files also on case-insensitive volumes, like the macOS default.
+    /// Other characters stay readable, and the key is normalized first, so canonically equivalent keys share a file.
+    private static func fileName(for key: Key) -> String {
+        var fileName = ""
+        for character in key.precomposedStringWithCanonicalMapping {
+            let string = String(character)
+            if character == "%" || string.folding(options: .caseInsensitive, locale: nil) != string {
+                fileName += string.utf8.map { String(format: "%%%02X", $0) }.joined()
+            } else {
+                fileName += string
+            }
+        }
+        
+        return fileName
     }
     
     private func convert(error: Swift.Error) -> Error {
