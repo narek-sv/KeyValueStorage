@@ -8,7 +8,7 @@
 import Foundation
 @testable import KeyValueStorage
 
-final class KeychainHelperMock: KeychainWrapper {
+final class KeychainHelperMock: KeychainWrapper, @unchecked Sendable {
     var storage = [String: Data]()
     var getError: Error?
     var setError: KeychainWrapperError?

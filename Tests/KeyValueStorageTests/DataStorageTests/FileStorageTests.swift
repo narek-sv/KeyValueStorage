@@ -675,9 +675,7 @@ final class FileStorageTests: XCTestCase {
         
         // Given
         try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: root.path)
-        let file = temporaryURL()
-        try Data().write(to: file)
-        addTeardownBlock { [fileManager] in try? fileManager.removeItem(at: file) }
+        let file = try makeTemporaryFile()
         let blockedStorage = FileStorage(fileManager: fileManager, root: file)
         
         // When
@@ -908,9 +906,7 @@ final class FileStorageTests: XCTestCase {
     @FileActor
     func testErrorCaseRootIsAFile() throws {
         // Given
-        let file = temporaryURL()
-        try Data().write(to: file)
-        addTeardownBlock { [fileManager] in try? fileManager.removeItem(at: file) }
+        let file = try makeTemporaryFile()
         let storage = FileStorage(fileManager: fileManager, root: file)
         
         // When
@@ -983,6 +979,7 @@ final class FileStorageTests: XCTestCase {
     @FileActor
     func testThreadSafety() throws {
         // Given
+        let storage = standardStorage!
         let iterations = 5000
         let promise = expectation(description: "testThreadSafety")
         let group = DispatchGroup()
@@ -997,15 +994,15 @@ final class FileStorageTests: XCTestCase {
                 do {
                     switch operation {
                     case 0:
-                        _ = try await self.standardStorage.fetch(forKey: key)
+                        _ = try await storage.fetch(forKey: key)
                     case 1:
-                        try await self.standardStorage.save(.init(), forKey: key)
+                        try await storage.save(.init(), forKey: key)
                     case 2:
-                        try await self.standardStorage.delete(forKey: key)
+                        try await storage.delete(forKey: key)
                     case 3:
-                        try await self.standardStorage.set(Bool.random() ? nil : .init(), forKey: key)
+                        try await storage.set(Bool.random() ? nil : .init(), forKey: key)
                     case 4:
-                        try await self.standardStorage.clear()
+                        try await storage.clear()
                     default:
                         break
                     }
@@ -1043,6 +1040,17 @@ final class FileStorageTests: XCTestCase {
         }
         
         return root
+    }
+    
+    /// An empty file, removed after the test.
+    private func makeTemporaryFile() throws -> URL {
+        let file = temporaryURL()
+        try Data().write(to: file)
+        addTeardownBlock { [fileManager] in
+            try? fileManager.removeItem(at: file)
+        }
+        
+        return file
     }
     
     private func temporaryURL() -> URL {
