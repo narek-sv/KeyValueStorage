@@ -337,7 +337,7 @@ All the methods of the `UnifiedStorage` are throwing. Even with a correct setup,
 ---
 ## Thread Safety
 
-All built-in types leverage the power of ***Swift Concurrency*** and are thread-safe and protected from race conditions and data racing. However, if you extend the storage with your own ones, it is your responsibility to make them thread-safe.
+All built-in storages and `UnifiedStorage` are thread-safe: you can call them from any thread, task or actor at the same time, without data races, and every operation is atomic. A *sequence* of operations, such as a fetch followed by a save, isn't atomic: another task or process can change the value in between. If you extend the storage with your own ones, it is your responsibility to make them thread-safe.
 
 ---
 ## Tests
