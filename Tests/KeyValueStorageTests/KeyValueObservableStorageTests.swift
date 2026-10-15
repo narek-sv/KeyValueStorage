@@ -41,13 +41,13 @@ final class KeyValueObservableStorageTests: XCTestCase {
         let storage = await KeyValueObservableStorage(storage: InMemoryStorage(), coder: coder)
         let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
         var subscriptions = Set<AnyCancellable>()
-        await storage.publisher(forKey: key).sink(receiveValue: {
+        try await storage.publisher(forKey: key, includingCurrentValue: false).sink(receiveValue: {
             // Then
             XCTAssertEqual(operations[operationIndex1].1, $0)
             operationIndex1 += 1
             publisherExpectation.fulfill()
         }).store(in: &subscriptions)
-        await storage.publisher(forKey: key).sink(receiveValue: {
+        try await storage.publisher(forKey: key, includingCurrentValue: false).sink(receiveValue: {
             // Then
             XCTAssertEqual(operations[operationIndex2].1, $0)
             operationIndex2 += 1
@@ -94,13 +94,13 @@ final class KeyValueObservableStorageTests: XCTestCase {
         let storage2 = await KeyValueObservableStorage(storage: InMemoryStorage(), coder: coder)
         let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
         var subscriptions = Set<AnyCancellable>()
-        await storage1.publisher(forKey: key).sink(receiveValue: {
+        try await storage1.publisher(forKey: key, includingCurrentValue: false).sink(receiveValue: {
             // Then
             XCTAssertEqual(operations[operationIndex1].1, $0)
             operationIndex1 += 1
             publisherExpectation.fulfill()
         }).store(in: &subscriptions)
-        await storage2.publisher(forKey: key).sink(receiveValue: {
+        try await storage2.publisher(forKey: key, includingCurrentValue: false).sink(receiveValue: {
             // Then
             XCTAssertEqual(operations[operationIndex2].1, $0)
             operationIndex2 += 1
@@ -148,13 +148,13 @@ final class KeyValueObservableStorageTests: XCTestCase {
         let storage2 = await KeyValueObservableStorage(storage: InMemoryStorage(domain: "x"), coder: coder)
         let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
         var subscriptions = Set<AnyCancellable>()
-        await storage1.publisher(forKey: key).sink(receiveValue: {
+        try await storage1.publisher(forKey: key, includingCurrentValue: false).sink(receiveValue: {
             // Then
             XCTAssertEqual(operations[operationIndex1].1, $0)
             operationIndex1 += 1
             publisherExpectation.fulfill()
         }).store(in: &subscriptions)
-        await storage2.publisher(forKey: key).sink(receiveValue: {
+        try await storage2.publisher(forKey: key, includingCurrentValue: false).sink(receiveValue: {
             // Then
             XCTAssertEqual(operations[operationIndex2].1, $0)
             operationIndex2 += 1
@@ -211,13 +211,13 @@ final class KeyValueObservableStorageTests: XCTestCase {
         let storage2 = await KeyValueObservableStorage(storage: InMemoryStorage(domain: "other"), coder: coder)
         let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
         var subscriptions = Set<AnyCancellable>()
-        await storage1.publisher(forKey: key).sink(receiveValue: {
+        try await storage1.publisher(forKey: key, includingCurrentValue: false).sink(receiveValue: {
             // Then
             XCTAssertEqual(operations1[operationIndex1].1, $0)
             operationIndex1 += 1
             publisherExpectation.fulfill()
         }).store(in: &subscriptions)
-        await storage2.publisher(forKey: key).sink(receiveValue: {
+        try await storage2.publisher(forKey: key, includingCurrentValue: false).sink(receiveValue: {
             // Then
             XCTAssertEqual(operations2[operationIndex2].1, $0)
             operationIndex2 += 1
@@ -276,7 +276,7 @@ final class KeyValueObservableStorageTests: XCTestCase {
         let storage = await KeyValueObservableStorage(storage: InMemoryStorage(), coder: coder)
         let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
         
-        let stream = await storage.stream(forKey: key)
+        let stream = try await storage.stream(forKey: key, includingCurrentValue: false)
         let task = Task.detached {
             var operationIndex = 0
 
@@ -309,6 +309,211 @@ final class KeyValueObservableStorageTests: XCTestCase {
         
         await wait(to: [publisherExpectation], timeout: 1)
         task.cancel()
+    }
+}
+
+extension KeyValueObservableStorageTests {
+    func testPublisherStartsWithCurrentValue() async throws {
+        // Given
+        let storage = KeyValueObservableStorage(storage: await InMemoryStorage(domain: "currentValue"), coder: coder)
+        let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
+        let values = Recorded<Int?>()
+        try await storage.save(1, forKey: key)
+        
+        // When
+        let subscription = try await storage.publisher(forKey: key).sink { values.append($0) }
+        try await storage.save(2, forKey: key)
+        try await storage.delete(forKey: key)
+        
+        // Then
+        XCTAssertEqual(values.all, [1, 2, nil])
+        subscription.cancel()
+    }
+    
+    func testPublisherStartsWithNilWhenNothingIsStored() async throws {
+        // Given
+        let storage = KeyValueObservableStorage(storage: await InMemoryStorage(domain: "noValue"), coder: coder)
+        let values = Recorded<Int?>()
+        
+        // When
+        let subscription = try await storage.publisher(forKey: KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")).sink { values.append($0) }
+        
+        // Then
+        XCTAssertEqual(values.all, [nil])
+        subscription.cancel()
+    }
+    
+    func testPublisherWithoutCurrentValueEmitsOnlyChanges() async throws {
+        // Given
+        let storage = KeyValueObservableStorage(storage: await InMemoryStorage(domain: "changesOnly"), coder: coder)
+        let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
+        let values = Recorded<Int?>()
+        try await storage.save(1, forKey: key)
+        
+        // When
+        let subscription = try await storage.publisher(forKey: key, includingCurrentValue: false).sink { values.append($0) }
+        
+        // Then
+        XCTAssertEqual(values.all, [])
+        
+        // When
+        try await storage.save(2, forKey: key)
+        
+        // Then
+        XCTAssertEqual(values.all, [2])
+        subscription.cancel()
+    }
+    
+    func testStreamStartsWithCurrentValue() async throws {
+        // Given
+        let storage = KeyValueObservableStorage(storage: await InMemoryStorage(domain: "streamCurrentValue"), coder: coder)
+        let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
+        try await storage.save(5, forKey: key)
+        
+        // When
+        let stream = try await storage.stream(forKey: key)
+        try await storage.save(6, forKey: key)
+        var iterator = stream.makeAsyncIterator()
+        let first = await iterator.next()
+        let second = await iterator.next()
+        
+        // Then
+        XCTAssertEqual(first, 5)
+        XCTAssertEqual(second, 6)
+    }
+    
+    func testValueSavedBeforeSubscribingWinsOverReadValue() async throws {
+        // Given
+        let storage = KeyValueObservableStorage(storage: await InMemoryStorage(domain: "savedBeforeSubscribing"), coder: coder)
+        let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
+        let values = Recorded<Int?>()
+        try await storage.save(1, forKey: key)
+        let publisher = try await storage.publisher(forKey: key)
+        
+        // When
+        try await storage.save(2, forKey: key)
+        let subscription = publisher.sink { values.append($0) }
+        
+        // Then
+        XCTAssertEqual(values.all, [2])
+        subscription.cancel()
+    }
+    
+    func testReadingCurrentValueDoesntNotifyChangeSubscribers() async throws {
+        // Given
+        let storage = KeyValueObservableStorage(storage: await InMemoryStorage(domain: "seeding"), coder: coder)
+        let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
+        let changes = Recorded<Int?>()
+        let values = Recorded<Int?>()
+        try await storage.save(1, forKey: key)
+        let changesSubscription = try await storage.publisher(forKey: key, includingCurrentValue: false).sink { changes.append($0) }
+        
+        // When
+        let valuesSubscription = try await storage.publisher(forKey: key).sink { values.append($0) }
+        
+        // Then
+        XCTAssertEqual(changes.all, [])
+        XCTAssertEqual(values.all, [1])
+        
+        // When
+        try await storage.save(3, forKey: key)
+        
+        // Then
+        XCTAssertEqual(changes.all, [3])
+        XCTAssertEqual(values.all, [1, 3])
+        changesSubscription.cancel()
+        valuesSubscription.cancel()
+    }
+    
+    func testFailureToReadCurrentValueThrows() async throws {
+        // Given
+        let underlyingStorage = await InMemoryStorage(domain: "unreadable")
+        await underlyingStorage.save(Data("not a number".utf8), forKey: "key")
+        let storage = KeyValueObservableStorage(storage: underlyingStorage, coder: coder)
+        let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
+        
+        do {
+            // When
+            _ = try await storage.publisher(forKey: key)
+            XCTFail("Expected error")
+        } catch {
+            // Then
+            XCTAssertTrue(error is DecodingError)
+        }
+        
+        // When - Then
+        _ = try await storage.publisher(forKey: key, includingCurrentValue: false)
+        await underlyingStorage.clear()
+    }
+    
+    func testObservationIsReleasedWhenUnused() async throws {
+        // Given
+        let coder = CountingCoder()
+        let storage = KeyValueObservableStorage(storage: await InMemoryStorage(domain: "release"), coder: coder)
+        let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
+        try await storage.save(1, forKey: key)
+        
+        // When
+        var subscription = try await storage.publisher(forKey: key).sink { _ in }
+        _ = try await storage.publisher(forKey: key)
+        
+        // Then
+        XCTAssertEqual(coder.decodeCalls, 1, "the second publisher shares the observation, so it doesn't read again")
+        
+        // When
+        subscription.cancel()
+        await flushReleases()
+        subscription = try await storage.publisher(forKey: key).sink { _ in }
+        
+        // Then
+        XCTAssertEqual(coder.decodeCalls, 2, "the released observation is created again, so the value is read again")
+        subscription.cancel()
+    }
+    
+    func testStreamReleasesObservationWhenDeallocated() async throws {
+        // Given
+        let coder = CountingCoder()
+        let storage = KeyValueObservableStorage(storage: await InMemoryStorage(domain: "streamRelease"), coder: coder)
+        let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
+        try await storage.save(1, forKey: key)
+        
+        // When
+        do {
+            let stream = try await storage.stream(forKey: key)
+            _ = stream
+        }
+        await flushReleases()
+        _ = try await storage.publisher(forKey: key)
+        
+        // Then
+        XCTAssertEqual(coder.decodeCalls, 2)
+    }
+    
+    // MARK: Helpers
+    
+    /// Releasing hops to the observation actor, so wait until the pending releases ran.
+    private func flushReleases() async {
+        for _ in 0..<3 {
+            await Task { @CodingStorageActor in }.value
+        }
+    }
+}
+
+/// Collects values delivered on any thread.
+private final class Recorded<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values = [Value]()
+    
+    var all: [Value] {
+        lock.lock()
+        defer { lock.unlock() }
+        return values
+    }
+    
+    func append(_ value: Value) {
+        lock.lock()
+        values.append(value)
+        lock.unlock()
     }
 }
 

@@ -127,18 +127,22 @@ public actor UnifiedStorage {
     
     // MARK: - Observation
     
-    public nonisolated func publisher<Storage: KeyValueDataStorage, Value: CodingValue>(forKey key: Key<Storage, Value>)
+    /// - Parameter includingCurrentValue: Whether the publisher first emits the currently stored value, or `nil` if there's none.
+    /// - Returns: `nil` if the storage isn't observable, i.e. it wasn't created by an `ObservableUnifiedStorageFactory`.
+    public nonisolated func publisher<Storage: KeyValueDataStorage, Value: CodingValue>(forKey key: Key<Storage, Value>, includingCurrentValue: Bool = true)
     async throws -> KeyValuePublisher<Value?>? {
         let storage: KeyValueCodingStorage<Storage> = try await storage(for: key.domain)
         let codingKey = KeyValueCodingStorageKey<Storage, Value>(key: key.key)
-        return await (storage as? KeyValueObservableStorage<Storage>)?.publisher(forKey: codingKey)
+        return try await (storage as? KeyValueObservableStorage<Storage>)?.publisher(forKey: codingKey, includingCurrentValue: includingCurrentValue)
     }
     
-    public nonisolated func stream<Storage: KeyValueDataStorage, Value: CodingValue>(forKey key: Key<Storage, Value>)
+    /// - Parameter includingCurrentValue: Whether the stream starts with the currently stored value, or `nil` if there's none.
+    /// - Returns: `nil` if the storage isn't observable, i.e. it wasn't created by an `ObservableUnifiedStorageFactory`.
+    public nonisolated func stream<Storage: KeyValueDataStorage, Value: CodingValue>(forKey key: Key<Storage, Value>, includingCurrentValue: Bool = true)
     async throws -> AsyncStream<Value?>? {
         let storage: KeyValueCodingStorage<Storage> = try await storage(for: key.domain)
         let codingKey = KeyValueCodingStorageKey<Storage, Value>(key: key.key)
-        return await (storage as? KeyValueObservableStorage<Storage>)?.stream(forKey: codingKey)
+        return try await (storage as? KeyValueObservableStorage<Storage>)?.stream(forKey: codingKey, includingCurrentValue: includingCurrentValue)
     }
     
     // MARK: Helpers
