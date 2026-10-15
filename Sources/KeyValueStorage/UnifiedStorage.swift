@@ -67,6 +67,8 @@ open class DefaultUnifiedStorageFactory: UnifiedStorageFactory, @unchecked Senda
     }
 }
 
+/// Creates storages whose keys can be observed with `UnifiedStorage.publisher(forKey:)` and `stream(forKey:)`.
+/// See `KeyValueObservableStorage` for when and where changes are delivered.
 public final class ObservableUnifiedStorageFactory: DefaultUnifiedStorageFactory, @unchecked Sendable {
     public override func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) async throws -> KeyValueCodingStorage<Storage> {
         KeyValueObservableStorage(storage: storage, coder: coder)
@@ -127,6 +129,7 @@ public actor UnifiedStorage {
     
     // MARK: - Observation
     
+    /// Changes are delivered on a background executor; see `KeyValueObservableStorage`.
     /// - Parameter includingCurrentValue: Whether the publisher first emits the currently stored value, or `nil` if there's none.
     /// - Returns: `nil` if the storage isn't observable, i.e. it wasn't created by an `ObservableUnifiedStorageFactory`.
     public nonisolated func publisher<Storage: KeyValueDataStorage, Value: CodingValue>(forKey key: Key<Storage, Value>, includingCurrentValue: Bool = true)
@@ -136,6 +139,7 @@ public actor UnifiedStorage {
         return try await (storage as? KeyValueObservableStorage<Storage>)?.publisher(forKey: codingKey, includingCurrentValue: includingCurrentValue)
     }
     
+    /// The stream resumes on the executor of the task that iterates it; see `KeyValueObservableStorage`.
     /// - Parameter includingCurrentValue: Whether the stream starts with the currently stored value, or `nil` if there's none.
     /// - Returns: `nil` if the storage isn't observable, i.e. it wasn't created by an `ObservableUnifiedStorageFactory`.
     public nonisolated func stream<Storage: KeyValueDataStorage, Value: CodingValue>(forKey key: Key<Storage, Value>, includingCurrentValue: Bool = true)
