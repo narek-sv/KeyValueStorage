@@ -18,11 +18,59 @@ Enhance your development with the state-of-the-art key-value storage framework, 
 | **iOS** | **macOS** | **watchOS** | **tvOS** |
 | 13.0+ | 10.15+ | 6.0+ | 13.0+ |
 
-## Built-in Storage Types
+## Choosing a Storage
 
-| | | | | |
-| --- | --- | --- | --- | --- |
-| **In Memory** | **User Defaults** | **Keychain** | **File System** | **SQLite** |
+| | In Memory | User Defaults | Keychain | File System | SQLite |
+| --- | --- | --- | --- | --- | --- |
+| **Survives app restart** | ❌ | ✅ | ✅ (usually reinstalls too) | ✅ | ✅ |
+| **Suitable for secrets** | ❌ | ❌ | ✅ | ❌ | ❌ |
+| **Shared with your other apps and extensions** | ❌ | ✅ App Group | ✅ Access group | ✅ App Group | ✅ App Group |
+| **Syncs across the user's devices** | ❌ | ❌ | ✅ iCloud Keychain (`isSynchronizable`) | ❌ | ❌ |
+| **Best value size** | Any | Small | Small | Large | Small to medium |
+| **Speed** | Fastest | Very fast | Slowest | Slow for small values, fastest for large ones | Fast for small values |
+| **Across processes** | – | Last write wins per key | Last write wins per item | Atomic replace per file | Transaction per operation |
+
+**In Memory** - temporary state, caches and tests.
+* The fastest storage: no disk access at all.
+* Values are lost when the app quits, and are never shared with other processes.
+
+**User Defaults** - settings, flags and other small values.
+* Very fast reads from an in-memory cache, while writes reach the disk asynchronously.
+* Shared with extensions through an App Group suite.
+* Not for sensitive data: the values are stored unencrypted. Keep it small, since the whole domain is loaded into memory.
+* Clearing removes every value of the domain, including the ones that weren't saved through `KeyValueStorage`.
+
+**Keychain** - tokens, passwords and other secrets.
+* Encrypted by the system, with `accessibility` controlling when the items can be read, for example only while the device is unlocked.
+* Can sync through iCloud Keychain (`isSynchronizable`) and be shared with other apps and extensions through access groups.
+* Every call goes through a system service, so it's the slowest storage. Use it for small secrets only.
+* Items usually survive an app reinstall, and may be unreadable while the device is locked.
+
+**File System** - large values, such as images, videos or cached responses.
+* The fastest storage for large values: every value is written once, directly into its own file.
+* Deleting a value frees its disk space right away.
+* A value can be as large as the free disk space allows.
+* Every value is a separate file, so reading one value never loads the others into memory, and a damaged file affects only its own value.
+* Files are replaced atomically, so a crash never leaves a value half-written.
+* Slow for small values, since every save writes and renames a file.
+* Keys must be valid file names. On macOS, keys that differ only in case share a file.
+
+**SQLite** - many small and medium values, especially when an app and its extensions write the same data.
+* All values of a domain live in one database, which is much faster than separate files for small values. For large values, separate files are faster.
+* Any string is a valid key.
+* Every operation is a transaction across all processes, the strongest guarantee of all storages.
+* A fetch followed by a save isn't atomic across processes, and a write fails if another process keeps the database busy for over a second.
+* Large values are written twice, first to the database's log and then into the database, so they briefly need about twice their size on disk.
+* Deleted values free space inside the database for reuse, but the database file itself doesn't shrink.
+* A single value can't exceed SQLite's size limit, so very large values belong in files.
+
+Quick guide:
+* Secrets → `KeychainKey`
+* Settings and flags → `UserDefaultsKey`
+* Large values, such as images or videos → `FileKey`
+* Many small and medium values, such as records → `SQLiteKey`
+* Data written by both the app and its extensions → `SQLiteKey`
+* Temporary state and tests → `InMemoryKey`
 
 ---
 ## App Groups
