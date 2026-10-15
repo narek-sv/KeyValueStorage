@@ -414,6 +414,43 @@ final class UserDefaultsStorageTests: XCTestCase {
     }
     
     @UserDefaultsActor
+    func testClearCustomUserDefaults() {
+        // Given
+        let suiteName = "custom"
+        let userDefaults = UserDefaults(suiteName: suiteName)!
+        let storage = UserDefaultsStorage(userDefaults: userDefaults)
+        userDefaults.set(Data([0xAA]), forKey: "key")
+        userDefaults.register(defaults: ["registered": Data([0xBB])])
+        standardUserDefaults.set(Data([0xCC]), forKey: "key")
+        
+        // When
+        storage.clear()
+        
+        // Then
+        XCTAssertNil(userDefaults.persistentDomain(forName: suiteName)?["key"])
+        XCTAssertEqual(userDefaults.data(forKey: "registered"), Data([0xBB]))
+        XCTAssertEqual(standardUserDefaults.data(forKey: "key"), Data([0xCC]))
+        
+        userDefaults.removePersistentDomain(forName: suiteName)
+    }
+    
+    @UserDefaultsActor
+    func testClearRemovesValuesNotSavedThroughStorage() {
+        // Given
+        standardUserDefaults.set("value", forKey: "foreign")
+        otherUserDefaults.set("value", forKey: "foreign")
+        let globalKeys = standardUserDefaults.persistentDomain(forName: UserDefaults.globalDomain)?.keys.sorted()
+        
+        // When
+        standardStorage.clear()
+        
+        // Then
+        XCTAssertNil(standardUserDefaults.object(forKey: "foreign"))
+        XCTAssertEqual(otherUserDefaults.string(forKey: "foreign"), "value")
+        XCTAssertEqual(standardUserDefaults.persistentDomain(forName: UserDefaults.globalDomain)?.keys.sorted(), globalKeys)
+    }
+    
+    @UserDefaultsActor
     func testInitCustomUserDefaults() {
         // Given
         let userDefaults = UserDefaults(suiteName: "mock")!

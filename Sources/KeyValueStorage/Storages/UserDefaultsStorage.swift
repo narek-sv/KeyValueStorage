@@ -60,8 +60,15 @@ open class UserDefaultsStorage: KeyValueDataStorage, @unchecked Sendable {
         }
     }
     
+    /// Removes every value of this storage's `UserDefaults` domain, including values that weren't saved through this storage.
+    ///
+    /// The keys are removed one by one instead of with `removePersistentDomain(forName:)`, because an injected
+    /// `UserDefaults` doesn't expose its suite name. Removing a key affects only the instance's own domain,
+    /// so values of other domains in the search list, such as the global or registration domain, are kept.
     public func clear() {
-        userDefaults.removePersistentDomain(forName: domain ?? Self.defaultGroup)
+        for key in userDefaults.dictionaryRepresentation().keys {
+            userDefaults.removeObject(forKey: key)
+        }
     }
 }
 
