@@ -12,13 +12,16 @@ jobs:
         # Finish every job, so a failure on one Xcode doesn't hide the result of another
         fail-fast: false
         matrix:
+          # One Xcode for each Swift version, from the oldest supported one to the latest on the runners
           include:
-            # The oldest supported version, Swift 6.0
             - os: macos-15
-              xcode: Xcode_16
-            # The latest Xcode on the runners
+              xcode: Xcode_16       # Swift 6.0
+            - os: macos-15
+              xcode: Xcode_16.4     # Swift 6.1
             - os: macos-26
-              xcode: Xcode_26.6
+              xcode: Xcode_26.0.1   # Swift 6.2
+            - os: macos-26
+              xcode: Xcode_26.6     # Swift 6.3
     runs-on: ${{ matrix.os }}
     env:
       DEVELOPER_DIR: /Applications/${{ matrix.xcode }}.app/Contents/Developer
@@ -39,3 +42,24 @@ jobs:
       run: cat ~/Library/Logs/DiagnosticReports/*.ips 2>/dev/null || echo "No crash reports"
     - name: Upload to Codecov
       uses: codecov/codecov-action@v3
+
+  platforms:
+    # The other platforms with the latest Xcode; the iOS Simulator follows iOS rules, such as for file names
+    runs-on: macos-26
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+    - uses: actions/checkout@v4
+      name: Checkout
+    - name: Test on the iOS Simulator
+      run: |
+        # The first iPhone of the newest iOS, since the installed simulators differ between runner images
+        DEVICE=$(xcrun simctl list devices available --json | jq -r '.devices | to_entries | map(select(.key | test("SimRuntime\\.iOS-"))) | sort_by(.key | capture("iOS-(?<major>[0-9]+)-(?<minor>[0-9]+)") | [(.major | tonumber), (.minor | tonumber)]) | last | .value | map(select(.name | startswith("iPhone"))) | first | .udid')
+        xcodebuild test -scheme KeyValueStorage -destination "platform=iOS Simulator,id=$DEVICE"
+    - name: Build for tvOS
+      run: xcodebuild build -scheme KeyValueStorage -destination "generic/platform=tvOS"
+    - name: Build for watchOS
+      run: xcodebuild build -scheme KeyValueStorage -destination "generic/platform=watchOS"
+    - name: Show crash reports
+      if: failure()
+      run: cat ~/Library/Logs/DiagnosticReports/*.ips 2>/dev/null || echo "No crash reports"
