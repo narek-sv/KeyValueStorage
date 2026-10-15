@@ -35,27 +35,76 @@ final class DataCodersTests: XCTestCase {
         
     }
     
-    func testXMLCoding() async throws {
+    func testPropertyListCoding() async throws {
         // Given
-        let coder = XMLDataCoder()
-        let codable = ["rootObject"]
+        let coder = PropertyListDataCoder()
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
         
         // When
-        let encoded = try await coder.encode(codable)
+        let decodedString = try await coder.decode(coder.encode("rootObject")) as String
+        let decodedInt = try await coder.decode(coder.encode(42)) as Int
+        let decodedBool = try await coder.decode(coder.encode(true)) as Bool
+        let decodedDate = try await coder.decode(coder.encode(date)) as Date
+        let decodedData = try await coder.decode(coder.encode(Data([0xAA]))) as Data
+        let decodedArray = try await coder.decode(coder.encode(["rootObject"])) as [String]
+        let decodedDictionary = try await coder.decode(coder.encode(["key": 1])) as [String: Int]
         
         // Then
-        XCTAssertFalse(encoded.isEmpty)
+        XCTAssertEqual(decodedString, "rootObject")
+        XCTAssertEqual(decodedInt, 42)
+        XCTAssertEqual(decodedBool, true)
+        XCTAssertEqual(decodedDate, date)
+        XCTAssertEqual(decodedData, Data([0xAA]))
+        XCTAssertEqual(decodedArray, ["rootObject"])
+        XCTAssertEqual(decodedDictionary, ["key": 1])
+    }
+    
+    func testPropertyListFormat() async throws {
+        // Given
+        let encoder = PropertyListEncoder()
+        encoder.outputFormat = .xml
+        let binaryCoder = PropertyListDataCoder()
+        let xmlCoder = PropertyListDataCoder(encoder: encoder)
         
         // When
-        let decoded = try await coder.decode(encoded) as [String]
+        let binary = try await binaryCoder.encode("rootObject")
+        let xml = try await xmlCoder.encode("rootObject")
+        let decoded = try await binaryCoder.decode(xml) as String
         
         // Then
-        XCTAssertEqual(decoded, codable)
+        XCTAssertTrue(binary.starts(with: Data("bplist00".utf8)))
+        XCTAssertTrue(String(decoding: xml, as: UTF8.self).contains("<string>rootObject</string>"))
+        XCTAssertEqual(decoded, "rootObject")
+    }
+    
+    func testPropertyListDecodingRequiresExactlyOneValue() async throws {
+        // Given
+        let coder = PropertyListDataCoder()
+        let encoder = PropertyListEncoder()
         
-        // When - Then
-        do {
-            _ = try await coder.encode("rootObject")
-            XCTFail("XML parser cant decode root objects")
-        } catch { }
+        for values in [[String](), ["a", "b"]] {
+            do {
+                // When
+                _ = try await coder.decode(encoder.encode(values)) as String
+                XCTFail("Expected error")
+            } catch DecodingError.dataCorrupted {
+                // Then
+            } catch {
+                XCTFail("Unexpected error \(error)")
+            }
+        }
+    }
+    
+    func testPropertyListCodingStorage() async throws {
+        // Given
+        let storage = await KeyValueCodingStorage(storage: InMemoryStorage(domain: "propertyList"), coder: PropertyListDataCoder())
+        let key = KeyValueCodingStorageKey<InMemoryStorage, String>(key: "key")
+        
+        // When
+        try await storage.save("Alice", forKey: key)
+        
+        // Then
+        let fetched = try await storage.fetch(forKey: key)
+        XCTAssertEqual(fetched, "Alice")
     }
 }
