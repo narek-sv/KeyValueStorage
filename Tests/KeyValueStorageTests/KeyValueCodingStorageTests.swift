@@ -134,6 +134,39 @@ final class KeyValueCodingStorageTests: XCTestCase {
         XCTAssertNil(InMemoryStorage.container[nil]?["key4"])
     }
     
+    func testFetchDecodesTheKeyValueType() async throws {
+        // Given
+        let coder = TypeRecordingCoder()
+        let storage = KeyValueCodingStorage(storage: await InMemoryStorage(domain: "decodedType"), coder: coder)
+        let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
+        try await storage.save(42, forKey: key)
+        
+        // When
+        let fetched = try await storage.fetch(forKey: key)
+        
+        // Then
+        XCTAssertEqual(fetched, 42)
+        XCTAssertEqual(coder.decodedTypes, [ObjectIdentifier(Int.self)])
+    }
+    
+    func testFetchingNullForNonOptionalValueThrows() async throws {
+        // Given
+        let underlyingStorage = await InMemoryStorage(domain: "null")
+        await underlyingStorage.save(Data("null".utf8), forKey: "key")
+        let storage = KeyValueCodingStorage(storage: underlyingStorage, coder: JSONDataCoder())
+        
+        do {
+            // When
+            _ = try await storage.fetch(forKey: KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key"))
+            XCTFail("Expected error")
+        } catch {
+            // Then
+            guard case DecodingError.valueNotFound = error else {
+                return XCTFail("Unexpected error \(error)")
+            }
+        }
+    }
+    
     func testKeyHashing() {
         // Given
         let key = KeyValueCodingStorageKey<InMemoryStorage, String>(key: "key")
@@ -310,5 +343,20 @@ extension KeyValueCodingStorageTests {
     
     struct Inner: Codable, Equatable {
         let id: UUID
+    }
+}
+
+/// Records the types it's asked to decode.
+private final class TypeRecordingCoder: DataCoder, @unchecked Sendable {
+    private(set) var decodedTypes = [ObjectIdentifier]()
+    private let coder = JSONDataCoder()
+    
+    func encode<Value: CodingValue>(_ value: Value) async throws -> Data {
+        try coder.encode(value)
+    }
+    
+    func decode<Value: CodingValue>(_ data: Data) async throws -> Value {
+        decodedTypes.append(ObjectIdentifier(Value.self))
+        return try coder.decode(data)
     }
 }
