@@ -20,24 +20,31 @@ open class FileStorage: KeyValueDataStorage, @unchecked Sendable {
     
     // MARK: Initializers
     
+    /// Stores files in `Application Support/<bundle identifier>/KeyValueStorage`.
+    /// Application Support isn't visible to the user, the bundle identifier keeps non-sandboxed macOS apps apart,
+    /// and the dedicated folder keeps `clear()` away from the app's own files.
     public required init() throws {
         let fileManager = FileManager.default
-        guard let url = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else {
-            throw Error.failedToFindDocumentsDirectory
+        guard let url = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            throw Error.failedToFindApplicationSupportDirectory
         }
         
-        self.root = url.appendingPathComponent(Self.defaultGroup, isDirectory: true)
+        self.root = url
+            .appendingPathComponent(Self.defaultGroup, isDirectory: true)
+            .appendingPathComponent(Self.directoryName, isDirectory: true)
         self.domain = nil
         self.fileManager = fileManager
     }
     
+    /// Stores files in `<app group container>/KeyValueStorage`.
+    /// The path doesn't depend on the bundle identifier, so the app and its extensions share the same files.
     public required init(domain: Domain) throws {
         let fileManager = FileManager.default
         guard let url = fileManager.containerURL(forSecurityApplicationGroupIdentifier: domain) else {
             throw Error.failedToInitSharedDirectory
         }
         
-        self.root = url.appendingPathComponent(Self.defaultGroup, isDirectory: true)
+        self.root = url.appendingPathComponent(Self.directoryName, isDirectory: true)
         self.domain = domain
         self.fileManager = fileManager
     }
@@ -148,12 +155,15 @@ open class FileStorage: KeyValueDataStorage, @unchecked Sendable {
 // MARK: - Associated Types
 
 public extension FileStorage {
+    /// The name of the folder that holds the stored files.
+    nonisolated static let directoryName = "KeyValueStorage"
+    
     typealias Key = String
     typealias Domain = String
     
     enum Error: KeyValueDataStorageError {
         case failedToInitSharedDirectory
-        case failedToFindDocumentsDirectory
+        case failedToFindApplicationSupportDirectory
         case invalidKey(String)
         case other(Swift.Error)
     }
