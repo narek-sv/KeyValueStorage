@@ -38,10 +38,16 @@ let package = Package(
             ]),
         .testTarget(
             name: "KeyValueStorageTests",
-            dependencies: ["KeyValueStorage"]),
+            dependencies: ["KeyValueStorage"],
+            swiftSettings: [
+                .enableExperimentalFeature("StrictConcurrency"),
+            ]),
         .testTarget(
             name: "KeyValueStoragePublicAPITests",
-            dependencies: ["KeyValueStorage"]),
+            dependencies: ["KeyValueStorage"],
+            swiftSettings: [
+                .enableExperimentalFeature("StrictConcurrency"),
+            ]),
         
 //        .target(
 //            name: "KeyValueStorageLegacy",

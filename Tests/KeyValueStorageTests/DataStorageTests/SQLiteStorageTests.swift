@@ -18,7 +18,7 @@ final class SQLiteStorageTests: XCTestCase {
     var otherStorage: SQLiteStorage!
     
     @SQLiteActor
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         standardStorage = try SQLiteStorage()
         otherStorage = try SQLiteStorage(domain: Self.otherStorageDomain)
         try standardStorage.clear()
@@ -425,8 +425,9 @@ final class SQLiteStorageTests: XCTestCase {
     /// A not yet created directory, removed after the test.
     private func makeTemporaryRoot() -> URL {
         let root = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        addTeardownBlock { [fileManager] in
-            try? fileManager.removeItem(at: root)
+        // FileManager isn't Sendable, so the block can't capture it
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: root)
         }
         
         return root
@@ -436,8 +437,8 @@ final class SQLiteStorageTests: XCTestCase {
     private func makeTemporaryFile() throws -> URL {
         let file = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try Data().write(to: file)
-        addTeardownBlock { [fileManager] in
-            try? fileManager.removeItem(at: file)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: file)
         }
         
         return file
