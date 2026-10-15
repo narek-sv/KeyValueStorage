@@ -15,7 +15,7 @@ final class KeychainHelperMock: KeychainWrapper {
     var removeError: KeychainWrapperError?
     var removeAllError: KeychainWrapperError?
 
-    override func get(forKey key: String, withAccessibility accessibility: KeychainAccessibility? = nil, isSynchronizable: Bool = false) throws -> Data? {
+    override func get(forKey key: String, isSynchronizable: Bool = false) throws -> Data? {
         if let getError {
             throw getError
         }
@@ -31,7 +31,7 @@ final class KeychainHelperMock: KeychainWrapper {
         return storage[key] = value
     }
     
-    override func remove(forKey key: String, withAccessibility accessibility: KeychainAccessibility? = nil, isSynchronizable: Bool = false) throws {
+    override func remove(forKey key: String, isSynchronizable: Bool = false) throws {
         if let removeError {
             throw removeError
         }

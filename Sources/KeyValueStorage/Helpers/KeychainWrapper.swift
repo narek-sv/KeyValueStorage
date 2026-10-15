@@ -26,10 +26,8 @@ open class KeychainWrapper: @unchecked Sendable {
         self.accessGroup = accessGroup
     }
     
-    func get(forKey key: String,
-             withAccessibility accessibility: KeychainAccessibility? = nil,
-             isSynchronizable: Bool = false) throws -> Data? {
-        var keychainQueryDictionary = query(forKey: key, withAccessibility: accessibility, isSynchronizable: isSynchronizable)
+    func get(forKey key: String, isSynchronizable: Bool = false) throws -> Data? {
+        var keychainQueryDictionary = query(forKey: key, isSynchronizable: isSynchronizable)
         keychainQueryDictionary[Self.matchLimit] = kSecMatchLimitOne
         keychainQueryDictionary[Self.returnData] = kCFBooleanTrue
         
@@ -49,21 +47,19 @@ open class KeychainWrapper: @unchecked Sendable {
              forKey key: String,
              withAccessibility accessibility: KeychainAccessibility? = nil,
              isSynchronizable: Bool = false) throws {
-        var keychainQueryDictionary = query(forKey: key, withAccessibility: accessibility, isSynchronizable: isSynchronizable)
-        keychainQueryDictionary[Self.valueData] = value
+        let keychainQueryDictionary = query(forKey: key, isSynchronizable: isSynchronizable)
+        let attributes = self.attributes(for: value, withAccessibility: accessibility)
         
-        let status = SecItemAdd(keychainQueryDictionary as CFDictionary, nil)
+        let status = SecItemAdd(keychainQueryDictionary.merging(attributes) { $1 } as CFDictionary, nil)
         if status == errSecDuplicateItem {
-            try update(value, query: keychainQueryDictionary)
+            try update(attributes, query: keychainQueryDictionary)
         } else if status != errSecSuccess {
             throw KeychainWrapperError.status(status)
         }
     }
 
-    func remove(forKey key: String,
-                withAccessibility accessibility: KeychainAccessibility? = nil,
-                isSynchronizable: Bool = false) throws {
-        let keychainQueryDictionary = query(forKey: key, withAccessibility: accessibility, isSynchronizable: isSynchronizable)
+    func remove(forKey key: String, isSynchronizable: Bool = false) throws {
+        let keychainQueryDictionary = query(forKey: key, isSynchronizable: isSynchronizable)
         
         let status = SecItemDelete(keychainQueryDictionary as CFDictionary)
         if status != errSecSuccess && status != errSecItemNotFound {
@@ -72,9 +68,7 @@ open class KeychainWrapper: @unchecked Sendable {
     }
     
     func removeAll() throws {
-        var keychainQueryDictionary: [String: Any] = [Self.class: kSecClassGenericPassword]
-        keychainQueryDictionary[Self.attrService] = serviceName
-        keychainQueryDictionary[Self.attrAccessGroup] = accessGroup
+        let keychainQueryDictionary = removeAllQuery()
         
         let status = SecItemDelete(keychainQueryDictionary as CFDictionary)
         if status != errSecSuccess && status != errSecItemNotFound {
@@ -84,25 +78,42 @@ open class KeychainWrapper: @unchecked Sendable {
     
     // MARK: - Helpers
     
-    private func update(_ value: Data, query: [String: Any]) throws {
-        let updateDictionary = [Self.valueData: value]
-        
-        let status = SecItemUpdate(query as CFDictionary, updateDictionary as CFDictionary)
+    private func update(_ attributes: [String: Any], query: [String: Any]) throws {
+        let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
         if status != errSecSuccess {
             throw KeychainWrapperError.status(status)
         }
     }
     
-    private func query(forKey key: String,
-                       withAccessibility accessibility: KeychainAccessibility? = nil,
-                       isSynchronizable: Bool = false) -> [String: Any] {
-        var keychainQueryDictionary: [String: Any] = [Self.class: kSecClassGenericPassword]
-        keychainQueryDictionary[Self.attrService] = serviceName
-        keychainQueryDictionary[Self.attrAccessible] = accessibility?.key
-        keychainQueryDictionary[Self.attrAccessGroup] = accessGroup
-        keychainQueryDictionary[Self.useDataProtection] = kCFBooleanTrue
+    /// Identifies a single item. Accessibility is deliberately not part of the query:
+    /// it is not part of an item's identity, so including it would hide items saved with a different accessibility.
+    func query(forKey key: String, isSynchronizable: Bool = false) -> [String: Any] {
+        var keychainQueryDictionary = baseQuery()
         keychainQueryDictionary[Self.attrAccount] = key
         keychainQueryDictionary[Self.attrSynchronizable] = isSynchronizable ? kCFBooleanTrue : kCFBooleanFalse
+        return keychainQueryDictionary
+    }
+    
+    /// Matches every item of this service, both synchronizable and not.
+    func removeAllQuery() -> [String: Any] {
+        var keychainQueryDictionary = baseQuery()
+        keychainQueryDictionary[Self.attrSynchronizable] = kSecAttrSynchronizableAny
+        return keychainQueryDictionary
+    }
+    
+    /// Values applied on both add and update, so a changed accessibility is migrated on the next save.
+    func attributes(for value: Data, withAccessibility accessibility: KeychainAccessibility?) -> [String: Any] {
+        [
+            Self.valueData: value,
+            Self.attrAccessible: (accessibility ?? .whenUnlocked).key
+        ]
+    }
+    
+    private func baseQuery() -> [String: Any] {
+        var keychainQueryDictionary: [String: Any] = [Self.class: kSecClassGenericPassword]
+        keychainQueryDictionary[Self.attrService] = serviceName
+        keychainQueryDictionary[Self.attrAccessGroup] = accessGroup
+        keychainQueryDictionary[Self.useDataProtection] = kCFBooleanTrue
         return keychainQueryDictionary
     }
 }

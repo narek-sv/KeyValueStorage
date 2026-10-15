@@ -16,7 +16,7 @@ final class KeychainStorageTests: XCTestCase {
     var standardStorage: KeychainStorage!
     var otherStorage: KeychainStorage!
     
-    #if SWIFT_PACKAGE_CAN_ATTACH_ENTITLRMENTS
+    #if SWIFT_PACKAGE_CAN_ATTACH_ENTITLEMENTS
     
     @KeychainActor
     override func setUpWithError() throws {
@@ -513,6 +513,57 @@ final class KeychainStorageTests: XCTestCase {
         
         // Then
         XCTAssertNil(storage.domain)
+    }
+    
+    func testWrapperItemQueryIgnoresAccessibility() {
+        // Given
+        let keychain = KeychainWrapper(serviceName: "service", accessGroup: "group")
+        
+        // When
+        let query = keychain.query(forKey: "key", isSynchronizable: true)
+        
+        // Then
+        XCTAssertNil(query[kSecAttrAccessible as String])
+        XCTAssertNil(query[kSecValueData as String])
+        XCTAssertEqual(query[kSecAttrAccount as String] as? String, "key")
+        XCTAssertEqual(query[kSecAttrService as String] as? String, "service")
+        XCTAssertEqual(query[kSecAttrAccessGroup as String] as? String, "group")
+        XCTAssertEqual(query[kSecAttrSynchronizable as String] as? Bool, true)
+        XCTAssertEqual(query[kSecUseDataProtectionKeychain as String] as? Bool, true)
+    }
+    
+    func testWrapperAttributesApplyAccessibility() {
+        // Given
+        let keychain = KeychainWrapper(serviceName: "service")
+        let data = Data([0xAA, 0xBB, 0xCC])
+        
+        // When
+        var attributes = keychain.attributes(for: data, withAccessibility: .afterFirstUnlock)
+        
+        // Then
+        XCTAssertEqual(attributes[kSecValueData as String] as? Data, data)
+        XCTAssertEqual(attributes[kSecAttrAccessible as String] as? String, kSecAttrAccessibleAfterFirstUnlock as String)
+        
+        // When
+        attributes = keychain.attributes(for: data, withAccessibility: nil)
+        
+        // Then
+        XCTAssertEqual(attributes[kSecAttrAccessible as String] as? String, kSecAttrAccessibleWhenUnlocked as String)
+    }
+    
+    func testWrapperRemoveAllQueryMatchesEveryItemOfTheService() {
+        // Given
+        let keychain = KeychainWrapper(serviceName: "service", accessGroup: "group")
+        
+        // When
+        let query = keychain.removeAllQuery()
+        
+        // Then
+        XCTAssertNil(query[kSecAttrAccount as String])
+        XCTAssertEqual(query[kSecAttrService as String] as? String, "service")
+        XCTAssertEqual(query[kSecAttrAccessGroup as String] as? String, "group")
+        XCTAssertEqual(query[kSecAttrSynchronizable as String] as? String, kSecAttrSynchronizableAny as String)
+        XCTAssertEqual(query[kSecUseDataProtectionKeychain as String] as? Bool, true)
     }
     
     @KeychainActor

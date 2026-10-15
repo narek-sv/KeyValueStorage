@@ -38,7 +38,7 @@ open class KeychainStorage: KeyValueDataStorage, @unchecked Sendable {
     
     public func fetch(forKey key: Key) throws -> Data? {
         try execute {
-            try keychain.get(forKey: key.name, withAccessibility: key.accessibility, isSynchronizable: key.isSynchronizable)
+            try keychain.get(forKey: key.name, isSynchronizable: key.isSynchronizable)
         }
     }
     
@@ -50,7 +50,7 @@ open class KeychainStorage: KeyValueDataStorage, @unchecked Sendable {
     
     public func delete(forKey key: Key) throws {
         try execute {
-            try keychain.remove(forKey: key.name, withAccessibility: key.accessibility, isSynchronizable: key.isSynchronizable)
+            try keychain.remove(forKey: key.name, isSynchronizable: key.isSynchronizable)
         }
     }
     
