@@ -35,6 +35,7 @@ Version 3 fixes data loss, security and concurrency issues, which required chang
 
 ### Added
 
+- `SQLiteStorage` and `SQLiteKey`, which keep all values of a domain in one SQLite database that an app and its extensions can use at the same time.
 - `RawDataCoder(fallback:)`, the new default coder.
 - `DefaultUnifiedStorageFactory(coder:)` and `ObservableUnifiedStorageFactory(coder:)`.
 - `includingCurrentValue` for `publisher(forKey:)` and `stream(forKey:)`.
