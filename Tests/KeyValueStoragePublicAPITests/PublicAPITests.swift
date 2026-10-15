@@ -69,7 +69,7 @@ final class PublicAPITests: XCTestCase {
     }
     
     @KeychainActor
-    func testKeychainIsConfigurable() {
+    func testKeychainIsConfigurable() async {
         // Given
         let keychain = KeychainWrapperSpy(serviceName: "existing.service", accessGroup: "TEAMID.group.shared")
         let domain = KeychainStorage.Domain(groupId: "group.shared", teamId: "TEAMID", service: "existing.service")

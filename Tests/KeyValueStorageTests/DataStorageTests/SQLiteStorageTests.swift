@@ -26,13 +26,13 @@ final class SQLiteStorageTests: XCTestCase {
     }
     
     @SQLiteActor
-    func testSQLiteDomain() {
+    func testSQLiteDomain() async {
         XCTAssertEqual(standardStorage.domain, nil)
         XCTAssertEqual(otherStorage.domain, Self.otherStorageDomain)
     }
     
     @SQLiteActor
-    func testSQLiteFetch() throws {
+    func testSQLiteFetch() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -57,7 +57,7 @@ final class SQLiteStorageTests: XCTestCase {
     }
     
     @SQLiteActor
-    func testSQLiteSave() throws {
+    func testSQLiteSave() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -73,7 +73,7 @@ final class SQLiteStorageTests: XCTestCase {
     }
     
     @SQLiteActor
-    func testSQLiteDelete() throws {
+    func testSQLiteDelete() async throws {
         // Given
         let data = Data([0xAA, 0xBB, 0xCC])
         try standardStorage.save(data, forKey: "key1")
@@ -90,7 +90,7 @@ final class SQLiteStorageTests: XCTestCase {
     }
     
     @SQLiteActor
-    func testSQLiteSet() throws {
+    func testSQLiteSet() async throws {
         // Given
         let data = Data([0xAA, 0xBB, 0xCC])
         
@@ -109,7 +109,7 @@ final class SQLiteStorageTests: XCTestCase {
     }
     
     @SQLiteActor
-    func testSQLiteDifferentDomains() throws {
+    func testSQLiteDifferentDomains() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -131,7 +131,7 @@ final class SQLiteStorageTests: XCTestCase {
     }
     
     @SQLiteActor
-    func testSQLiteClear() throws {
+    func testSQLiteClear() async throws {
         // Given
         let data = Data([0xAA, 0xBB, 0xCC])
         try standardStorage.save(data, forKey: "key1")
@@ -154,7 +154,7 @@ final class SQLiteStorageTests: XCTestCase {
     }
     
     @SQLiteActor
-    func testDefaultLocation() throws {
+    func testDefaultLocation() async throws {
         // Given
         let expectedPath = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(Bundle.main.bundleIdentifier!)
@@ -173,7 +173,7 @@ final class SQLiteStorageTests: XCTestCase {
     }
     
     @SQLiteActor
-    func testSharedLocationDoesNotDependOnBundleIdentifier() throws {
+    func testSharedLocationDoesNotDependOnBundleIdentifier() async throws {
         // Given
         let expectedPath = fileManager.containerURL(forSecurityApplicationGroupIdentifier: Self.otherStorageDomain)!
             .appendingPathComponent("KeyValueStorage")
@@ -226,7 +226,7 @@ final class SQLiteStorageTests: XCTestCase {
     }
     
     @SQLiteActor
-    func testValuesPersistAcrossInstances() throws {
+    func testValuesPersistAcrossInstances() async throws {
         // Given
         let root = makeTemporaryRoot()
         var storage: SQLiteStorage? = try SQLiteStorage(fileManager: fileManager, root: root)
@@ -242,7 +242,7 @@ final class SQLiteStorageTests: XCTestCase {
     }
     
     @SQLiteActor
-    func testInstancesSharingDatabaseSeeEachOthersChanges() throws {
+    func testInstancesSharingDatabaseSeeEachOthersChanges() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -272,7 +272,7 @@ final class SQLiteStorageTests: XCTestCase {
     }
     
     @SQLiteActor
-    func testValueRoundTrips() throws {
+    func testValueRoundTrips() async throws {
         // Given
         let values = [
             Data(),
@@ -296,7 +296,7 @@ final class SQLiteStorageTests: XCTestCase {
     }
     
     @SQLiteActor
-    func testAnyKeyIsValid() throws {
+    func testAnyKeyIsValid() async throws {
         // Given
         let keys = ["", ".", "..", "../escaped", "a/b", "a\0b", "a", "Key", "key", "ключ 🔑", String(repeating: "ж", count: 10_000)]
         
@@ -343,7 +343,7 @@ final class SQLiteStorageTests: XCTestCase {
     }
     
     @SQLiteActor
-    func testErrorCaseRootIsAFile() throws {
+    func testErrorCaseRootIsAFile() async throws {
         // Given
         let file = try makeTemporaryFile()
         
@@ -357,7 +357,7 @@ final class SQLiteStorageTests: XCTestCase {
     }
     
     @SQLiteActor
-    func testErrorCaseCorruptDatabase() throws {
+    func testErrorCaseCorruptDatabase() async throws {
         // Given
         let root = makeTemporaryRoot()
         try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
@@ -376,7 +376,7 @@ final class SQLiteStorageTests: XCTestCase {
     }
     
     @SQLiteActor
-    func testThreadSafety() throws {
+    func testThreadSafety() async throws {
         // Given
         let storage = standardStorage!
         let iterations = 5000
@@ -385,7 +385,8 @@ final class SQLiteStorageTests: XCTestCase {
         for _ in 1...iterations { group.enter() }
         
         // When
-        DispatchQueue.concurrentPerform(iterations: iterations) { number in
+        // The closures run on other threads, so they mustn't be isolated to the actor
+        DispatchQueue.concurrentPerform(iterations: iterations) { @Sendable number in
             let operation = Int.random(in: 0...4)
             let key = "\(Int.random(in: 1000...9999))"
             
@@ -413,11 +414,11 @@ final class SQLiteStorageTests: XCTestCase {
             }
         }
         
-        group.notify(queue: .main) {
+        group.notify(queue: .main) { @Sendable in
             promise.fulfill()
         }
         
-        wait(for: [promise], timeout: 5)
+        await fulfillment(of: [promise], timeout: 5)
     }
     
     // MARK: Helpers

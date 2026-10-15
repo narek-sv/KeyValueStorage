@@ -23,13 +23,13 @@ final class InMemoryStorageTests: XCTestCase {
     }
     
     @InMemoryActor
-    func testInMemoryDomain() {
+    func testInMemoryDomain() async {
         XCTAssertEqual(standardStorage.domain, nil)
         XCTAssertEqual(otherStorage.domain, Self.otherStorageDomain)
     }
     
     @InMemoryActor
-    func testInMemoryFetch() {
+    func testInMemoryFetch() async {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -91,7 +91,7 @@ final class InMemoryStorageTests: XCTestCase {
     }
     
     @InMemoryActor
-    func testInMemoryFetchDifferentDomains() {
+    func testInMemoryFetchDifferentDomains() async {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -152,7 +152,7 @@ final class InMemoryStorageTests: XCTestCase {
     }
     
     @InMemoryActor
-    func testInMemorySave() {
+    func testInMemorySave() async {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -182,7 +182,7 @@ final class InMemoryStorageTests: XCTestCase {
     }
     
     @InMemoryActor
-    func testInMemorySaveDifferentDomains() {
+    func testInMemorySaveDifferentDomains() async {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -211,7 +211,7 @@ final class InMemoryStorageTests: XCTestCase {
     }
     
     @InMemoryActor
-    func testInMemoryDelete() {
+    func testInMemoryDelete() async {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -242,7 +242,7 @@ final class InMemoryStorageTests: XCTestCase {
     }
     
     @InMemoryActor
-    func testInMemoryDeleteDifferentDomains() {
+    func testInMemoryDeleteDifferentDomains() async {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -272,7 +272,7 @@ final class InMemoryStorageTests: XCTestCase {
     }
     
     @InMemoryActor
-    func testInMemorySet() {
+    func testInMemorySet() async {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -310,7 +310,7 @@ final class InMemoryStorageTests: XCTestCase {
     }
     
     @InMemoryActor
-    func testInMemorySetDifferentDomains() {
+    func testInMemorySetDifferentDomains() async {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -347,7 +347,7 @@ final class InMemoryStorageTests: XCTestCase {
     }
     
     @InMemoryActor
-    func testInMemoryClear() {
+    func testInMemoryClear() async {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -390,7 +390,7 @@ final class InMemoryStorageTests: XCTestCase {
     }
     
     @InMemoryActor
-    func testThreadSafety() {
+    func testThreadSafety() async {
         // Given
         let storage = standardStorage!
         let iterations = 5000
@@ -399,7 +399,8 @@ final class InMemoryStorageTests: XCTestCase {
         for _ in 1...iterations { group.enter() }
         
         // When
-        DispatchQueue.concurrentPerform(iterations: iterations) { number in
+        // The closures run on other threads, so they mustn't be isolated to the actor
+        DispatchQueue.concurrentPerform(iterations: iterations) { @Sendable number in
             let operation = Int.random(in: 0...4)
             let key = "\(Int.random(in: 1000...9999))"
             
@@ -423,10 +424,10 @@ final class InMemoryStorageTests: XCTestCase {
             }
         }
         
-        group.notify(queue: .main) {
+        group.notify(queue: .main) { @Sendable in
             promise.fulfill()
         }
         
-        wait(for: [promise], timeout: 5)
+        await fulfillment(of: [promise], timeout: 5)
     }
 }
