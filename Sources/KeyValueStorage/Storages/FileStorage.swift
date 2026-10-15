@@ -16,7 +16,7 @@ open class FileStorage: KeyValueDataStorage, @unchecked Sendable {
     
     private let fileManager: FileManager
     private let root: URL
-    public let domain: Domain?
+    public nonisolated let domain: Domain?
     
     // MARK: Initializers
     

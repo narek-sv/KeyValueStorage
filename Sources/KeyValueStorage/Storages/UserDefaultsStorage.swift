@@ -15,7 +15,7 @@ open class UserDefaultsStorage: KeyValueDataStorage, @unchecked Sendable {
     // MARK: Properties
 
     private let userDefaults: UserDefaults
-    public let domain: Domain?
+    public nonisolated let domain: Domain?
     
     // MARK: Initializers
     

@@ -15,7 +15,7 @@ open class KeychainStorage: KeyValueDataStorage, @unchecked Sendable {
     // MARK: Properties
 
     private let keychain: KeychainWrapper
-    public let domain: Domain?
+    public nonisolated let domain: Domain?
     
     // MARK: Initializers
     
