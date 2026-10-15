@@ -109,20 +109,24 @@ public extension KeychainStorage {
     }
         
     struct Domain: KeyValueDataStorageDomain {
-        public let groupId: String
-        public let teamId: String
+        /// The keychain access group the items are saved in.
+        public let accessGroup: String
         public let service: String
 
-        /// - Parameter service: Defaults to `KeyValueStorage.<groupId>`. It must differ from `KeychainStorage.defaultService`,
-        ///   because queries without an access group search every group, so the default storage would otherwise see and clear shared items.
-        public init(groupId: String, teamId: String, service: String? = nil) {
-            self.groupId = groupId
-            self.teamId = teamId
-            self.service = service ?? KeychainStorage.defaultService + "." + groupId
+        /// - Parameters:
+        ///   - accessGroup: An access group your app belongs to, as written in its entitlements: an App Group,
+        ///     such as `group.com.company.app`, or a Keychain Sharing group, such as `ABCDE12345.com.company.shared`.
+        ///   - service: Defaults to `KeyValueStorage.<accessGroup>`. It must differ from `KeychainStorage.defaultService`,
+        ///     because queries without an access group search every group, so the default storage would otherwise see and clear shared items.
+        public init(accessGroup: String, service: String? = nil) {
+            self.accessGroup = accessGroup
+            self.service = service ?? KeychainStorage.defaultService + "." + accessGroup
         }
         
-        public var accessGroup: String {
-            teamId + "." + groupId
+        /// A Keychain Sharing group, whose access group is `<teamId>.<groupId>`.
+        /// For an App Group, use `init(accessGroup:service:)`, because App Groups have no team prefix.
+        public init(groupId: String, teamId: String, service: String? = nil) {
+            self.init(accessGroup: teamId + "." + groupId, service: service)
         }
     }
     
