@@ -47,7 +47,9 @@ public protocol UnifiedStorageFactory: Sendable {
 }
 
 open class DefaultUnifiedStorageFactory: UnifiedStorageFactory, @unchecked Sendable {
-    public func dataStorage<Storage: KeyValueDataStorage>(for domain: Storage.Domain?) async throws -> Storage {
+    public init() { }
+    
+    open func dataStorage<Storage: KeyValueDataStorage>(for domain: Storage.Domain?) async throws -> Storage {
         if let domain {
             return try await Storage(domain: domain)
         }
@@ -55,12 +57,12 @@ open class DefaultUnifiedStorageFactory: UnifiedStorageFactory, @unchecked Senda
         return try await Storage()
     }
     
-    public func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) async throws -> KeyValueCodingStorage<Storage> {
+    open func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) async throws -> KeyValueCodingStorage<Storage> {
         await KeyValueCodingStorage(storage: storage)
     }
 }
 
-public final class ObservableUnifiedStorageFactory: DefaultUnifiedStorageFactory {
+public final class ObservableUnifiedStorageFactory: DefaultUnifiedStorageFactory, @unchecked Sendable {
     public override func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) async throws -> KeyValueCodingStorage<Storage> {
         await KeyValueObservableStorage(storage: storage)
     }
