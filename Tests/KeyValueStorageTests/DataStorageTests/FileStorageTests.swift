@@ -547,40 +547,16 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testErrorCaseSave() {
+    func testErrorCaseSave() throws {
         // Given
         let mock = FileManagerMock()
-        let storage = FileStorage(fileManager: mock, root: URL(string: "root")!)
-        mock.createDirectoryError = nil
-        mock.createFileError = nil
-
-        do {
-            // When
-            try storage.save(.init(), forKey: "nonExistingFile")
-        } catch {
-            // Then
-            XCTFail("Unexpected error")
-        }
-        
-        // Given
-        mock.createDirectoryError = CocoaError(CocoaError.fileWriteFileExists)
-        mock.createFileError = nil
-
-        do {
-            // When
-            try storage.save(.init(), forKey: "nonExistingFile")
-        } catch {
-            // Then
-            XCTFail("Unexpected error")
-        }
-        
-        // Given
+        let storage = FileStorage(fileManager: mock, root: temporaryURL())
         mock.createDirectoryError = CocoaError(CocoaError.coderInvalidValue)
-        mock.createFileError = nil
         
         do {
             // When
             try storage.save(.init(), forKey: "nonExistingFile")
+            XCTFail("Expected error")
         } catch let error as FileStorage.Error {
             // Then
             if case let .other(innerError as CocoaError) = error {
@@ -594,15 +570,17 @@ final class FileStorageTests: XCTestCase {
         }
         
         // Given
-        mock.createDirectoryError = nil
-        mock.createFileError = CocoaError(CocoaError.coderInvalidValue)
+        let file = temporaryURL()
+        try Data().write(to: file)
+        let blockedStorage = FileStorage(fileManager: fileManager, root: file)
         
         do {
             // When
-            try storage.save(.init(), forKey: "nonExistingFile")
+            try blockedStorage.save(.init(), forKey: "key")
+            XCTFail("Expected error")
         } catch let error as FileStorage.Error {
             // Then
-            if case .failedToSave = error {
+            if case .other = error {
                 // ok
             } else {
                 XCTFail("Unexpected error")
@@ -611,6 +589,57 @@ final class FileStorageTests: XCTestCase {
             // Then
             XCTFail("Unexpected error")
         }
+        
+        try fileManager.removeItem(at: file)
+    }
+    
+    @FileActor
+    func testSaveCreatesMissingDirectory() throws {
+        // Given
+        let root = temporaryURL()
+        let storage = FileStorage(fileManager: fileManager, root: root)
+        let data = Data([0xAA, 0xBB, 0xCC])
+        
+        // When
+        try storage.save(data, forKey: "key")
+        
+        // Then
+        XCTAssertEqual(try storage.fetch(forKey: "key"), data)
+        
+        // When
+        try fileManager.removeItem(at: root)
+        try storage.save(data, forKey: "key")
+        
+        // Then
+        XCTAssertEqual(try storage.fetch(forKey: "key"), data)
+        
+        try fileManager.removeItem(at: root)
+    }
+    
+    @FileActor
+    func testErrorCaseFetch() throws {
+        // Given
+        let root = temporaryURL()
+        let storage = FileStorage(fileManager: fileManager, root: root)
+        
+        // When
+        let missing = try storage.fetch(forKey: "key")
+        
+        // Then
+        XCTAssertNil(missing)
+        
+        // Given
+        try fileManager.createDirectory(at: root.appendingPathComponent("key"), withIntermediateDirectories: true)
+        
+        // When
+        XCTAssertThrowsError(try storage.fetch(forKey: "key")) { error in
+            // Then
+            guard case .other = error as? FileStorage.Error else {
+                return XCTFail("Unexpected error \(error)")
+            }
+        }
+        
+        try fileManager.removeItem(at: root)
     }
     
     @FileActor
@@ -655,6 +684,10 @@ final class FileStorageTests: XCTestCase {
         }
         
         wait(for: [promise], timeout: 5)
+    }
+    
+    private func temporaryURL() -> URL {
+        fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
     }
     
     private func assertInvalidKey(_ error: Error, _ key: String, line: UInt = #line) {

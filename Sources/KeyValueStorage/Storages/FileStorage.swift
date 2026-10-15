@@ -52,19 +52,24 @@ open class FileStorage: KeyValueDataStorage, @unchecked Sendable {
     
     public func fetch(forKey key: Key) throws -> Data? {
         try execute {
-            try fileManager.contents(atPath: url(for: key).path)
+            do {
+                return try Data(contentsOf: url(for: key))
+            } catch CocoaError.fileReadNoSuchFile {
+                return nil
+            }
         }
     }
     
     public func save(_ value: Data, forKey key: Key) throws {
         try execute {
-            let path = try url(for: key).path
+            let url = try url(for: key)
             
-            try createDirectoryIfDoesntExist(path: root.path)
-            try deleteFileIfExists(path: path)
-            
-            if !fileManager.createFile(atPath: path, contents: value) {
-                throw Error.failedToSave
+            do {
+                try value.write(to: url, options: .atomic)
+            } catch CocoaError.fileNoSuchFile {
+                // The storage directory doesn't exist yet, so create it only when it's actually missing
+                try fileManager.createDirectory(atPath: root.path, withIntermediateDirectories: true)
+                try value.write(to: url, options: .atomic)
             }
         }
     }
@@ -100,16 +105,6 @@ open class FileStorage: KeyValueDataStorage, @unchecked Sendable {
         do {
             try fileManager.removeItem(atPath: path)
         } catch CocoaError.fileNoSuchFile {
-            // ok
-        } catch {
-            throw error
-        }
-    }
-    
-    private func createDirectoryIfDoesntExist(path: String) throws {
-        do {
-            try fileManager.createDirectory(atPath: path, withIntermediateDirectories: true)
-        } catch CocoaError.fileWriteFileExists {
             // ok
         } catch {
             throw error
@@ -157,7 +152,6 @@ public extension FileStorage {
     typealias Domain = String
     
     enum Error: KeyValueDataStorageError {
-        case failedToSave
         case failedToInitSharedDirectory
         case failedToFindDocumentsDirectory
         case invalidKey(String)
