@@ -65,6 +65,8 @@ jobs:
       run: xcodebuild build -scheme KeyValueStorage -destination "generic/platform=tvOS"
     - name: Build for watchOS
       run: xcodebuild build -scheme KeyValueStorage -destination "generic/platform=watchOS"
+    - name: Build for visionOS
+      run: xcodebuild build -scheme KeyValueStorage -destination "generic/platform=visionOS"
     - name: Show crash reports
       if: failure()
       run: cat ~/Library/Logs/DiagnosticReports/*.ips 2>/dev/null || echo "No crash reports"

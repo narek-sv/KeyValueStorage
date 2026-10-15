@@ -45,6 +45,7 @@ Version 3 fixes data loss, security and concurrency issues, which required chang
 - `KeychainStorage.Domain(accessGroup:service:)`, which also accepts an App Group as the keychain access group, `Domain(groupId:teamId:service:)` for Keychain Sharing groups, `KeychainStorage.defaultService`, and a public `KeychainWrapper` to use custom services.
 - `FileStorage.directoryName` and `SQLiteStorage.directoryName`, the names of their folders in `KeyValueStorage`.
 - The storages' `domain` can be read without `await`.
+- visionOS 1.0 or later is a supported platform.
 
 ### Performance
 
