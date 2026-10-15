@@ -12,10 +12,10 @@ Enhance your development with the state-of-the-art key-value storage framework, 
 ---
 ## Supported Platforms
 
-| | | | |
-| --- | --- | --- | --- |
-| **iOS** | **macOS** | **watchOS** | **tvOS** |
-| 13.0+ | 10.15+ | 6.0+ | 13.0+ |
+| | | | | |
+| --- | --- | --- | --- | --- |
+| **iOS** | **macOS** | **watchOS** | **tvOS** | **Swift** |
+| 13.0+ | 10.15+ | 6.0+ | 13.0+ | 6.0+ (Xcode 16+) |
 
 ## Choosing a Storage
 
