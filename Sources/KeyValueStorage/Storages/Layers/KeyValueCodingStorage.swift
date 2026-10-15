@@ -62,7 +62,8 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
     
     public func fetch<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws -> Value? {
         if let data = try await storage.fetch(forKey: key.key) {
-            return try await coder.decode(data)
+            // Explicit, because the return type would otherwise make the coder decode `Value?`
+            return try await coder.decode(data) as Value
         }
         
         return nil
