@@ -8,7 +8,7 @@
 import Foundation
 
 /// Encodes values as property lists, in the binary format unless the given encoder sets another `outputFormat`.
-public actor PropertyListDataCoder: DataCoder {
+public struct PropertyListDataCoder: DataCoder {
     private let decoder: PropertyListDecoder
     private let encoder: PropertyListEncoder
     

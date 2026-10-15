@@ -19,7 +19,7 @@ final class KeyValueCodingStorageTests: XCTestCase {
         underlyingStorage = InMemoryStorage()
         coder = JSONDataCoder()
 
-        storage = await .init(storage: underlyingStorage, coder: coder)
+        storage = .init(storage: underlyingStorage, coder: coder)
         
         InMemoryStorage.container = [nil: [:]]
     }

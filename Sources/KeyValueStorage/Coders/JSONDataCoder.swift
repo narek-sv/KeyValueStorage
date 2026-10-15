@@ -7,7 +7,7 @@
 
 import Foundation
 
-public actor JSONDataCoder: DataCoder {
+public struct JSONDataCoder: DataCoder {
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
     
