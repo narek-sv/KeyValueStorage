@@ -8,7 +8,7 @@
 import Foundation
 import Security
 
-enum KeychainWrapperError: Error {
+public enum KeychainWrapperError: Error {
     case status(OSStatus)
 }
 
@@ -16,17 +16,17 @@ enum KeychainWrapperError: Error {
 open class KeychainWrapper: @unchecked Sendable {
     
     /// `serviceName` is used to uniquely identify this keychain accessor.
-    let serviceName: String
+    public let serviceName: String
     
     /// `accessGroup` is used to identify which Keychain Access Group this entry belongs to. This allows you to use shared keychain access between different applications.
-    let accessGroup: String?
+    public let accessGroup: String?
     
-    init(serviceName: String, accessGroup: String? = nil) {
+    public init(serviceName: String, accessGroup: String? = nil) {
         self.serviceName = serviceName
         self.accessGroup = accessGroup
     }
     
-    func get(forKey key: String, isSynchronizable: Bool = false) throws -> Data? {
+    open func get(forKey key: String, isSynchronizable: Bool = false) throws -> Data? {
         var keychainQueryDictionary = query(forKey: key, isSynchronizable: isSynchronizable)
         keychainQueryDictionary[Self.matchLimit] = kSecMatchLimitOne
         keychainQueryDictionary[Self.returnData] = kCFBooleanTrue
@@ -43,7 +43,7 @@ open class KeychainWrapper: @unchecked Sendable {
         }
     }
     
-    func set(_ value: Data,
+    open func set(_ value: Data,
              forKey key: String,
              withAccessibility accessibility: KeychainAccessibility? = nil,
              isSynchronizable: Bool = false) throws {
@@ -58,7 +58,7 @@ open class KeychainWrapper: @unchecked Sendable {
         }
     }
 
-    func remove(forKey key: String, isSynchronizable: Bool = false) throws {
+    open func remove(forKey key: String, isSynchronizable: Bool = false) throws {
         let keychainQueryDictionary = query(forKey: key, isSynchronizable: isSynchronizable)
         
         let status = SecItemDelete(keychainQueryDictionary as CFDictionary)
@@ -67,7 +67,7 @@ open class KeychainWrapper: @unchecked Sendable {
         }
     }
     
-    func removeAll() throws {
+    open func removeAll() throws {
         let keychainQueryDictionary = removeAllQuery()
         
         let status = SecItemDelete(keychainQueryDictionary as CFDictionary)

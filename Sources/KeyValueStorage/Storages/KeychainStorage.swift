@@ -21,12 +21,12 @@ open class KeychainStorage: KeyValueDataStorage, @unchecked Sendable {
     
     public required init() {
         self.domain = nil
-        self.keychain = KeychainWrapper(serviceName: Self.defaultGroup)
+        self.keychain = KeychainWrapper(serviceName: Self.defaultService)
     }
 
     public required init(domain: Domain) {
         self.domain = domain
-        self.keychain = KeychainWrapper(serviceName: Self.defaultGroup, accessGroup: domain.accessGroup)
+        self.keychain = KeychainWrapper(serviceName: domain.service, accessGroup: domain.accessGroup)
     }
     
     public init(keychain: KeychainWrapper) {
@@ -91,6 +91,11 @@ open class KeychainStorage: KeyValueDataStorage, @unchecked Sendable {
 // MARK: - Associated Types
 
 public extension KeychainStorage {
+    /// The service of items saved without a domain. It does not depend on the bundle identifier,
+    /// so `clear()` doesn't remove items of other keychain libraries that use the bundle identifier as their service.
+    /// Items without a domain live in the process's default access group; use a `Domain` to share them with extensions.
+    nonisolated static let defaultService = "KeyValueStorage"
+    
     struct Key: KeyValueDataStorageKey {
         public let name: String
         public let accessibility: KeychainAccessibility?
@@ -106,10 +111,14 @@ public extension KeychainStorage {
     struct Domain: KeyValueDataStorageDomain {
         public let groupId: String
         public let teamId: String
+        public let service: String
 
-        public init(groupId: String, teamId: String) {
+        /// - Parameter service: Defaults to `KeyValueStorage.<groupId>`. It must differ from `KeychainStorage.defaultService`,
+        ///   because queries without an access group search every group, so the default storage would otherwise see and clear shared items.
+        public init(groupId: String, teamId: String, service: String? = nil) {
             self.groupId = groupId
             self.teamId = teamId
+            self.service = service ?? KeychainStorage.defaultService + "." + groupId
         }
         
         public var accessGroup: String {

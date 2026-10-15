@@ -37,6 +37,31 @@ final class PublicAPITests: XCTestCase {
         XCTAssertEqual(factory.dataStorageCalls, 1)
         XCTAssertEqual(factory.codingStorageCalls, 1)
     }
+    
+    @KeychainActor
+    func testKeychainIsConfigurable() {
+        // Given
+        let keychain = KeychainWrapperSpy(serviceName: "existing.service", accessGroup: "TEAMID.group.shared")
+        let domain = KeychainStorage.Domain(groupId: "group.shared", teamId: "TEAMID", service: "existing.service")
+        
+        // When
+        let storage = KeychainStorage(keychain: keychain)
+        _ = try? storage.fetch(forKey: .init(name: "token"))
+        
+        // Then
+        XCTAssertEqual(keychain.fetchedKeys, ["token"])
+        XCTAssertEqual(domain.service, keychain.serviceName)
+        XCTAssertEqual(domain.accessGroup, keychain.accessGroup)
+    }
+}
+
+private final class KeychainWrapperSpy: KeychainWrapper, @unchecked Sendable {
+    private(set) var fetchedKeys = [String]()
+    
+    override func get(forKey key: String, isSynchronizable: Bool = false) throws -> Data? {
+        fetchedKeys.append(key)
+        return nil
+    }
 }
 
 private final class CountingFactory: DefaultUnifiedStorageFactory, @unchecked Sendable {
