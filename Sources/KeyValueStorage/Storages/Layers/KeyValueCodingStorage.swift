@@ -53,7 +53,7 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
     
     // MARK: Initializers
     
-    public init(storage: Storage, coder: DataCoder = JSONDataCoder()) {
+    public init(storage: Storage, coder: DataCoder = RawDataCoder()) {
         self.coder = coder
         self.storage = storage
     }
