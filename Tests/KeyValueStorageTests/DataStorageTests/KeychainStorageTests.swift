@@ -20,8 +20,8 @@ final class KeychainStorageTests: XCTestCase {
     
     @KeychainActor
     override func setUpWithError() throws {
-        standardKeychain = KeychainWrapper(serviceName: Bundle.main.bundleIdentifier!)
-        otherKeychain = KeychainWrapper(serviceName: Bundle.main.bundleIdentifier!, accessGroup: Self.otherStorageDomain.accessGroup)
+        standardKeychain = KeychainWrapper(serviceName: KeychainStorage.defaultService)
+        otherKeychain = KeychainWrapper(serviceName: Self.otherStorageDomain.service, accessGroup: Self.otherStorageDomain.accessGroup)
 
         try standardKeychain.removeAll()
         try otherKeychain.removeAll()
@@ -479,13 +479,23 @@ final class KeychainStorageTests: XCTestCase {
     @KeychainActor
     func testDomain() {
         // Given
-        let domain = KeychainStorage.Domain(groupId: "a", teamId: "b")
+        var domain = KeychainStorage.Domain(groupId: "a", teamId: "b")
         
         // When
         let group = domain.accessGroup
         
         // Then
         XCTAssertEqual(group, "b.a")
+        XCTAssertEqual(KeychainStorage.defaultService, "KeyValueStorage")
+        XCTAssertEqual(domain.service, "KeyValueStorage.a")
+        XCTAssertNotEqual(domain.service, KeychainStorage.defaultService)
+        
+        // When
+        domain = KeychainStorage.Domain(groupId: "a", teamId: "b", service: "custom")
+        
+        // Then
+        XCTAssertEqual(domain.service, "custom")
+        XCTAssertNotEqual(domain, KeychainStorage.Domain(groupId: "a", teamId: "b"))
     }
     
     @KeychainActor
