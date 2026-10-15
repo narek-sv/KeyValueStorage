@@ -276,10 +276,11 @@ final class KeyValueObservableStorageTests: XCTestCase {
         let storage = await KeyValueObservableStorage(storage: InMemoryStorage(), coder: coder)
         let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
         
+        let stream = await storage.stream(forKey: key)
         let task = Task.detached {
             var operationIndex = 0
 
-            for await change in await storage.stream(forKey: key) {
+            for await change in stream {
                 XCTAssertEqual(operations[operationIndex].1, change)
                 operationIndex += 1
                 publisherExpectation.fulfill()
