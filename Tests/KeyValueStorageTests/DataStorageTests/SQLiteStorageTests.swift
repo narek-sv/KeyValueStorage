@@ -158,6 +158,8 @@ final class SQLiteStorageTests: XCTestCase {
         // Given
         let expectedPath = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(Bundle.main.bundleIdentifier!)
+            .appendingPathComponent("KeyValueStorage")
+            .appendingPathComponent(SQLiteStorage.directoryName)
             .appendingPathComponent(SQLiteStorage.databaseName)
             .path
         
@@ -165,6 +167,7 @@ final class SQLiteStorageTests: XCTestCase {
         try standardStorage.save(Data([0xAA]), forKey: "key")
         
         // Then
+        XCTAssertEqual(SQLiteStorage.directoryName, "SQLite")
         XCTAssertEqual(SQLiteStorage.databaseName, "KeyValueStorage.sqlite")
         XCTAssertTrue(fileManager.fileExists(atPath: expectedPath))
     }
@@ -173,6 +176,8 @@ final class SQLiteStorageTests: XCTestCase {
     func testSharedLocationDoesNotDependOnBundleIdentifier() throws {
         // Given
         let expectedPath = fileManager.containerURL(forSecurityApplicationGroupIdentifier: Self.otherStorageDomain)!
+            .appendingPathComponent("KeyValueStorage")
+            .appendingPathComponent(SQLiteStorage.directoryName)
             .appendingPathComponent(SQLiteStorage.databaseName)
             .path
         
@@ -187,16 +192,37 @@ final class SQLiteStorageTests: XCTestCase {
     }
     
     @SQLiteActor
-    func testDatabaseIsNotRemovedByFileStorage() async throws {
+    func testFileStorageAndSQLiteStorageDontAffectEachOther() async throws {
         // Given
-        try standardStorage.save(Data([0xAA]), forKey: "key")
         let fileStorage = try await FileStorage()
+        let sharedFileStorage = try await FileStorage(domain: Self.otherStorageDomain)
+        try standardStorage.save(Data([0xAA]), forKey: "key")
+        try otherStorage.save(Data([0xAA]), forKey: "key")
+        try await fileStorage.save(Data([0xBB]), forKey: "key")
+        try await sharedFileStorage.save(Data([0xBB]), forKey: "key")
         
         // When
         try await fileStorage.clear()
+        try await sharedFileStorage.clear()
         
         // Then
         XCTAssertEqual(try standardStorage.fetch(forKey: "key"), Data([0xAA]))
+        XCTAssertEqual(try otherStorage.fetch(forKey: "key"), Data([0xAA]))
+        
+        // When
+        try await fileStorage.save(Data([0xBB]), forKey: "key")
+        try await sharedFileStorage.save(Data([0xBB]), forKey: "key")
+        try standardStorage.clear()
+        try otherStorage.clear()
+        
+        // Then
+        let file = try await fileStorage.fetch(forKey: "key")
+        let sharedFile = try await sharedFileStorage.fetch(forKey: "key")
+        XCTAssertEqual(file, Data([0xBB]))
+        XCTAssertEqual(sharedFile, Data([0xBB]))
+        
+        try await fileStorage.clear()
+        try await sharedFileStorage.clear()
     }
     
     @SQLiteActor

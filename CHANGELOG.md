@@ -8,7 +8,7 @@ Version 3 fixes data loss, security and concurrency issues, which required chang
 
 - **Keychain:** items without a domain are saved under the `KeyValueStorage` service instead of the bundle identifier, and items with a domain under `KeyValueStorage.<groupId>` or `Domain.service`.
 - **Keychain:** a key without accessibility saves its items as `.whenUnlocked`, and every save applies the key's accessibility to the existing item.
-- **Files:** values are stored in `Application Support/<bundle identifier>/KeyValueStorage` and `<group container>/KeyValueStorage`, instead of `Documents/<bundle identifier>` and `<group container>/<bundle identifier>`.
+- **Files:** values are stored in `Application Support/<bundle identifier>/KeyValueStorage/Files` and `<group container>/KeyValueStorage/Files`, instead of `Documents/<bundle identifier>` and `<group container>/<bundle identifier>`.
 - **Files:** invalid keys throw `FileStorage.Error.invalidKey`. `failedToSave` is removed, failures are reported as `.other`, and `failedToFindDocumentsDirectory` is renamed to `failedToFindApplicationSupportDirectory`.
 - **Coding:** the default coder is `RawDataCoder`, which stores `Data` as is and `String` as UTF-8 instead of JSON.
 - **Coding:** `XMLDataCoder` is renamed to `PropertyListDataCoder` and stores every value as the only element of an array.
@@ -40,7 +40,7 @@ Version 3 fixes data loss, security and concurrency issues, which required chang
 - `DefaultUnifiedStorageFactory(coder:)` and `ObservableUnifiedStorageFactory(coder:)`.
 - `includingCurrentValue` for `publisher(forKey:)` and `stream(forKey:)`.
 - `KeychainStorage.Domain(groupId:teamId:service:)`, `KeychainStorage.defaultService`, and a public `KeychainWrapper` to use custom services.
-- `FileStorage.directoryName`.
+- `FileStorage.directoryName` and `SQLiteStorage.directoryName`, the names of their folders in `KeyValueStorage`.
 
 ### Performance
 

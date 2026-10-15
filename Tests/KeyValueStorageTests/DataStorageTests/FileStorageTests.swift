@@ -22,9 +22,9 @@ final class FileStorageTests: XCTestCase {
         let id = Bundle.main.bundleIdentifier!
         standardPath = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(id, isDirectory: true)
-            .appendingPathComponent("KeyValueStorage", isDirectory: true)
+            .appendingPathComponent("KeyValueStorage/Files", isDirectory: true)
         otherPath = fileManager.containerURL(forSecurityApplicationGroupIdentifier: Self.otherStorageDomain)!
-            .appendingPathComponent("KeyValueStorage", isDirectory: true)
+            .appendingPathComponent("KeyValueStorage/Files", isDirectory: true)
         
         try? fileManager.createDirectory(at: standardPath, withIntermediateDirectories: true)
         try? fileManager.createDirectory(at: otherPath, withIntermediateDirectories: true)
@@ -697,6 +697,7 @@ final class FileStorageTests: XCTestCase {
         let documentsPath = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(id).path
         let expectedPath = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(id)
+            .appendingPathComponent("KeyValueStorage")
             .appendingPathComponent(FileStorage.directoryName)
             .appendingPathComponent("key")
             .path
@@ -705,7 +706,7 @@ final class FileStorageTests: XCTestCase {
         try standardStorage.save(Data([0xAA]), forKey: "key")
         
         // Then
-        XCTAssertEqual(FileStorage.directoryName, "KeyValueStorage")
+        XCTAssertEqual(FileStorage.directoryName, "Files")
         XCTAssertEqual(fileManager.contents(atPath: expectedPath), Data([0xAA]))
         XCTAssertFalse(fileManager.fileExists(atPath: documentsPath))
     }
@@ -714,6 +715,7 @@ final class FileStorageTests: XCTestCase {
     func testSharedLocationDoesNotDependOnBundleIdentifier() throws {
         // Given
         let expectedPath = fileManager.containerURL(forSecurityApplicationGroupIdentifier: Self.otherStorageDomain)!
+            .appendingPathComponent("KeyValueStorage")
             .appendingPathComponent(FileStorage.directoryName)
             .appendingPathComponent("key")
             .path

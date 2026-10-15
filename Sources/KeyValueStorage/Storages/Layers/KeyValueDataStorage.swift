@@ -36,6 +36,13 @@ public extension KeyValueDataStorage {
     }
 }
 
+extension KeyValueDataStorage {
+    /// The folder that holds the data of the built-in storages that use files, each in its own subfolder.
+    static var libraryDirectoryName: String {
+        "KeyValueStorage"
+    }
+}
+
 // MARK: - Associated Type Requirements
 
 public typealias KeyValueDataStorageKey = Hashable & Sendable

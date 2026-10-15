@@ -20,19 +20,23 @@ open class SQLiteStorage: KeyValueDataStorage, @unchecked Sendable {
     
     // MARK: Initializers
     
-    /// Stores values in `Application Support/<bundle identifier>/KeyValueStorage.sqlite`,
-    /// next to the folder of `FileStorage`, so clearing one storage never removes the other's data.
+    /// Stores values in `Application Support/<bundle identifier>/KeyValueStorage/SQLite/KeyValueStorage.sqlite`.
+    /// The folder is separate from the other storages' folders, so clearing one storage never touches the database.
     public required init() throws {
         let fileManager = FileManager.default
         guard let url = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             throw Error.failedToFindApplicationSupportDirectory
         }
         
-        self.connection = try Self.open(root: url.appendingPathComponent(Self.defaultGroup, isDirectory: true), fileManager: fileManager)
+        let root = url
+            .appendingPathComponent(Self.defaultGroup, isDirectory: true)
+            .appendingPathComponent(Self.libraryDirectoryName, isDirectory: true)
+            .appendingPathComponent(Self.directoryName, isDirectory: true)
+        self.connection = try Self.open(root: root, fileManager: fileManager)
         self.domain = nil
     }
     
-    /// Stores values in `<app group container>/KeyValueStorage.sqlite`.
+    /// Stores values in `<app group container>/KeyValueStorage/SQLite/KeyValueStorage.sqlite`.
     /// The path doesn't depend on the bundle identifier, so the app and its extensions share the same database.
     public required init(domain: Domain) throws {
         let fileManager = FileManager.default
@@ -40,7 +44,10 @@ open class SQLiteStorage: KeyValueDataStorage, @unchecked Sendable {
             throw Error.failedToInitSharedDirectory
         }
         
-        self.connection = try Self.open(root: url, fileManager: fileManager)
+        let root = url
+            .appendingPathComponent(Self.libraryDirectoryName, isDirectory: true)
+            .appendingPathComponent(Self.directoryName, isDirectory: true)
+        self.connection = try Self.open(root: root, fileManager: fileManager)
         self.domain = domain
     }
     
@@ -138,6 +145,9 @@ open class SQLiteStorage: KeyValueDataStorage, @unchecked Sendable {
 // MARK: - Associated Types
 
 public extension SQLiteStorage {
+    /// The name of the folder in `KeyValueStorage` that holds the database.
+    nonisolated static let directoryName = "SQLite"
+    
     /// The name of the database file.
     nonisolated static let databaseName = "KeyValueStorage.sqlite"
     
