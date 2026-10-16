@@ -186,8 +186,37 @@ public extension FileStorage {
     nonisolated static let directoryName = "Files"
     
     typealias Key = String
-    typealias Domain = String
     
+    enum AppDomain: KeyValueDataStorageAppDomain {
+        /// Durable app-private storage in a package-owned `directory` below Application Support.
+        case applicationSupport(directory: String)
+      
+        /// Rebuildable app-private storage in a package-owned `directory` below Caches.
+        /// The system may purge this directory, and its contents aren't backed up.
+        case cache(directory: String)
+      
+        /// App-private storage in a package-owned `directory` below Documents.
+        /// Use this only for user-generated data that should be backed up and may be visible through document sharing.
+        case documents(directory: String)
+      
+        /// Ephemeral app-private storage in a package-owned `directory` below the process's temporary directory.
+        /// The system may remove its contents at any time.
+        case temporary(directory: String)
+    }
+    
+    enum Domain: KeyValueDataStorageDomain {
+        /// A package-owned directory in the current app's sandbox.
+        case app(AppDomain)
+      
+        /// A package-owned directory in the shared container of an App Group to which the target is entitled.
+        case appGroup(groupId: String)
+        
+        /// Durable app-private storage under Application Support, isolated in the package's default container.
+        public static var `default`: Self {
+            .app(.applicationSupport(directory: Self.defaultContainerName))
+        }
+    }
+        
     enum Error: KeyValueDataStorageError {
         case failedToInitSharedDirectory
         case failedToFindApplicationSupportDirectory

@@ -76,7 +76,29 @@ open class UserDefaultsStorage: KeyValueDataStorage, @unchecked Sendable {
 
 public extension UserDefaultsStorage {
     typealias Key = String
-    typealias Domain = String
+    
+    enum AppDomain: KeyValueDataStorageAppDomain {
+        /// The app's standard defaults domain.
+        /// Clearing this domain removes defaults that weren't saved through `KeyValueStorage`, so callers must opt in explicitly.
+        case standard
+      
+        /// A named defaults suite that is private to the current app.
+        /// The storage qualifies this logical name with the app identity so it can't be mistaken for an App Group suite.
+        case suite(named: String)
+    }
+    
+    enum Domain: KeyValueDataStorageDomain {
+        /// A defaults domain that belongs only to the current app.
+        case app(AppDomain)
+      
+        /// The shared defaults suite of an App Group to which the current target is entitled.
+        case appGroup(groupId: String)
+        
+        /// A package-owned app suite, rather than the app's standard defaults domain, so clearing the default storage is isolated.
+        public static var `default`: Self {
+            .app(.suite(named: Self.defaultContainerName))
+        }
+    }
     
     enum Error: KeyValueDataStorageError {
         case failedToInitSharedDefaults

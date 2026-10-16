@@ -107,26 +107,21 @@ public extension KeychainStorage {
             self.isSynchronizable = isSynchronizable
         }
     }
+    
+    enum Domain: KeyValueDataStorageDomain {
+        /// An app-level keychain namespace selected by service.
+        /// A non-`nil` service isolates the items created through that domain. A `nil` service deliberately removes the
+        /// service filter, so fetch, delete and clear can match unrelated generic-password items in any entitled access group.
+        case app(service: String?)
+      
+        /// A shared keychain namespace in an App Group or a dedicated Keychain Sharing access group.
+        /// `groupId` is passed unchanged as `kSecAttrAccessGroup`. A non-`nil` service isolates one logical container
+        /// inside that group; a `nil` service can match every generic-password service in the group.
+        case appGroup(groupId: String, service: String?)
         
-    struct Domain: KeyValueDataStorageDomain {
-        /// The keychain access group the items are saved in.
-        public let accessGroup: String
-        public let service: String
-
-        /// - Parameters:
-        ///   - accessGroup: An access group your app belongs to, as written in its entitlements: an App Group,
-        ///     such as `group.com.company.app`, or a Keychain Sharing group, such as `ABCDE12345.com.company.shared`.
-        ///   - service: Defaults to `KeyValueStorage.<accessGroup>`. It must differ from `KeychainStorage.defaultService`,
-        ///     because queries without an access group search every group, so the default storage would otherwise see and clear shared items.
-        public init(accessGroup: String, service: String? = nil) {
-            self.accessGroup = accessGroup
-            self.service = service ?? KeychainStorage.defaultService + "." + accessGroup
-        }
-        
-        /// A Keychain Sharing group, whose access group is `<teamId>.<groupId>`.
-        /// For an App Group, use `init(accessGroup:service:)`, because App Groups have no team prefix.
-        public init(groupId: String, teamId: String, service: String? = nil) {
-            self.init(accessGroup: teamId + "." + groupId, service: service)
+        /// A package-owned service that keeps default operations, especially `clear()`, away from service-less keychain items.
+        public static var `default`: Self {
+            .app(service: Self.defaultContainerName)
         }
     }
     

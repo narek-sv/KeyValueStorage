@@ -13,10 +13,8 @@ public protocol KeyValueDataStorage: Sendable {
     associatedtype Key: KeyValueDataStorageKey
     associatedtype Domain: KeyValueDataStorageDomain
     associatedtype Error: KeyValueDataStorageError
-
-    static var defaultGroup: String { get }
     
-    var domain: Domain? { get }
+    var domain: Domain { get }
 
     init() async throws
     init(domain: Domain) async throws
@@ -30,15 +28,13 @@ public protocol KeyValueDataStorage: Sendable {
 
 // MARK: - Default Implementations
 
-public extension KeyValueDataStorage {
-    static var defaultGroup: String {
-        Bundle.main.bundleIdentifier ?? "KeyValueDataStorage"
-    }
-}
-
-extension KeyValueDataStorage {
-    /// The folder that holds the data of the built-in storages that use files, each in its own subfolder.
-    static var libraryDirectoryName: String {
+public extension KeyValueDataStorageDomain {
+    /// The package-owned container name used when a caller doesn't choose a domain explicitly.
+    ///
+    /// A dedicated name is intentional: default operations, especially `clear()`, stay in `KeyValueStorage`'s
+    /// namespace instead of reading or removing values from the app's standard storage or containers owned by other SDKs.
+    /// Individual storages resolve this logical name to their own suite, service, directory or namespace.
+    static var defaultContainerName: String {
         "KeyValueStorage"
     }
 }
@@ -46,5 +42,9 @@ extension KeyValueDataStorage {
 // MARK: - Associated Type Requirements
 
 public typealias KeyValueDataStorageKey = Hashable & Sendable
-public typealias KeyValueDataStorageDomain = Hashable & Sendable
 public typealias KeyValueDataStorageError = Error & Sendable
+public typealias KeyValueDataStorageAppDomain = Hashable & Sendable
+public protocol KeyValueDataStorageDomain: Hashable & Sendable {
+    static var `default`: Self { get }
+}
+

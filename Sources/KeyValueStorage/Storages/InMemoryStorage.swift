@@ -62,7 +62,17 @@ open class InMemoryStorage: KeyValueDataStorage, @unchecked Sendable {
 
 public extension InMemoryStorage {
     typealias Key = String
-    typealias Domain = String
+    
+    enum Domain: KeyValueDataStorageDomain {
+        /// A named namespace that exists only in the current process.
+        /// In-memory domains can't share values with other apps, extensions or processes.
+        case app(container: String)
+        
+        /// A process-local namespace owned by the package.
+        public static var `default`: Self {
+            .app(container: Self.defaultContainerName)
+        }
+    }
     
     enum Error: KeyValueDataStorageError {
         case unknown
