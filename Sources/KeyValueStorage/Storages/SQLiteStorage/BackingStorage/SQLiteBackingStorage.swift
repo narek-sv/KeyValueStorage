@@ -20,11 +20,8 @@ public protocol SQLiteBackingStorage: StorageDirectoryResolving {
 
 public protocol SQLiteDatabase: AnyObject {
     func read(forKey key: String) throws -> Data?
-
     func write(_ data: Data, forKey key: String) throws
-
     func remove(forKey key: String) throws
-
     func removeAll() throws
 }
 
