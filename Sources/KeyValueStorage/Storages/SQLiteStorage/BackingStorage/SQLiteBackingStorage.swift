@@ -1,5 +1,5 @@
 //
-//  SQLiteBackingStorage.swift
+//  SQLiteBackingStore.swift
 //  KeyValueStorage
 //
 //  Created by Narek Sahakyan on 17.10.26.
@@ -8,9 +8,9 @@
 import Foundation
 import SQLite3
 
-// MARK: - SQLiteBackingStorage
+// MARK: - SQLiteBackingStore
 
-public protocol SQLiteBackingStorage: StorageDirectoryResolving {
+public protocol SQLiteBackingStore: StorageDirectoryResolving {
     func createDirectory(at url: URL) throws
 
     func open(at url: URL, protection: FileProtectionType?) throws -> any SQLiteDatabase
@@ -37,9 +37,9 @@ public struct SQLiteError: Error, Sendable, Equatable {
     }
 }
 
-// MARK: - DefaultSQLiteBackingStorage
+// MARK: - DefaultSQLiteBackingStoreWrapper
 
-final class DefaultSQLiteBackingStorage: SQLiteBackingStorage, FoundationStorageDirectoryResolving {
+final class DefaultSQLiteBackingStoreWrapper: SQLiteBackingStore, FoundationStorageDirectoryResolving {
     func createDirectory(at url: URL) throws {
         try FileManager.default.createDirectory(atPath: url.path, withIntermediateDirectories: true)
     }

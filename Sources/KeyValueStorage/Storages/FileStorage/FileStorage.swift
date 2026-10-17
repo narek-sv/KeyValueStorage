@@ -12,23 +12,23 @@ import Foundation
 public final class FileStorage: KeyValueDataStorage {
     static let directoryPrefixName = "Files"
 
-    public static var defaultBackingStorage: any FileBackingStorage {
-        DefaultFileBackingStorage()
-    }
-
     // MARK: Properties
 
-    private let storage: any FileBackingStorage
+    private let storage: any FileBackingStore
     private let root: URL
 
     public let domain: Domain
 
     // MARK: Initializers
 
-    public init(domain: Domain, backingStorage: any FileBackingStorage) throws {
+    public init(domain: Domain, backingStorage: any FileBackingStore) throws {
         self.root = try Self.root(for: domain, resolver: backingStorage)
         self.domain = domain
         self.storage = backingStorage
+    }
+
+    public convenience init(domain: Domain) throws {
+        try self.init(domain: domain, backingStorage: DefaultFileBackingStoreWrapper())
     }
 
     // MARK: Main Functionality

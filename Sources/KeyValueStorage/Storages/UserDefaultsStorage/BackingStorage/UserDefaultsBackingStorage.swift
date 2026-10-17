@@ -1,5 +1,5 @@
 //
-//  UserDefaultsBackingStorage.swift
+//  UserDefaultsBackingStore.swift
 //  KeyValueStorage
 //
 //  Created by Narek Sahakyan on 17.10.26.
@@ -7,9 +7,9 @@
 
 import Foundation
 
-// MARK: - UserDefaultsBackingStorage
+// MARK: - UserDefaultsBackingStore
 
-public protocol UserDefaultsBackingStorage {
+public protocol UserDefaultsBackingStore {
     var appIdentifier: String { get }
 
     var standard: any UserDefaultsSuite { get }
@@ -26,9 +26,9 @@ public protocol UserDefaultsSuite: AnyObject {
     func keys() -> [String]
 }
 
-// MARK: - DefaultUserDefaultsBackingStorage
+// MARK: - DefaultUserDefaultsBackingStoreWrapper
 
-final class DefaultUserDefaultsBackingStorage: UserDefaultsBackingStorage {
+final class DefaultUserDefaultsBackingStoreWrapper: UserDefaultsBackingStore {
     var appIdentifier: String {
         AppIdentifier.current
     }

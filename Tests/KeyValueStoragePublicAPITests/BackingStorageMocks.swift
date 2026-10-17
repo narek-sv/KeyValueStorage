@@ -10,7 +10,7 @@ import KeyValueStorage // intentionally not @testable: the backing storage proto
 
 /// Keeps items in memory, because the real keychain needs entitlements that test bundles can't have.
 /// Items are identified like in the keychain: by service, account, access group and whether they're synchronizable.
-final class InMemoryKeychain: KeychainBackingStorage {
+final class InMemoryKeychain: KeychainBackingStore {
     private var items = [String: Data]()
 
     func add(_ attributes: KeychainQuery) -> KeychainOperationStatus {
@@ -61,7 +61,7 @@ final class InMemoryKeychain: KeychainBackingStorage {
 }
 
 /// Keeps values in memory, because the real iCloud key-value store needs an entitlement that test bundles can't have.
-final class InMemoryUbiquitousStore: UbiquitousBackingStorage {
+final class InMemoryUbiquitousStore: UbiquitousBackingStore {
     private var values = [String: Data]()
 
     func read(forKey key: String) -> Data? {
@@ -82,5 +82,26 @@ final class InMemoryUbiquitousStore: UbiquitousBackingStorage {
 
     func synchronize() -> Bool {
         true
+    }
+}
+
+/// Containers of its own, unlike the default in-memory backing store, which the whole process shares.
+final class IsolatedInMemoryStore: InMemoryBackingStore {
+    private var containers = [String: [String: Data]]()
+
+    func read(forKey key: String, in container: String) -> Data? {
+        containers[container]?[key]
+    }
+
+    func write(_ data: Data, forKey key: String, in container: String) {
+        containers[container, default: [:]][key] = data
+    }
+
+    func remove(forKey key: String, in container: String) {
+        containers[container]?[key] = nil
+    }
+
+    func removeAll(in container: String) {
+        containers[container] = nil
     }
 }

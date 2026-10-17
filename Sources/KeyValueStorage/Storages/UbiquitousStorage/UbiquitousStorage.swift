@@ -15,19 +15,15 @@ public final class UbiquitousStorage: KeyValueDataStorage {
 
     static let maximumValueSize = 1024 * 1024
 
-    public static var defaultBackingStorage: any UbiquitousBackingStorage {
-        DefaultUbiquitousBackingStorage()
-    }
-
     // MARK: Properties
 
-    private let storage: any UbiquitousBackingStorage
+    private let storage: any UbiquitousBackingStore
     private let keyPrefix: String?
     public let domain: Domain
 
     // MARK: Initializers
 
-    public init(domain: Domain, backingStorage: any UbiquitousBackingStorage) {
+    public init(domain: Domain, backingStorage: any UbiquitousBackingStore) {
         switch domain {
         case let .shared(container):
             self.keyPrefix = container.map(KeyNamespace.prefix(for:))
@@ -37,8 +33,12 @@ public final class UbiquitousStorage: KeyValueDataStorage {
         self.storage = backingStorage
     }
 
-    public convenience init(domain: Domain = .default) {
-        self.init(domain: domain, backingStorage: Self.defaultBackingStorage)
+    public convenience init(domain: Domain) {
+        self.init(domain: domain, backingStorage: DefaultUbiquitousBackingStoreWrapper())
+    }
+
+    public convenience init() {
+        self.init(domain: .default)
     }
 
     // MARK: Main Functionality

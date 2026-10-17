@@ -110,20 +110,53 @@ final class PublicAPITests: XCTestCase {
     }
 
     func testStoragesAcceptBackingStorages() throws {
-        // Given: two in-memory storages with the same domain, one of them with containers of its own
-        let shared = InMemoryStorage(domain: .app(container: "publicAPIBacking"))
-        let separate = InMemoryStorage(domain: .app(container: "publicAPIBacking"), backingStorage: InMemoryContainers())
+        // Given: two default in-memory storages with the same domain, and one with a backing store of its own
+        let container = "publicAPIBacking-\(UUID().uuidString)"
+        let first = InMemoryStorage(domain: .app(container: container))
+        let second = InMemoryStorage(domain: .app(container: container))
+        let isolated = InMemoryStorage(domain: .app(container: container), backingStorage: IsolatedInMemoryStore())
         let keychain = KeychainStorage(domain: .default, backingStorage: InMemoryKeychain())
 
         // When
-        shared.save(Data([1]), forKey: "key")
+        first.save(Data([1]), forKey: "key")
         try keychain.save(Data([2]), forKey: .init(name: "key"))
 
-        // Then
-        XCTAssertEqual(shared.fetch(forKey: "key"), Data([1]))
-        XCTAssertNil(separate.fetch(forKey: "key"))
+        // Then: the default backing store is shared by the whole process
+        XCTAssertEqual(second.fetch(forKey: "key"), Data([1]))
+        XCTAssertNil(isolated.fetch(forKey: "key"))
         XCTAssertEqual(try keychain.fetch(forKey: .init(name: "key")), Data([2]))
-        shared.clear()
+        first.clear()
+    }
+
+    func testStoragesThatCantFailSetWithoutTry() throws {
+        // Given
+        let container = "publicAPISet-\(UUID().uuidString)"
+        let inMemory = InMemoryStorage(domain: .app(container: container))
+        let userDefaults = try UserDefaultsStorage(domain: .app(.suite(container: container)))
+        defer { userDefaults.clear() }
+
+        // When - Then: no `try`
+        inMemory.set(Data([1]), forKey: "key")
+        userDefaults.set(Data([2]), forKey: "key")
+        XCTAssertEqual(inMemory.fetch(forKey: "key"), Data([1]))
+        XCTAssertEqual(userDefaults.fetch(forKey: "key"), Data([2]))
+
+        inMemory.set(nil, forKey: "key")
+        userDefaults.set(nil, forKey: "key")
+        XCTAssertNil(inMemory.fetch(forKey: "key"))
+        XCTAssertNil(userDefaults.fetch(forKey: "key"))
+    }
+
+    func testDefaultInitializersUseTheDefaultDomain() throws {
+        // No `try`: these storages can't fail to initialize
+        XCTAssertEqual(InMemoryStorage().domain, .default)
+        XCTAssertEqual(KeychainStorage().domain, .default)
+        if #available(watchOS 9.0, *) {
+            XCTAssertEqual(UbiquitousStorage().domain, .default)
+        }
+
+        XCTAssertEqual(try FileStorage().domain, .default)
+        XCTAssertEqual(try UserDefaultsStorage().domain, .default)
     }
 }
 

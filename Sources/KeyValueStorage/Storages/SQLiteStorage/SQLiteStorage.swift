@@ -13,10 +13,6 @@ public final class SQLiteStorage: KeyValueDataStorage {
     static let databaseName = "KeyValueStorage.sqlite"
     static let directoryPrefixName = "SQLite"
 
-    public static var defaultBackingStorage: any SQLiteBackingStorage {
-        DefaultSQLiteBackingStorage()
-    }
-
     // MARK: Properties
 
     private let database: any SQLiteDatabase
@@ -24,7 +20,7 @@ public final class SQLiteStorage: KeyValueDataStorage {
 
     // MARK: Initializers
 
-    public init(domain: Domain, backingStorage: any SQLiteBackingStorage) throws {
+    public init(domain: Domain, backingStorage: any SQLiteBackingStore) throws {
         let root = try Self.root(for: domain, resolver: backingStorage)
         let protection = Self.fileProtection(for: domain)
         self.database = try Self.execute {
@@ -33,6 +29,10 @@ public final class SQLiteStorage: KeyValueDataStorage {
         }
 
         self.domain = domain
+    }
+
+    public convenience init(domain: Domain) throws {
+        try self.init(domain: domain, backingStorage: DefaultSQLiteBackingStoreWrapper())
     }
 
     // MARK: Main Functionality

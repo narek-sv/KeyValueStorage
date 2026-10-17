@@ -1,5 +1,5 @@
 //
-//  KeychainBackingStorage.swift
+//  KeychainBackingStore.swift
 //  KeyValueStorage
 //
 //  Created by Narek Sahakyan on 16.10.26.
@@ -8,18 +8,18 @@
 import Foundation
 import Security
 
-// MARK: - KeychainBackingStorage
+// MARK: - KeychainBackingStore
 
-public protocol KeychainBackingStorage {
+public protocol KeychainBackingStore {
     func read(_ query: KeychainQuery) -> (KeychainOperationStatus, AnyObject?)
     func add(_ attributes: KeychainQuery) -> KeychainOperationStatus
     func update(_ query: KeychainQuery, with attributes: KeychainQuery) -> KeychainOperationStatus
     func remove(_ query: KeychainQuery) -> KeychainOperationStatus
 }
 
-// MARK: - DefaultKeychainBackingStorage
+// MARK: - DefaultKeychainBackingStoreWrapper
 
-final class DefaultKeychainBackingStorage: KeychainBackingStorage {
+final class DefaultKeychainBackingStoreWrapper: KeychainBackingStore {
     func read(_ query: KeychainQuery) -> (KeychainOperationStatus, AnyObject?) {
         var result: AnyObject?
         let status = check(SecItemCopyMatching(query.dictionary as CFDictionary, &result))

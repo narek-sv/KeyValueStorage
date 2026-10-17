@@ -1,5 +1,5 @@
 //
-//  FileBackingStorage.swift
+//  FileBackingStore.swift
 //  KeyValueStorage
 //
 //  Created by Narek Sahakyan on 16.10.26.
@@ -7,9 +7,9 @@
 
 import Foundation
 
-// MARK: - FileBackingStorage
+// MARK: - FileBackingStore
 
-public protocol FileBackingStorage: StorageDirectoryResolving {
+public protocol FileBackingStore: StorageDirectoryResolving {
     func read(at url: URL) throws -> Data
     func write(_ data: Data, at url: URL, options: Data.WritingOptions) throws
     func remove(at url: URL) throws
@@ -18,9 +18,9 @@ public protocol FileBackingStorage: StorageDirectoryResolving {
     func contents(at url: URL) throws -> [String]
 }
 
-// MARK: - DefaultFileBackingStorage
+// MARK: - DefaultFileBackingStoreWrapper
 
-final class DefaultFileBackingStorage: FileBackingStorage, FoundationStorageDirectoryResolving {
+final class DefaultFileBackingStoreWrapper: FileBackingStore, FoundationStorageDirectoryResolving {
     private var fileManager: FileManager { .default }
 
     func read(at url: URL) throws -> Data {

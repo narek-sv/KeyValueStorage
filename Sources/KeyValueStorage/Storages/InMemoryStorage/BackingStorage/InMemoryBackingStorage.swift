@@ -1,5 +1,5 @@
 //
-//  InMemoryBackingStorage.swift
+//  InMemoryBackingStore.swift
 //  KeyValueStorage
 //
 //  Created by Narek Sahakyan on 17.10.26.
@@ -7,38 +7,36 @@
 
 import Foundation
 
-// MARK: - InMemoryBackingStorage
+// MARK: - InMemoryBackingStore
 
-public protocol InMemoryBackingStorage {
+public protocol InMemoryBackingStore {
     func read(forKey key: String, in container: String) -> Data?
     func write(_ data: Data, forKey key: String, in container: String)
     func remove(forKey key: String, in container: String)
     func removeAll(in container: String)
 }
 
-// MARK: - InMemoryContainers
+// MARK: - DefaultInMemoryBackingStoreWrapper
 
-public final class InMemoryContainers: InMemoryBackingStorage, @unchecked Sendable {
-    public static let shared = InMemoryContainers()
-    
-    private let lock = Lock()
-    private var containers = [String: [String: Data]]()
+public final class DefaultInMemoryBackingStoreWrapper: InMemoryBackingStore, Sendable {
+    private static let lock = Lock()
+    nonisolated(unsafe) private static var containers = [String: [String: Data]]()
     
     public init() { }
     
     public func read(forKey key: String, in container: String) -> Data? {
-        lock.withLock { containers[container]?[key] }
+        Self.lock.withLock { Self.containers[container]?[key] }
     }
     
     public func write(_ data: Data, forKey key: String, in container: String) {
-        _ = lock.withLock { containers[container, default: [:]].updateValue(data, forKey: key) } // old value freed after unlock
+        _ = Self.lock.withLock { Self.containers[container, default: [:]].updateValue(data, forKey: key) } // old value freed after unlock
     }
 
     public func remove(forKey key: String, in container: String) {
-        _ = lock.withLock { containers[container]?.removeValue(forKey: key) } // old value freed after unlock
+        _ = Self.lock.withLock { Self.containers[container]?.removeValue(forKey: key) } // old value freed after unlock
     }
 
     public func removeAll(in container: String) {
-        _ = lock.withLock { containers.removeValue(forKey: container) } // old value freed after unlock
+        _ = Self.lock.withLock { Self.containers.removeValue(forKey: container) } // old value freed after unlock
     }
 }
