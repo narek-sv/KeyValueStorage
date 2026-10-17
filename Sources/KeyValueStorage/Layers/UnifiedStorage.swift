@@ -5,9 +5,7 @@
 //  Created by Narek Sahakyan on 11.12.23.
 //
 
-import Combine
-
-// MARK: - Unified Storage Key
+// MARK: - UnifiedStorageKey
 
 public struct UnifiedStorageKey<Storage: KeyValueDataStorage, Value: CodingValue>: Sendable {
     public let key: Storage.Key
@@ -22,6 +20,8 @@ public struct UnifiedStorageKey<Storage: KeyValueDataStorage, Value: CodingValue
         self.storageType = Storage.self
     }
 }
+
+// MARK: - UnifiedStorageKey + Hashable
 
 extension UnifiedStorageKey: Hashable {
     public static func == (lhs: Self, rhs: Self) -> Bool {
@@ -39,12 +39,14 @@ extension UnifiedStorageKey: Hashable {
     }
 }
 
-// MARK: - Unified Storage Factory
+// MARK: - UnifiedStorageFactory
 
 public protocol UnifiedStorageFactory: Sendable {
     func dataStorage<Storage: KeyValueDataStorage>(for domain: Storage.Domain) async throws -> Storage
     func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) async throws -> KeyValueCodingStorage<Storage>
 }
+
+// MARK: - DefaultUnifiedStorageFactory
 
 open class DefaultUnifiedStorageFactory: UnifiedStorageFactory, @unchecked Sendable {
     let coder: DataCoder
@@ -63,6 +65,8 @@ open class DefaultUnifiedStorageFactory: UnifiedStorageFactory, @unchecked Senda
     }
 }
 
+// MARK: - ObservableUnifiedStorageFactory
+
 /// Creates storages whose keys can be observed with `UnifiedStorage.publisher(forKey:)` and `stream(forKey:)`.
 /// See `KeyValueObservableStorage` for when and where changes are delivered.
 public final class ObservableUnifiedStorageFactory: DefaultUnifiedStorageFactory, @unchecked Sendable {
@@ -71,7 +75,7 @@ public final class ObservableUnifiedStorageFactory: DefaultUnifiedStorageFactory
     }
 }
 
-// MARK: - Unified Storage
+// MARK: - UnifiedStorage
 
 public actor UnifiedStorage {
     
@@ -123,7 +127,7 @@ public actor UnifiedStorage {
         try await storage.clear()
     }
     
-    // MARK: - Observation
+    // MARK: Observation
     
     /// Changes are delivered on a background executor; see `KeyValueObservableStorage`.
     /// - Parameter includingCurrentValue: Whether the publisher first emits the currently stored value, or `nil` if there's none.
@@ -173,6 +177,8 @@ public actor UnifiedStorage {
         }
     }
 }
+
+// MARK: - UnifiedStorage + UnderlyingStorageKey
 
 extension UnifiedStorage {
     private struct UnderlyingStorageKey<Storage: KeyValueDataStorage>: Hashable, Sendable {

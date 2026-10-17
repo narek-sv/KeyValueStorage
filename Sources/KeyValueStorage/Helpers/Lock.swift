@@ -5,11 +5,12 @@
 //  Created by Narek Sahakyan on 17.10.26.
 //
 
-
 import Foundation
 #if canImport(os)
 import os
 #endif
+
+// MARK: - Lock
 
 /// Internal mutual-exclusion lock.
 /// Uses OSAllocatedUnfairLock where available, otherwise falls back to NSLock.
@@ -31,11 +32,13 @@ final class Lock: @unchecked Sendable {
     }
 }
 
-// MARK: - Backends
+// MARK: - LockBackend
 
 private protocol LockBackend: AnyObject {
     func withLock<R>(_ body: () throws -> R) rethrows -> R
 }
+
+// MARK: - NSLockBackend
 
 private final class NSLockBackend: LockBackend {
     private let lock = NSLock()
@@ -44,6 +47,8 @@ private final class NSLockBackend: LockBackend {
         try lock.withLock(body)
     }
 }
+
+// MARK: - UnfairLockBackend
 
 #if canImport(os)
 @available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *)

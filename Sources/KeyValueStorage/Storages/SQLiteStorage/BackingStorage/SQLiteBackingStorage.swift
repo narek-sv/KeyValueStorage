@@ -12,7 +12,6 @@ import SQLite3
 
 public protocol SQLiteBackingStore: StorageDirectoryResolving {
     func createDirectory(at url: URL) throws
-
     func open(at url: URL, protection: FileProtectionType?) throws -> any SQLiteDatabase
 }
 
@@ -52,6 +51,8 @@ final class DefaultSQLiteBackingStoreWrapper: SQLiteBackingStore, FoundationStor
 // MARK: - DefaultSQLiteDatabase
 
 final class DefaultSQLiteDatabase: SQLiteDatabase {
+    // MARK: Properties
+
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
     private let database: OpaquePointer
@@ -59,6 +60,8 @@ final class DefaultSQLiteDatabase: SQLiteDatabase {
     private let writeStatement: OpaquePointer
     private let removeStatement: OpaquePointer
     private let removeAllStatement: OpaquePointer
+
+    // MARK: Initializers
 
     init(url: URL, protection: FileProtectionType?) throws {
         var database: OpaquePointer?
@@ -106,7 +109,7 @@ final class DefaultSQLiteDatabase: SQLiteDatabase {
         sqlite3_close_v2(database)
     }
 
-    // MARK: SQLiteDatabase
+    // MARK: Main Functionality
 
     func read(forKey key: String) throws -> Data? {
         try run(readStatement) { statement in

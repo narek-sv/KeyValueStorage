@@ -10,10 +10,11 @@ import Foundation
 // MARK: - SQLiteStorage
 
 public final class SQLiteStorage: KeyValueDataStorage {
-    static let databaseName = "KeyValueStorage.sqlite"
-    static let directoryPrefixName = "SQLite"
 
     // MARK: Properties
+
+    static let databaseName = "KeyValueStorage.sqlite"
+    static let directoryPrefixName = "SQLite"
 
     private let database: any SQLiteDatabase
     public let domain: Domain

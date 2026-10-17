@@ -5,8 +5,6 @@
 //  Created by Narek Sahakyan on 16.10.26.
 //
 
-import Foundation
-
 // MARK: - UserDefaultsStorage + Domain
 
 public extension UserDefaultsStorage {
@@ -14,13 +12,11 @@ public extension UserDefaultsStorage {
 
     enum AppDomain: KeyValueDataStorageContainer {
         case standard
-
         case suite(container: Container)
     }
 
     enum Domain: KeyValueDataStorageDomain {
         case app(AppDomain)
-
         case appGroup(groupId: String, container: Container)
 
         public static var `default`: Self {

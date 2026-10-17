@@ -24,8 +24,12 @@ public protocol StorageDirectoryResolving {
     func groupDirectory(for groupId: String) -> URL?
 }
 
+// MARK: - FoundationStorageDirectoryResolving
+
 /// Live lookups, adopted only by default backing storages, so mocks never reach the system.
 protocol FoundationStorageDirectoryResolving: StorageDirectoryResolving { }
+
+// MARK: - FoundationStorageDirectoryResolving + Defaults
 
 extension FoundationStorageDirectoryResolving {
     var appIdentifier: String {
@@ -44,6 +48,8 @@ extension FoundationStorageDirectoryResolving {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupId)
     }
 }
+
+// MARK: - AppIdentifier
 
 /// The identity in app-private paths and suite names, so they stay private even without App Sandbox.
 enum AppIdentifier {
