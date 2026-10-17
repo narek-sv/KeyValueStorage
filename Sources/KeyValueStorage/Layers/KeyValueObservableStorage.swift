@@ -7,10 +7,14 @@
 
 import Combine
 
+// MARK: - KeyValueObservations
+
 @CodingStorageActor
 private final class KeyValueObservations {
     fileprivate static var observations = [AnyHashable?: [AnyHashable: Any]]()
 }
+
+// MARK: - KeyValueObservableStorage
 
 /// A coding storage that publishes the changes made through it.
 ///
@@ -22,7 +26,7 @@ private final class KeyValueObservations {
 ///   or written directly to `UserDefaults`, the keychain or files aren't.
 open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodingStorage<Storage>, @unchecked Sendable {
         
-    // MARK: Observations
+    // MARK: Observation
 
     /// - Parameter includingCurrentValue: Whether the stream starts with the currently stored value, or `nil` if there's none.
     ///   Reading it can throw, for example when the stored data can't be decoded.
@@ -137,7 +141,7 @@ open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodi
         }
     }
     
-    // MARK: Inner Hidden Types
+    // MARK: Nested Types
     
     /// The observed state of one key. Nested in the generic class, so storages of different types never share it.
     @CodingStorageActor
@@ -189,7 +193,7 @@ open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodi
     }
 }
 
-// MARK: - Helpers
+// MARK: - Subscription
 
 /// Keeps a stream's Combine subscription for its termination handler.
 /// Cancelling a Combine subscription is thread-safe, but `AnyCancellable` isn't marked `Sendable`.
@@ -204,6 +208,8 @@ private final class Subscription: @unchecked Sendable {
         cancellable.cancel()
     }
 }
+
+// MARK: - ObservationToken
 
 /// Lives as long as an observation's publisher, or any subscription to it, and releases the observation afterwards.
 private final class ObservationToken: Sendable {

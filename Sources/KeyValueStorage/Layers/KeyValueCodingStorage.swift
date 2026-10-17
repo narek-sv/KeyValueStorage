@@ -5,9 +5,7 @@
 //  Created by Narek Sahakyan on 11.12.23.
 //
 
-import Foundation
-
-// MARK: - Coding Storage Key
+// MARK: - KeyValueCodingStorageKey
 
 public struct KeyValueCodingStorageKey<Storage: KeyValueDataStorage, Value: CodingValue>: Sendable {
     public let key: Storage.Key
@@ -24,6 +22,8 @@ public struct KeyValueCodingStorageKey<Storage: KeyValueDataStorage, Value: Codi
     }
 }
 
+// MARK: - KeyValueCodingStorageKey + Hashable
+
 extension KeyValueCodingStorageKey: Hashable {
     public static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.key == rhs.key &&
@@ -36,7 +36,7 @@ extension KeyValueCodingStorageKey: Hashable {
     }
 }
 
-// MARK: - Coding Storage
+// MARK: - KeyValueCodingStorage
 
 /// Encodes values and passes them to the underlying data storage.
 /// It holds only immutable state, so it doesn't need an actor: encoding runs in parallel on the callers' tasks.
@@ -47,7 +47,7 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
     private let coder: DataCoder
     private let storage: Storage
     
-    public var domain: Storage.Domain? {
+    public var domain: Storage.Domain {
         storage.domain
     }
     
@@ -61,7 +61,7 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
     // MARK: Main Functionality
     
     public func fetch<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws -> Value? {
-        if let data = try await storage.fetch(forKey: key.key) {
+        if let data = try storage.fetch(forKey: key.key) {
             // Explicit, because the return type would otherwise make the coder decode `Value?`
             return try await coder.decode(data) as Value
         }
@@ -71,7 +71,7 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
     
     public func save<Value: CodingValue>(_ value: Value, forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws {
         let encoded = try await coder.encode(value)
-        try await storage.save(encoded, forKey: key.key)
+        try storage.save(encoded, forKey: key.key)
     }
     
     public func set<Value: CodingValue>(_ value: Value?, forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws {
@@ -83,15 +83,15 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
     }
     
     public func delete<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws {
-        try await storage.delete(forKey: key.key)
+        try storage.delete(forKey: key.key)
     }
     
     public func clear() async throws {
-        try await storage.clear()
+        try storage.clear()
     }
 }
 
-// MARK: - Global Actors
+// MARK: - CodingStorageActor
 
 /// Serializes the observation registry and the delivery of changes to `KeyValueObservableStorage` subscribers.
 @globalActor

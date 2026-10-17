@@ -7,6 +7,8 @@
 
 import Foundation
 
+// MARK: - DataCoder
+
 public protocol DataCoder: Sendable {
     func encode<Value: CodingValue>(_ value: Value) async throws -> Data
     func decode<Value: CodingValue>(_ data: Data) async throws -> Value
