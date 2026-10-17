@@ -11,13 +11,9 @@ import Foundation
 
 public protocol UbiquitousBackingStorage {
     func read(forKey key: String) -> Data?
-
     func write(_ data: Data, forKey key: String)
-
     func remove(forKey key: String)
-
     func keys() -> [String]
-
     func synchronize() -> Bool
 }
 

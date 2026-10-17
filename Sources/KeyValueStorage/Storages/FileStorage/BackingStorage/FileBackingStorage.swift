@@ -11,13 +11,10 @@ import Foundation
 
 public protocol FileBackingStorage: StorageDirectoryResolving {
     func read(at url: URL) throws -> Data
-
     func write(_ data: Data, at url: URL, options: Data.WritingOptions) throws
-
     func remove(at url: URL) throws
 
     func createDirectory(at url: URL) throws
-
     func contents(at url: URL) throws -> [String]
 }
 

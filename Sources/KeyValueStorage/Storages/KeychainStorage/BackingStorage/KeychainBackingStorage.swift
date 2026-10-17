@@ -11,27 +11,24 @@ import Security
 // MARK: - KeychainBackingStorage
 
 public protocol KeychainBackingStorage {
-    func add(_ attributes: KeychainQuery) -> KeychainOperationStatus
-    
     func read(_ query: KeychainQuery) -> (KeychainOperationStatus, AnyObject?)
-    
+    func add(_ attributes: KeychainQuery) -> KeychainOperationStatus
     func update(_ query: KeychainQuery, with attributes: KeychainQuery) -> KeychainOperationStatus
-    
     func remove(_ query: KeychainQuery) -> KeychainOperationStatus
 }
 
 // MARK: - DefaultKeychainBackingStorage
 
 final class DefaultKeychainBackingStorage: KeychainBackingStorage {
-    func add(_ query: KeychainQuery) -> KeychainOperationStatus {
-        let query = query.dictionary
-        return check(SecItemAdd(query as CFDictionary, nil))
-    }
-    
     func read(_ query: KeychainQuery) -> (KeychainOperationStatus, AnyObject?) {
         var result: AnyObject?
         let status = check(SecItemCopyMatching(query.dictionary as CFDictionary, &result))
         return (status, result)
+    }
+    
+    func add(_ query: KeychainQuery) -> KeychainOperationStatus {
+        let query = query.dictionary
+        return check(SecItemAdd(query as CFDictionary, nil))
     }
     
     func update(_ query: KeychainQuery, with attributes: KeychainQuery) -> KeychainOperationStatus {
