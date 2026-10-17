@@ -10,9 +10,7 @@ import Foundation
 // MARK: - SQLiteStorage
 
 public final class SQLiteStorage: KeyValueDataStorage {
-    // Database file name
     static let databaseName = "KeyValueStorage.sqlite"
-    // Separate from FileStorage's folder
     static let directoryPrefixName = "SQLite"
 
     public static var defaultBackingStorage: any SQLiteBackingStorage {
@@ -26,7 +24,6 @@ public final class SQLiteStorage: KeyValueDataStorage {
 
     // MARK: Initializers
 
-    /// Creates the domain's folder and opens its database.
     public init(domain: Domain, backingStorage: any SQLiteBackingStorage) throws {
         let root = try Self.root(for: domain, resolver: backingStorage)
         let protection = Self.fileProtection(for: domain)
@@ -85,7 +82,6 @@ public final class SQLiteStorage: KeyValueDataStorage {
         }
     }
 
-    /// The domain's protection class; `nil` keeps the system default.
     private static func fileProtection(for domain: Domain) -> FileProtectionType? {
         let protection: Protection
         switch domain {

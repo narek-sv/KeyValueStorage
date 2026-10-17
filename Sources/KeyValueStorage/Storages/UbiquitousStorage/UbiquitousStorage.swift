@@ -9,14 +9,10 @@ import Foundation
 
 // MARK: - UbiquitousStorage
 
-/// The iCloud key-value store, synced across the person's devices: for small, non-secret values.
-/// It holds 1024 keys and 1 MB per store; exceeding the total fails silently.
 @available(watchOS 9.0, *)
 public final class UbiquitousStorage: KeyValueDataStorage {
-    /// The longest key in UTF-16 units; longer keys raise an exception.
     static let maximumKeyLength = 128
 
-    /// The largest value in bytes.
     static let maximumValueSize = 1024 * 1024
 
     public static var defaultBackingStorage: any UbiquitousBackingStorage {
@@ -26,13 +22,11 @@ public final class UbiquitousStorage: KeyValueDataStorage {
     // MARK: Properties
 
     private let storage: any UbiquitousBackingStorage
-    /// `<container>/`, or `nil` for raw keys.
     private let keyPrefix: String?
     public let domain: Domain
 
     // MARK: Initializers
 
-    /// Uses the domain's container.
     public init(domain: Domain, backingStorage: any UbiquitousBackingStorage) {
         switch domain {
         case let .shared(container):
@@ -66,14 +60,12 @@ public final class UbiquitousStorage: KeyValueDataStorage {
         try storage.remove(forKey: storedKey(for: key))
     }
 
-    /// Removes the container's values, or the whole store for a `nil` container, on every device.
     public func clear() {
         for key in storage.keys() where keyPrefix.map({ key.hasPrefix($0) }) ?? true {
             storage.remove(forKey: key)
         }
     }
 
-    /// Syncs in-memory values with iCloud, which the system also does on its own; `false` on error, such as a missing entitlement.
     @discardableResult
     public func synchronize() -> Bool {
         storage.synchronize()
@@ -81,7 +73,6 @@ public final class UbiquitousStorage: KeyValueDataStorage {
 
     // MARK: Helpers
 
-    /// The prefixed key, checked against the store's length limit.
     private func storedKey(for key: Key) throws -> String {
         let storedKey = keyPrefix.map { $0 + key } ?? key
         guard storedKey.utf16.count <= Self.maximumKeyLength else {

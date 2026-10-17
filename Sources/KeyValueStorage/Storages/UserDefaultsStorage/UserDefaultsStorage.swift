@@ -18,13 +18,11 @@ public final class UserDefaultsStorage: KeyValueDataStorage {
     // MARK: Properties
 
     private let suite: any UserDefaultsSuite
-    /// `<container>/` in an App Group's suite; `nil` in the app's own suites.
     private let keyPrefix: String?
     public let domain: Domain
 
     // MARK: Initializers
 
-    /// Opens the domain's suite.
     public init(domain: Domain, backingStorage: any UserDefaultsBackingStorage) throws {
         switch domain {
         case .app(.standard):
@@ -55,7 +53,6 @@ public final class UserDefaultsStorage: KeyValueDataStorage {
         suite.remove(forKey: storedKey(for: key))
     }
 
-    /// Removes the whole suite of an app domain, or only the container's keys in an App Group's suite.
     public func clear() {
         for key in suite.keys() where keyPrefix.map({ key.hasPrefix($0) }) ?? true {
             suite.remove(forKey: key)

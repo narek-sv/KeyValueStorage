@@ -9,38 +9,28 @@ import Foundation
 
 // MARK: - UserDefaultsBackingStorage
 
-/// `UserDefaults` calls of `UserDefaultsStorage`: opens suites.
 public protocol UserDefaultsBackingStorage {
-    /// The bundle identifier, or the process name for command-line tools.
     var appIdentifier: String { get }
 
-    /// `UserDefaults.standard`.
     var standard: any UserDefaultsSuite { get }
 
-    /// `UserDefaults(suiteName:)`; `nil` for a rejected name.
     func suite(named name: String) -> (any UserDefaultsSuite)?
 }
 
 // MARK: - UserDefaultsSuite
 
-/// One defaults suite.
 public protocol UserDefaultsSuite: AnyObject {
-    /// `UserDefaults.data(forKey:)`.
     func read(forKey key: String) -> Data?
 
-    /// `UserDefaults.set(_:forKey:)`.
     func write(_ data: Data, forKey key: String)
 
-    /// `UserDefaults.removeObject(forKey:)`.
     func remove(forKey key: String)
 
-    /// The keys of `UserDefaults.dictionaryRepresentation()`.
     func keys() -> [String]
 }
 
 // MARK: - DefaultUserDefaultsBackingStorage
 
-/// The live `UserDefaultsBackingStorage`.
 final class DefaultUserDefaultsBackingStorage: UserDefaultsBackingStorage {
     var appIdentifier: String {
         AppIdentifier.current
@@ -57,7 +47,6 @@ final class DefaultUserDefaultsBackingStorage: UserDefaultsBackingStorage {
 
 // MARK: - DefaultUserDefaultsSuite
 
-/// The live `UserDefaultsSuite`; it wraps `UserDefaults` rather than extend it.
 final class DefaultUserDefaultsSuite: UserDefaultsSuite {
     private let userDefaults: UserDefaults
 

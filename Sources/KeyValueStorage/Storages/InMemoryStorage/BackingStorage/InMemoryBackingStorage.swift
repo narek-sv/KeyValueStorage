@@ -9,26 +9,19 @@ import Foundation
 
 // MARK: - InMemoryBackingStorage
 
-/// Named containers of values behind `InMemoryStorage`.
 public protocol InMemoryBackingStorage {
-    /// The value of `key` in `container`.
     func read(forKey key: String, in container: String) -> Data?
 
-    /// Sets the value of `key` in `container`.
     func write(_ data: Data, forKey key: String, in container: String)
 
-    /// Removes the value of `key` in `container`.
     func remove(forKey key: String, in container: String)
 
-    /// Removes every value in `container`.
     func removeAll(in container: String)
 }
 
 // MARK: - InMemoryContainers
 
-/// The live `InMemoryBackingStorage`: lock-protected containers in this process, shared by the storages that use it.
 public final class InMemoryContainers: InMemoryBackingStorage, @unchecked Sendable {
-    /// The default backing storage.
     public static let shared = InMemoryContainers()
 
     private let lock = NSLock()
