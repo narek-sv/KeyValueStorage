@@ -13,4 +13,6 @@ public typealias KeychainKey<Value: CodingValue> = UnifiedStorageKey<KeychainSto
 public typealias InMemoryKey<Value: CodingValue> = UnifiedStorageKey<InMemoryStorage, Value>
 public typealias FileKey<Value: CodingValue> = UnifiedStorageKey<FileStorage, Value>
 public typealias SQLiteKey<Value: CodingValue> = UnifiedStorageKey<SQLiteStorage, Value>
+@available(watchOS 9.0, *)
+public typealias UbiquitousKey<Value: CodingValue> = UnifiedStorageKey<UbiquitousStorage, Value>
 

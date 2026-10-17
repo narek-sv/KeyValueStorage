@@ -68,51 +68,62 @@ final class PublicAPITests: XCTestCase {
         XCTAssertEqual(int, expectedInt)
     }
     
-    @KeychainActor
-    func testKeychainIsConfigurable() async {
-        // Given
-        let keychain = KeychainWrapperSpy(serviceName: "existing.service", accessGroup: "TEAMID.group.shared")
-        let domain = KeychainStorage.Domain(groupId: "group.shared", teamId: "TEAMID", service: "existing.service")
-        
-        // When
-        let storage = KeychainStorage(keychain: keychain)
-        _ = try? storage.fetch(forKey: .init(name: "token"))
-        
-        // Then
-        XCTAssertEqual(keychain.fetchedKeys, ["token"])
-        XCTAssertEqual(domain.service, keychain.serviceName)
-        XCTAssertEqual(domain.accessGroup, keychain.accessGroup)
-    }
-    
-    func testDomainIsReadableOutsideTheStorageActor() async throws {
-        // Given
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        addTeardownBlock {
-            try? FileManager.default.removeItem(at: root)
-        }
-        
-        let keychainDomain = KeychainStorage.Domain(accessGroup: "group.shared")
-        let inMemory = await InMemoryStorage(domain: "publicAPIDomain")
-        let userDefaults = try await UserDefaultsStorage(domain: "publicAPIDomain")
-        let keychain = await KeychainStorage(domain: keychainDomain)
-        let file = await FileStorage(fileManager: .default, root: root)
-        let sqlite = try await SQLiteStorage(fileManager: .default, root: root)
-        
-        // When - Then: read without await, like KeyValueCodingStorage does
-        XCTAssertEqual(inMemory.domain, "publicAPIDomain")
-        XCTAssertEqual(userDefaults.domain, "publicAPIDomain")
-        XCTAssertEqual(keychain.domain, keychainDomain)
-        XCTAssertNil(file.domain)
-        XCTAssertNil(sqlite.domain)
-    }
-}
+    func testKeychainIsConfigurable() {
+        // Given: an existing Keychain Sharing group and a service that other code already saves items under
+        let domain = KeychainStorage.Domain.appGroup(groupId: "TEAMID.group.shared", container: "existing.service")
 
-private final class KeychainWrapperSpy: KeychainWrapper, @unchecked Sendable {
-    private(set) var fetchedKeys = [String]()
-    
-    override func get(forKey key: String, isSynchronizable: Bool = false) throws -> Data? {
-        fetchedKeys.append(key)
-        return nil
+        // When
+        let storage = KeychainStorage(domain: domain)
+
+        // Then
+        XCTAssertEqual(storage.domain, domain)
+    }
+
+    func testDomainIsReadable() throws {
+        // Given
+        let container = UUID().uuidString
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: FileManager.default.temporaryDirectory.appendingPathComponent(container, isDirectory: true))
+        }
+
+        let inMemoryDomain = InMemoryStorage.Domain.app(container: "publicAPIDomain")
+        let userDefaultsDomain = UserDefaultsStorage.Domain.app(.suite(container: "publicAPIDomain"))
+        let keychainDomain = KeychainStorage.Domain.appGroup(groupId: "group.shared", container: "publicAPIDomain")
+        let fileDomain = FileStorage.Domain.app(.temporary(container: container))
+        let sqliteDomain = SQLiteStorage.Domain.app(.temporary(container: container))
+        let inMemory = InMemoryStorage(domain: inMemoryDomain)
+        let userDefaults = try UserDefaultsStorage(domain: userDefaultsDomain)
+        let keychain = KeychainStorage(domain: keychainDomain)
+        let file = try FileStorage(domain: fileDomain)
+        let sqlite = try SQLiteStorage(domain: sqliteDomain)
+
+        // When - Then
+        XCTAssertEqual(inMemory.domain, inMemoryDomain)
+        XCTAssertEqual(userDefaults.domain, userDefaultsDomain)
+        XCTAssertEqual(keychain.domain, keychainDomain)
+        XCTAssertEqual(file.domain, fileDomain)
+        XCTAssertEqual(sqlite.domain, sqliteDomain)
+        if #available(watchOS 9.0, *) {
+            let ubiquitousDomain = UbiquitousStorage.Domain.shared(container: "publicAPIDomain")
+            XCTAssertEqual(UbiquitousStorage(domain: ubiquitousDomain, backingStorage: InMemoryUbiquitousStore()).domain, ubiquitousDomain)
+        }
+    }
+
+    func testStoragesAcceptBackingStorages() throws {
+        // Given: two in-memory storages with the same domain, one of them with containers of its own
+        let shared = InMemoryStorage(domain: .app(container: "publicAPIBacking"))
+        let separate = InMemoryStorage(domain: .app(container: "publicAPIBacking"), backingStorage: InMemoryContainers())
+        let keychain = KeychainStorage(domain: .default, backingStorage: InMemoryKeychain())
+
+        // When
+        shared.save(Data([1]), forKey: "key")
+        try keychain.save(Data([2]), forKey: .init(name: "key"))
+
+        // Then
+        XCTAssertEqual(shared.fetch(forKey: "key"), Data([1]))
+        XCTAssertNil(separate.fetch(forKey: "key"))
+        XCTAssertEqual(try keychain.fetch(forKey: .init(name: "key")), Data([2]))
+        shared.clear()
     }
 }
 
@@ -120,7 +131,7 @@ private final class CountingFactory: DefaultUnifiedStorageFactory, @unchecked Se
     private(set) var dataStorageCalls = 0
     private(set) var codingStorageCalls = 0
 
-    override func dataStorage<Storage: KeyValueDataStorage>(for domain: Storage.Domain?) async throws -> Storage {
+    override func dataStorage<Storage: KeyValueDataStorage>(for domain: Storage.Domain) async throws -> Storage {
         dataStorageCalls += 1
         return try await super.dataStorage(for: domain)
     }
