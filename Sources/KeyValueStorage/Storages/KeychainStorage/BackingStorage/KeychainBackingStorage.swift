@@ -10,24 +10,18 @@ import Security
 
 // MARK: - KeychainBackingStorage
 
-/// `SecItem*` calls of `KeychainStorage`; statuses are returned, not thrown.
 public protocol KeychainBackingStorage {
-    /// `SecItemAdd`.
     func add(_ attributes: KeychainQuery) -> KeychainOperationStatus
     
-    /// `SecItemCopyMatching`: the status and the result.
     func read(_ query: KeychainQuery) -> (KeychainOperationStatus, AnyObject?)
     
-    /// `SecItemUpdate`; `attributes` holds item attributes only.
     func update(_ query: KeychainQuery, with attributes: KeychainQuery) -> KeychainOperationStatus
     
-    /// `SecItemDelete`.
     func remove(_ query: KeychainQuery) -> KeychainOperationStatus
 }
 
 // MARK: - DefaultKeychainBackingStorage
 
-/// The live `KeychainBackingStorage`.
 final class DefaultKeychainBackingStorage: KeychainBackingStorage {
     func add(_ query: KeychainQuery) -> KeychainOperationStatus {
         let query = query.dictionary
@@ -55,27 +49,16 @@ final class DefaultKeychainBackingStorage: KeychainBackingStorage {
 
 // MARK: - KeychainQuery
 
-/// A keychain query or item's attributes; only the set fields are sent.
 public struct KeychainQuery: Sendable, Equatable {
-    /// `kSecClass`
     public let itemClass: ItemClass?
-    /// `kSecAttrService`
     public let service: String?
-    /// `kSecAttrAccount`
     public let account: String?
-    /// `kSecAttrAccessGroup`
     public let accessGroup: String?
-    /// `kSecAttrSynchronizable`
     public let synchronizable: Synchronizable?
-    /// `kSecAttrAccessible`
     public let accessibility: KeychainStorage.Key.Accessibility?
-    /// `kSecUseDataProtectionKeychain`
     public let useDataProtectionKeychain: Bool?
-    /// `kSecReturnData`
     public let returnData: Bool?
-    /// `kSecMatchLimit`
     public let matchLimit: MatchLimit?
-    /// `kSecValueData`
     public let valueData: Data?
     
     public init(
@@ -102,7 +85,6 @@ public struct KeychainQuery: Sendable, Equatable {
         self.valueData = valueData
     }
     
-    /// The Security dictionary.
     internal var dictionary: [String: Any] {
         var dictionary = [String: Any]()
         dictionary[kSecClass as String] = itemClass?.value
@@ -122,7 +104,6 @@ public struct KeychainQuery: Sendable, Equatable {
 // MARK: - KeychainQuery + Values
 
 public extension KeychainQuery {
-    /// `kSecClass` values.
     enum ItemClass: Sendable {
         case genericPassword
         
@@ -133,7 +114,6 @@ public extension KeychainQuery {
         }
     }
     
-    /// `kSecAttrSynchronizable` values; `any` is for searches only.
     enum Synchronizable: Sendable {
         case yes
         case no
@@ -148,7 +128,6 @@ public extension KeychainQuery {
         }
     }
     
-    /// `kSecMatchLimit` values.
     enum MatchLimit: Sendable {
         case one
         case all
@@ -176,19 +155,12 @@ extension KeychainStorage.Key.Accessibility {
 
 // MARK: - KeychainOperationStatus
 
-/// A Security status, with cases for the common ones.
 public enum KeychainOperationStatus: Equatable, Sendable {
-    /// `errSecSuccess`
     case success
-    /// `errSecItemNotFound`
     case notFound
-    /// `errSecDuplicateItem`
     case duplicate
-    /// `errSecInteractionNotAllowed`, e.g. while locked
     case interactionNotAllowed
-    /// `errSecMissingEntitlement`
     case missingEntitlement
-    /// Any other status
     case otherError(Int32)
     
     init(status: OSStatus) {
@@ -202,7 +174,6 @@ public enum KeychainOperationStatus: Equatable, Sendable {
         }
     }
     
-    /// The `OSStatus`.
     var status: OSStatus {
         switch self {
         case .success:                return errSecSuccess

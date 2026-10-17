@@ -10,7 +10,6 @@ import Foundation
 // MARK: - FileStorage
 
 public final class FileStorage: KeyValueDataStorage {
-    // Separate from SQLiteStorage's folder
     static let directoryPrefixName = "Files"
 
     public static var defaultBackingStorage: any FileBackingStorage {
@@ -26,7 +25,6 @@ public final class FileStorage: KeyValueDataStorage {
 
     // MARK: Initializers
 
-    /// Resolves the domain's folder, which is created on the first save.
     public init(domain: Domain, backingStorage: any FileBackingStorage) throws {
         self.root = try Self.root(for: domain, resolver: backingStorage)
         self.domain = domain
@@ -53,7 +51,6 @@ public final class FileStorage: KeyValueDataStorage {
             do {
                 try storage.write(value, at: url, options: options)
             } catch CocoaError.fileNoSuchFile {
-                // Missing folder: create it and retry
                 try storage.createDirectory(at: root)
                 try storage.write(value, at: url, options: options)
             }
@@ -72,7 +69,6 @@ public final class FileStorage: KeyValueDataStorage {
             do {
                 fileNames = try storage.contents(at: root)
             } catch CocoaError.fileReadNoSuchFile {
-                // Nothing saved yet
                 return
             }
 
@@ -107,16 +103,14 @@ public final class FileStorage: KeyValueDataStorage {
         do {
             try storage.remove(at: url)
         } catch CocoaError.fileNoSuchFile {
-            // ok
         } catch {
             throw error
         }
     }
     
-    /// Atomic writes with the key's protection.
     private static func writingOptions(for protection: Key.Protection) -> Data.WritingOptions {
         guard #available(macOS 11, *) else {
-            return .atomic // Protection classes need macOS 11
+            return .atomic
         }
 
         switch protection {
@@ -128,7 +122,6 @@ public final class FileStorage: KeyValueDataStorage {
         }
     }
 
-    /// The key's file, whose name must be one path component that can't escape `root`.
     private func url(for key: Key) throws -> URL {
         let name = key.name
         let fileName = Self.fileName(for: name)
@@ -146,7 +139,6 @@ public final class FileStorage: KeyValueDataStorage {
         return root.appendingPathComponent(fileName, isDirectory: false)
     }
 
-    /// The normalized name with `%` and case-changing characters percent-encoded, so it's unique on case-insensitive volumes.
     private static func fileName(for name: String) -> String {
         var fileName = ""
         for character in name.precomposedStringWithCanonicalMapping {
@@ -173,7 +165,6 @@ public final class FileStorage: KeyValueDataStorage {
         return .other(error)
     }
 
-    /// A protected file on a locked device: a permission error caused by `EPERM`, unlike real permissions (`EACCES`).
     static func isProtectedDataUnavailable(_ error: Swift.Error) -> Bool {
         let error = error as NSError
         guard error.domain == NSCocoaErrorDomain,

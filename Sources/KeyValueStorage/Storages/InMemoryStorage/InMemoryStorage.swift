@@ -23,7 +23,6 @@ public final class InMemoryStorage: KeyValueDataStorage {
 
     // MARK: Initializers
 
-    /// Uses the domain's container.
     public init(domain: Domain, backingStorage: any InMemoryBackingStorage) {
         switch domain {
         case let .app(container):

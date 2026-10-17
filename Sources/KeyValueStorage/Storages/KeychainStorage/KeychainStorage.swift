@@ -25,7 +25,6 @@ public final class KeychainStorage: KeyValueDataStorage {
 
     // MARK: Initializers
 
-    /// Maps the domain to a service and an access group.
     public init(domain: Domain, backingStorage: any KeychainBackingStorage) {
         switch domain {
         case let .app(appContainer):
@@ -57,18 +56,16 @@ public final class KeychainStorage: KeyValueDataStorage {
     }
 
     public func save(_ value: Data, forKey key: Key) throws {
-        // Accessibility is set on add and update, so a change migrates on the next save
         let addStatus = storage.add(query(for: key, accessibility: key.accessibility, valueData: value))
         switch addStatus {
         case .success:
-            return // ok
+            return
         case .duplicate:
-            break // exists: update below
+            break
         default:
             throw Error.os(addStatus.status)
         }
 
-        // SecItemUpdate takes item attributes only
         let updateAttributes = KeychainQuery(
             accessibility: key.accessibility,
             valueData: value
@@ -76,7 +73,7 @@ public final class KeychainStorage: KeyValueDataStorage {
 
         let updateStatus = storage.update(query(for: key), with: updateAttributes)
         guard updateStatus != .success else {
-            return // ok
+            return
         }
 
         throw Error.os(updateStatus.status)
@@ -85,17 +82,16 @@ public final class KeychainStorage: KeyValueDataStorage {
     public func delete(forKey key: Key) throws {
         let status = storage.remove(query(for: key))
         guard status != .success && status != .notFound else {
-            return // ok
+            return
         }
 
         throw Error.os(status.status)
     }
 
     public func clear() throws {
-        // No account and any sync state: every item of the service
         let status = storage.remove(query(account: nil, synchronizable: .any))
         guard status != .success && status != .notFound else {
-            return // ok
+            return
         }
 
         throw Error.os(status.status)
@@ -103,7 +99,6 @@ public final class KeychainStorage: KeyValueDataStorage {
 
     // MARK: Helpers
 
-    /// A query for the item of `key`.
     private func query(
         for key: Key,
         accessibility: Key.Accessibility? = nil,
@@ -121,7 +116,6 @@ public final class KeychainStorage: KeyValueDataStorage {
         )
     }
 
-    /// A data protection keychain query in the domain's service and access group.
     private func query(
         account: String?,
         synchronizable: KeychainQuery.Synchronizable,
