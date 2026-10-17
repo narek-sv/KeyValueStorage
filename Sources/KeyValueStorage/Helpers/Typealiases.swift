@@ -5,7 +5,7 @@
 //  Created by Narek Sahakyan on 29.12.23.
 //
 
-import Foundation
+// MARK: - Typealiases
 
 public typealias CodingValue = Codable & Sendable
 public typealias UserDefaultsKey<Value: CodingValue> = UnifiedStorageKey<UserDefaultsStorage, Value>

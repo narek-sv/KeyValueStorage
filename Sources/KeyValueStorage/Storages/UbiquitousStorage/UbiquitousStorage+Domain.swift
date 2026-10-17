@@ -5,8 +5,6 @@
 //  Created by nsahakyan@servicetitan.com on 17.10.26.
 //
 
-import Foundation
-
 // MARK: - UbiquitousStorage + Domain
 
 @available(watchOS 9.0, *)

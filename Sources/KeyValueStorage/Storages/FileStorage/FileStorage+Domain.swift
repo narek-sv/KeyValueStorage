@@ -5,8 +5,6 @@
 //  Created by nsahakyan@servicetitan.com on 16.10.26.
 //
 
-import Foundation
-
 // MARK: - FileStorage + Domain
 
 public extension FileStorage {
@@ -14,17 +12,13 @@ public extension FileStorage {
 
     enum AppDomain: KeyValueDataStorageContainer {
         case applicationSupport(container: Container)
-
         case cache(container: Container)
-
         case documents(container: Container)
-
         case temporary(container: Container)
     }
 
     enum Domain: KeyValueDataStorageDomain {
         case app(AppDomain)
-
         case appGroup(groupId: String, container: Container)
 
         public static var `default`: Self {

@@ -10,9 +10,10 @@ import Foundation
 // MARK: - FileStorage
 
 public final class FileStorage: KeyValueDataStorage {
-    static let directoryPrefixName = "Files"
 
     // MARK: Properties
+
+    static let directoryPrefixName = "Files"
 
     private let storage: any FileBackingStore
     private let root: URL

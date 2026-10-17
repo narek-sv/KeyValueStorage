@@ -7,7 +7,7 @@
 
 import Foundation
 
-// MARK: - Data Storage Protocol
+// MARK: - KeyValueDataStorage
 
 /// Synchronous, unsynchronized raw-data storage: use an instance from one thread or actor.
 /// It reaches the system only through its backing storage.
@@ -27,7 +27,7 @@ public protocol KeyValueDataStorage {
     func clear() throws
 }
 
-// MARK: - Default Implementations
+// MARK: - KeyValueDataStorage + Defaults
 
 public extension KeyValueDataStorage {
     init() throws {
@@ -43,6 +43,8 @@ public extension KeyValueDataStorage {
         }
     }
 }
+
+// MARK: - KeyValueDataStorageDomain + Defaults
 
 public extension KeyValueDataStorageDomain {
     /// The package-owned container of `default` domains, so `clear()` never touches other code's data.

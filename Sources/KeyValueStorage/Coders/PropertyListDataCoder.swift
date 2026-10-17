@@ -7,15 +7,23 @@
 
 import Foundation
 
+// MARK: - PropertyListDataCoder
+
 /// Encodes values as property lists, in the binary format unless the given encoder sets another `outputFormat`.
 public struct PropertyListDataCoder: DataCoder {
+    // MARK: Properties
+
     private let decoder: PropertyListDecoder
     private let encoder: PropertyListEncoder
     
+    // MARK: Initializers
+
     public init(decoder: PropertyListDecoder = .init(), encoder: PropertyListEncoder = .init()) {
         self.decoder = decoder
         self.encoder = encoder
     }
+
+    // MARK: Main Functionality
 
     /// A property list can't have a single value, such as a string or a number, at its root,
     /// so every value is stored as the only element of an array.

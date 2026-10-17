@@ -7,14 +7,20 @@
 
 import Foundation
 
+// MARK: - RawDataCoder
+
 /// Stores `Data` as is and `String` as UTF-8, and encodes every other type with the fallback coder.
 ///
 /// Raw bytes skip encoding, which makes large values much faster and smaller than base64 or quoted text,
 /// and lets keys read raw values saved by other code, such as an existing token in the keychain.
 /// Other types go through the fallback, which detects most values that were saved as a different type.
 public struct RawDataCoder: DataCoder {
+    // MARK: Properties
+
     private let fallback: DataCoder
     
+    // MARK: Initializers
+
     public init(fallback: DataCoder = JSONDataCoder()) {
         self.fallback = fallback
     }

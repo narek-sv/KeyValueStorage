@@ -7,14 +7,22 @@
 
 import Foundation
 
+// MARK: - JSONDataCoder
+
 public struct JSONDataCoder: DataCoder {
+    // MARK: Properties
+
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
     
+    // MARK: Initializers
+
     public init(decoder: JSONDecoder = .init(), encoder: JSONEncoder = .init()) {
         self.decoder = decoder
         self.encoder = encoder
     }
+
+    // MARK: Main Functionality
 
     public func encode<Value: CodingValue>(_ value: Value) throws -> Data {
         try encoder.encode(value)

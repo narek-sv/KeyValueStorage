@@ -5,8 +5,6 @@
 //  Created by nsahakyan@servicetitan.com on 16.10.26.
 //
 
-import Foundation
-
 // MARK: - KeychainStorage + Domain
 
 public extension KeychainStorage {
@@ -14,7 +12,6 @@ public extension KeychainStorage {
 
     enum Domain: KeyValueDataStorageDomain {
         case app(container: Container?)
-
         case appGroup(groupId: String, container: Container?)
 
         public static var `default`: Self {

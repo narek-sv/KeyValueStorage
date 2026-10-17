@@ -5,8 +5,6 @@
 //  Created by nsahakyan@servicetitan.com on 16.10.26.
 //
 
-import Foundation
-
 // MARK: - SQLiteStorage + Domain
 
 public extension SQLiteStorage {
@@ -22,17 +20,13 @@ public extension SQLiteStorage {
 
     enum AppDomain: KeyValueDataStorageContainer {
         case applicationSupport(container: Container)
-
         case cache(container: Container)
-
         case documents(container: Container)
-
         case temporary(container: Container)
     }
 
     enum Domain: KeyValueDataStorageDomain {
         case app(AppDomain, protection: Protection = .inherited)
-
         case appGroup(groupId: String, container: Container, protection: Protection = .inherited)
 
         public static var `default`: Self {

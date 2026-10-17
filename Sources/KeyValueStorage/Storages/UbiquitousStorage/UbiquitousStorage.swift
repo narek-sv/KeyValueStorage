@@ -11,11 +11,12 @@ import Foundation
 
 @available(watchOS 9.0, *)
 public final class UbiquitousStorage: KeyValueDataStorage {
+
+    // MARK: Properties
+
     static let maximumKeyLength = 128
 
     static let maximumValueSize = 1024 * 1024
-
-    // MARK: Properties
 
     private let storage: any UbiquitousBackingStore
     private let keyPrefix: String?

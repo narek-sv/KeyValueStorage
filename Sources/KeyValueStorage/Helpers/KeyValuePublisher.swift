@@ -7,6 +7,8 @@
 
 import Combine
 
+// MARK: - KeyValuePublisher
+
 /// Publishes the changes of a stored value, and can be passed between concurrency domains.
 ///
 /// Combine's type-erased publishers aren't marked `Sendable`, so they can't be returned from the storage actors.

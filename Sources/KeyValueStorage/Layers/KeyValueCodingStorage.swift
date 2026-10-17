@@ -5,9 +5,7 @@
 //  Created by Narek Sahakyan on 11.12.23.
 //
 
-import Foundation
-
-// MARK: - Coding Storage Key
+// MARK: - KeyValueCodingStorageKey
 
 public struct KeyValueCodingStorageKey<Storage: KeyValueDataStorage, Value: CodingValue>: Sendable {
     public let key: Storage.Key
@@ -24,6 +22,8 @@ public struct KeyValueCodingStorageKey<Storage: KeyValueDataStorage, Value: Codi
     }
 }
 
+// MARK: - KeyValueCodingStorageKey + Hashable
+
 extension KeyValueCodingStorageKey: Hashable {
     public static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.key == rhs.key &&
@@ -36,7 +36,7 @@ extension KeyValueCodingStorageKey: Hashable {
     }
 }
 
-// MARK: - Coding Storage
+// MARK: - KeyValueCodingStorage
 
 /// Encodes values and passes them to the underlying data storage.
 /// It holds only immutable state, so it doesn't need an actor: encoding runs in parallel on the callers' tasks.
@@ -91,7 +91,7 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
     }
 }
 
-// MARK: - Global Actors
+// MARK: - CodingStorageActor
 
 /// Serializes the observation registry and the delivery of changes to `KeyValueObservableStorage` subscribers.
 @globalActor
