@@ -1,5 +1,5 @@
 //
-//  UbiquitousBackingStorage.swift
+//  UbiquitousBackingStore.swift
 //  KeyValueStorage
 //
 //  Created by nsahakyan@servicetitan.com on 17.10.26.
@@ -7,9 +7,9 @@
 
 import Foundation
 
-// MARK: - UbiquitousBackingStorage
+// MARK: - UbiquitousBackingStore
 
-public protocol UbiquitousBackingStorage {
+public protocol UbiquitousBackingStore {
     func read(forKey key: String) -> Data?
     func write(_ data: Data, forKey key: String)
     func remove(forKey key: String)
@@ -17,10 +17,10 @@ public protocol UbiquitousBackingStorage {
     func synchronize() -> Bool
 }
 
-// MARK: - DefaultUbiquitousBackingStorage
+// MARK: - DefaultUbiquitousBackingStoreWrapper
 
 @available(watchOS 9.0, *)
-final class DefaultUbiquitousBackingStorage: UbiquitousBackingStorage {
+final class DefaultUbiquitousBackingStoreWrapper: UbiquitousBackingStore {
     private var store: NSUbiquitousKeyValueStore { .default }
 
     func read(forKey key: String) -> Data? {

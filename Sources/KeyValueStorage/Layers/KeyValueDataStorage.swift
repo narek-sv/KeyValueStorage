@@ -15,15 +15,12 @@ public protocol KeyValueDataStorage {
     associatedtype Key: KeyValueDataStorageKey
     associatedtype Domain: KeyValueDataStorageDomain
     associatedtype Error: KeyValueDataStorageError
-    associatedtype BackingStorage
-
-    /// The live system, used by `init(domain:)`.
-    static var defaultBackingStorage: BackingStorage { get }
-
+    
     var domain: Domain { get }
-
-    init(domain: Domain, backingStorage: BackingStorage) throws
-
+    
+    init() throws
+    init(domain: Domain) throws
+    
     func fetch(forKey key: Key) throws -> Data?
     func save(_ value: Data, forKey key: Key) throws
     func delete(forKey key: Key) throws
@@ -33,10 +30,10 @@ public protocol KeyValueDataStorage {
 // MARK: - Default Implementations
 
 public extension KeyValueDataStorage {
-    init(domain: Domain = .default) throws {
-        try self.init(domain: domain, backingStorage: Self.defaultBackingStorage)
+    init() throws {
+        try self.init(domain: .default)
     }
-
+    
     /// Saves `value`, or deletes it if `nil`.
     func set(_ value: Data?, forKey key: Key) throws {
         if let value {

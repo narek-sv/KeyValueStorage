@@ -11,10 +11,6 @@ import Foundation
 
 public final class UserDefaultsStorage: KeyValueDataStorage {
 
-    public static var defaultBackingStorage: any UserDefaultsBackingStorage {
-        DefaultUserDefaultsBackingStorage()
-    }
-
     // MARK: Properties
 
     private let suite: any UserDefaultsSuite
@@ -23,7 +19,7 @@ public final class UserDefaultsStorage: KeyValueDataStorage {
 
     // MARK: Initializers
 
-    public init(domain: Domain, backingStorage: any UserDefaultsBackingStorage) throws {
+    public init(domain: Domain, backingStorage: any UserDefaultsBackingStore) throws {
         switch domain {
         case .app(.standard):
             self.suite = backingStorage.standard
@@ -37,6 +33,10 @@ public final class UserDefaultsStorage: KeyValueDataStorage {
         }
 
         self.domain = domain
+    }
+
+    public convenience init(domain: Domain) throws {
+        try self.init(domain: domain, backingStorage: DefaultUserDefaultsBackingStoreWrapper())
     }
 
     // MARK: Main Functionality
@@ -53,6 +53,14 @@ public final class UserDefaultsStorage: KeyValueDataStorage {
         suite.remove(forKey: storedKey(for: key))
     }
 
+    public func set(_ value: Data?, forKey key: Key) {
+        if let value {
+            save(value, forKey: key)
+        } else {
+            delete(forKey: key)
+        }
+    }
+
     public func clear() {
         for key in suite.keys() where keyPrefix.map({ key.hasPrefix($0) }) ?? true {
             suite.remove(forKey: key)
@@ -65,7 +73,7 @@ public final class UserDefaultsStorage: KeyValueDataStorage {
         keyPrefix.map { $0 + key } ?? key
     }
 
-    private static func suite(named name: String, in backingStorage: any UserDefaultsBackingStorage) throws -> any UserDefaultsSuite {
+    private static func suite(named name: String, in backingStorage: any UserDefaultsBackingStore) throws -> any UserDefaultsSuite {
         guard let suite = backingStorage.suite(named: name) else {
             throw Error.failedToInitSharedDefaults
         }

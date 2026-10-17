@@ -27,17 +27,17 @@ The library offers one consistent way to work with storages of very different na
 | D2 | **Storages are synchronous, not `Sendable`, not isolated.** No global actors (`FileActor`, `SQLiteActor`, `KeychainActor`, `UserDefaultsActor`, `InMemoryActor`, `CodingStorageActor`). | Most apps are single-threaded, especially with Swift 6.2's default `MainActor` isolation. A non-`Sendable` value can't be sent to another actor or task unless it's disconnected, so single-threaded use is compiler-checked, not hoped for. Synchronous calls cost nothing. |
 | D3 | **One opt-in isolation wrapper: `IsolatedKeyValueStorage<Wrapped>`, a generic actor.** No `LockedStorage`. | Synchronous access from many threads is a GCD-era need: sync use is covered by D2, shared use is `async` anyway. A lock blocks the caller (including the main thread) during I/O, needs a recursive lock for observers, and is a second way to do the same thing. The actor moves I/O off the caller and the compiler enforces ownership (`sending`). |
 | D4 | **Isolation is the outermost layer**, wrapping the coding storage. | Coding must work without isolation (D2). With synchronous coders, encoding inside the actor costs microseconds next to the I/O. Change events emitted inside the isolated operation come out in commit order. |
-| D5 | **Locks only inside building blocks**, never in the public API: the shared `InMemoryContainers` backing, the observation registry, the isolated facade's cache. | These are process-wide states that several instances share, which the type system can't see. |
+| D5 | **Locks only inside building blocks**, never in the public API: the shared `DefaultInMemoryBackingStoreWrapper` backing, the observation registry, the isolated facade's cache. | These are process-wide states that several instances share, which the type system can't see. |
 | D6 | **Backing storages:** one protocol per storage that is a minimal, **location-free** interface to the system. The storage resolves its domain and passes the resulting location (URL, suite name, query, container) in. Default adapters are thin and as branch-free as possible. | The backing and the domain can't disagree. Domain resolution (the main logic) is reachable from mocks. Adapters need only integration tests. |
 | D7 | **Storages depend only on their backing.** Every value read from the environment comes through it: directories, App Group containers, the app identifier. | 100% mock coverage, including path and suite resolution. |
-| D8 | Each storage has `init(domain:backingStorage:)` (public) and `init(domain: = .default)` from a protocol extension. **`domain` is non-optional.** | Consistent API; the domain is always known; `nil` and `.default` can't become two different storages. |
+| D8 | The protocol requires `init(domain:)` and `init()`, with `init()` defaulting to `.default`. Each storage adds a public `init(domain:backingStorage:)` taking its `XBackingStore`, and its `init(domain:)` passes a new `DefaultXBackingStoreWrapper`. **`domain` is non-optional.** | Consistent API; the domain is always known; `nil` and `.default` can't become two different storages. |
 | D9 | **App domains include the app identifier** (bundle identifier, or process name for command-line tools) in paths and suite names; App Group domains don't. | Same behaviour on every platform: on macOS without App Sandbox, `~/Library`, the temporary directory and `~/Documents` are shared by all apps. |
 | D10 | **Synchronous `DataCoder`.** | JSON and PropertyList coding are synchronous; `async` only forced hops and blocked locking. |
 | D11 | **Observation is built into `KeyValueCodingStorage`** and always available. Delete `KeyValueObservableStorage` and `ObservableUnifiedStorageFactory`. | An empty registry costs one dictionary lookup per write. It removes a subclass, a factory and the `publisher(...) -> nil` APIs. |
 | D12 | `set(_:forKey:)` is a protocol extension, not a requirement. | It's the same five lines in every storage, and five copies to test. |
 | D13 | Storages and layers are `final class`, with no `open`/`required`. | Extension points are protocols and backings, not subclassing. |
 | D14 | Keep **Swift tools 6.0** and the Xcode 16 CI job. Don't mark types `nonisolated`: that needs Swift 6.1, and it's redundant without default `MainActor` isolation. | Toolchain support stays as it is. |
-| D15 | Backing protocols are **not** `Sendable`. Only the shared default `InMemoryContainers` is (`@unchecked Sendable` + lock). | Storages aren't `Sendable`, so a backing travels with its storage. Region isolation stops one backing from being shared by storages on different actors, and mocks don't need `@unchecked Sendable`. |
+| D15 | Backing protocols are **not** `Sendable`. Only the shared default `DefaultInMemoryBackingStoreWrapper` is (`@unchecked Sendable` + lock). | Storages aren't `Sendable`, so a backing travels with its storage. Region isolation stops one backing from being shared by storages on different actors, and mocks don't need `@unchecked Sendable`. |
 | D16 | **No iCloud Drive domain and no file coordination.** No `CoordinatedFileStorage`, and no `isCoordinated` key option. | **Coordination:** every write is an atomic replace, so readers in other processes never see a partial file, and no `NSFilePresenter` watches the package-owned folders; coordinating would only add a round trip to a daemon on every operation. A per-key option, or a second storage type over the same folder, would let uncoordinated writes slip in. Cross-process read-modify-write belongs to SQLite. **iCloud Drive:** files there may not be downloaded yet, conflict across devices, need `url(forUbiquityContainerIdentifier:)` (which must not run on the main thread) and require coordination. That breaks the synchronous, local-first contract. Synced data uses `UbiquitousStorage`, `KeychainStorage` with `isSynchronizable`, or CloudKit outside this library. If it's ever revisited, coordination goes into a `CoordinatedFileBackingStorage` adapter, always on for that domain. |
 
 ## 3. Target architecture
@@ -81,12 +81,11 @@ public protocol KeyValueDataStorage {
     associatedtype Key: KeyValueDataStorageKey             // Hashable & Sendable
     associatedtype Domain: KeyValueDataStorageDomain       // Hashable & Sendable, static var default
     associatedtype Error: KeyValueDataStorageError         // Error & Sendable
-    associatedtype BackingStorage
 
-    static var defaultBackingStorage: BackingStorage { get }
     var domain: Domain { get }
 
-    init(domain: Domain, backingStorage: BackingStorage) throws
+    init() throws
+    init(domain: Domain) throws
 
     func fetch(forKey key: Key) throws -> Data?
     func save(_ value: Data, forKey key: Key) throws
@@ -95,8 +94,8 @@ public protocol KeyValueDataStorage {
 }
 
 public extension KeyValueDataStorage {
-    init(domain: Domain = .default) throws {
-        try self.init(domain: domain, backingStorage: Self.defaultBackingStorage)
+    init() throws {
+        try self.init(domain: .default)
     }
 
     func set(_ value: Data?, forKey key: Key) throws {
@@ -108,7 +107,7 @@ public extension KeyValueDataStorage {
 - Remove `IsolatedKeyValueDataStorage` typealias, `async` from all requirements and initializers, `Sendable` from the protocol.
 - Keep `KeyValueDataStorageDomain.defaultContainerName = "KeyValueStorage"`.
 - Remove `KeyValueDataStorageDomain.appIdentifier` (it reads `Bundle.main` directly). The app identifier comes from the backing (D7).
-- The `BackingStorage` associated type is the existential (`any FileBackingStorage`, …), so the storages stay non-generic.
+- Backing stores aren't part of the protocol. Each storage's `init(domain:backingStorage:)` takes the existential (`any FileBackingStore`, …), so the storages stay non-generic, and its `init(domain:)` passes `DefaultXBackingStoreWrapper()`.
 
 ### Shared directory resolution (File and SQLite)
 
@@ -127,7 +126,7 @@ enum StorageDirectory {   // internal; unchanged cases
 }
 ```
 
-`FileBackingStorage` and `SQLiteBackingStorage` both refine `StorageDirectoryResolving`.
+`FileBackingStore` and `SQLiteBackingStore` both refine `StorageDirectoryResolving`.
 
 ## 5. Storages
 
@@ -172,12 +171,12 @@ Defaults: File/SQLite `.app(.applicationSupport(container: "KeyValueStorage"))`,
 
 ### 5.2 KeychainStorage (backing already exists; start here)
 
-Backing (exists): `KeychainBackingStorage` with `read`, `add`, `update` and `remove`, each taking a `KeychainQuery` and returning a `KeychainOperationStatus`; the default is `DefaultKeychainBackingStorage`.
+Backing (exists): `KeychainBackingStore` with `read`, `add`, `update` and `remove`, each taking a `KeychainQuery` and returning a `KeychainOperationStatus`; the default is `DefaultKeychainBackingStoreWrapper`.
 
 Changes:
-- `final class KeychainStorage: KeyValueDataStorage`, `init(domain:backingStorage:)`, `static var defaultBackingStorage: any KeychainBackingStorage { DefaultKeychainBackingStorage() }`.
+- `final class KeychainStorage: KeyValueDataStorage`, `init(domain:backingStorage:)`, and `convenience init(domain:)` passing `DefaultKeychainBackingStoreWrapper()`.
 - Remove `nonisolated` on the type, `@unchecked Sendable`, `required convenience init()`, and the `set` implementation.
-- Drop `: Sendable` from `KeychainBackingStorage` (D15). Make `KeychainOperationStatus` `Sendable`.
+- Drop `: Sendable` from `KeychainBackingStore` (D15). Make `KeychainOperationStatus` `Sendable`.
 - **Delete `Helpers/KeychainWrapper.swift`** (no longer referenced).
 - Extract the repeated query construction into a private `baseQuery(for key:)` / `serviceQuery()` helper.
 
@@ -185,7 +184,7 @@ Logic owned by the storage (all mock-tested): query fields per domain, synchroni
 
 ### 5.3 FileStorage
 
-Backing (exists, extend): `FileBackingStorage: StorageDirectoryResolving` + `read(at:)`, `write(_:at:options:)`, `remove(at:)`, `createDirectory(at:)` and `contents(at:)`. The default adapter adds the four resolver members.
+Backing (exists, extend): `FileBackingStore: StorageDirectoryResolving` + `read(at:)`, `write(_:at:options:)`, `remove(at:)`, `createDirectory(at:)` and `contents(at:)`. The default adapter adds the four resolver members.
 
 Changes:
 - `final class`, remove `@FileActor` and `@unchecked Sendable`, `init(domain:backingStorage:)`.
@@ -198,7 +197,7 @@ Changes:
 New backing:
 
 ```swift
-public protocol UserDefaultsBackingStorage {
+public protocol UserDefaultsBackingStore {
     var appIdentifier: String { get }
     var standard: any UserDefaultsSuite { get }                     // UserDefaults.standard
     func suite(named name: String) -> (any UserDefaultsSuite)?      // UserDefaults(suiteName:)
@@ -221,15 +220,15 @@ final class DefaultUserDefaultsSuite: UserDefaultsSuite { /* wraps a UserDefault
 New backing:
 
 ```swift
-public protocol InMemoryBackingStorage {
+public protocol InMemoryBackingStore {
     func read(forKey key: String, in container: String) -> Data?
     func write(_ data: Data, forKey key: String, in container: String)
     func remove(forKey key: String, in container: String)
     func removeAll(in container: String)
 }
 
-public final class InMemoryContainers: InMemoryBackingStorage, @unchecked Sendable {
-    public static let shared = InMemoryContainers()   // default backing; NSLock-protected dictionary
+public final class DefaultInMemoryBackingStoreWrapper: InMemoryBackingStore, @unchecked Sendable {
+    public static let shared = DefaultInMemoryBackingStoreWrapper()   // default backing; NSLock-protected dictionary
 }
 ```
 
@@ -240,7 +239,7 @@ This removes `nonisolated(unsafe) static var container`, fixes the race between 
 New backing and wrapper. All SQLite handling moves out of the storage:
 
 ```swift
-public protocol SQLiteBackingStorage: StorageDirectoryResolving {
+public protocol SQLiteBackingStore: StorageDirectoryResolving {
     func createDirectory(at url: URL) throws                     // withIntermediateDirectories: true
     func open(at url: URL, protection: FileProtectionType?) throws -> any SQLiteDatabase   // nil: default class
 }
@@ -255,7 +254,7 @@ public protocol SQLiteDatabase: AnyObject {                     // closes when r
 public struct SQLiteError: Error, Sendable, Equatable { public let code: Int32; public let message: String }
 ```
 
-- `DefaultSQLiteBackingStorage` (internal, default backing): directory resolution via `FileManager`; `open(at:)` returns a `DefaultSQLiteDatabase`. Both live in `SQLiteBackingStorage.swift`, mirroring `DefaultUserDefaultsBackingStorage` and `DefaultUserDefaultsSuite`: an entry object without state that opens a handle for one location.
+- `DefaultSQLiteBackingStoreWrapper` (internal, default backing): directory resolution via `FileManager`; `open(at:)` returns a `DefaultSQLiteDatabase`. Both live in `SQLiteBackingStore.swift`, mirroring `DefaultUserDefaultsBackingStoreWrapper` and `DefaultUserDefaultsSuite`: an entry object without state that opens a handle for one location.
 - `DefaultSQLiteDatabase` (internal): today's `Connection`: `sqlite3_open_v2` with `FULLMUTEX`, WAL, a 1 s busy timeout, the table, four prepared statements, NUL-safe key binding, `zeroblob` for empty data, and `run`/`reset`.
 - `SQLiteStorage`: resolves the URL, creates the directory, opens the database, and maps `SQLiteError` → `.sqlite(code:message:)` and other errors → `.other`.
 - The prepared statements make an instance unsafe to share between threads, which matches D2. Two instances have separate connections.
@@ -263,7 +262,7 @@ public struct SQLiteError: Error, Sendable, Equatable { public let code: Int32; 
 
 ### 5.7 UbiquitousStorage (new)
 
-Backing: `UbiquitousBackingStorage` with `read(forKey:)`, `write(_:forKey:)`, `remove(forKey:)`, `keys()` and `synchronize()`. The default adapter, `DefaultUbiquitousBackingStorage`, calls `NSUbiquitousKeyValueStore.default`.
+Backing: `UbiquitousBackingStore` with `read(forKey:)`, `write(_:forKey:)`, `remove(forKey:)`, `keys()` and `synchronize()`. The default adapter, `DefaultUbiquitousBackingStoreWrapper`, calls `NSUbiquitousKeyValueStore.default`.
 
 - **Availability:** `@available(watchOS 9.0, *)`, matching `NSUbiquitousKeyValueStore`; the package supports watchOS 6. Raising the watchOS minimum to 9 would remove the annotations (see Open decisions).
 - **Store and sharing:** a process can reach exactly one store, `NSUbiquitousKeyValueStore.default`, chosen only by its signed `com.apple.developer.ubiquity-kvstore-identifier` entitlement and the Apple Account. There's no API to pick a store, App Groups have no effect on it, and on iOS the code can't read the entitlement.
@@ -413,7 +412,7 @@ Tests/
 ### 11.1 Rules
 
 - **Storage classes, `StorageDirectory`, the coding layer, the isolation layer and the facade: 100% coverage with mocks.** Every outcome of every `if`/`guard`/`switch`/`catch` has a test, and each test asserts both the result and the exact backing calls (arguments recorded by the mock).
-- **Default adapters** (`Default*BackingStorage`, `DefaultUserDefaultsSuite`, `DefaultSQLiteDatabase`, `InMemoryContainers`): integration tests against the real system. Failures the system won't produce on demand are documented as uncovered.
+- **Default adapters** (`Default*BackingStorage`, `DefaultUserDefaultsSuite`, `DefaultSQLiteDatabase`, `DefaultInMemoryBackingStoreWrapper`): integration tests against the real system. Failures the system won't produce on demand are documented as uncovered.
 - **Mocks:** final classes conforming to the backing protocols. They record calls (in order, with arguments) and return or throw scripted results per call. No subclassing of Apple classes.
 - **Measuring:** Swift's coverage data has line and region counters, not branch counters (llvm-cov's branch columns stay empty for Swift; verify on the CI toolchain). Each branch arm is its own region, so the gate is **100% region and line coverage** for the gated files, plus the outcome inventories below as the checklist.
 
@@ -499,18 +498,18 @@ Tests/
 
 ### 11.3 Integration tests (new target)
 
-- **`DefaultFileBackingStorage`** in a temp directory:
+- **`DefaultFileBackingStoreWrapper`** in a temp directory:
   - read, write, remove, create and list.
   - the real `CocoaError` codes for a missing file or directory, a directory where a file is expected, `chmod` 000 / 555 (skipped as root).
   - resolver members return real paths.
-- **`DefaultSQLiteBackingStorage`/`DefaultSQLiteDatabase`** (move today's SQLite tests here):
+- **`DefaultSQLiteBackingStoreWrapper`/`DefaultSQLiteDatabase`** (move today's SQLite tests here):
   - round trips (empty, 1 MB, keys containing NUL);
   - a corrupt database → `SQLITE_NOTADB`; a directory at the database path → `SQLITE_CANTOPEN`;
   - a lock held by another connection → `SQLITE_BUSY` after the timeout, reads still working in WAL mode;
   - a dropped table → `SQLITE_ERROR`, recreated on reopen; persistence across instances.
 - **`UserDefaults` adapter:** a unique suite name per test, removed in teardown; `standard` is the same object as `UserDefaults.standard`.
-- **`InMemoryContainers`:** concurrent access from many tasks.
-- **Keychain:** `DefaultKeychainBackingStorage` in KeychainHost (entitlements): add, match, update, delete, `.duplicate`/`.notFound`, `.missingEntitlement` for a group it isn't entitled to.
+- **`DefaultInMemoryBackingStoreWrapper`:** concurrent access from many tasks.
+- **Keychain:** `DefaultKeychainBackingStoreWrapper` in KeychainHost (entitlements): add, match, update, delete, `.duplicate`/`.notFound`, `.missingEntitlement` for a group it isn't entitled to.
 - **End-to-end:** one save/fetch/clear per storage through `UnifiedStorage` with real backings in temporary domains.
 
 ### 11.4 CI
@@ -538,8 +537,8 @@ Each phase ends with: the library builds on every CI toolchain, the phase's test
 | 2 | **KeychainStorage** onto the new protocol + mock tests (pattern reference for the rest) | Keychain inventory covered |
 | 3 | FileStorage: backing gets the resolver members; storage cleanup; mock tests | File inventory covered |
 | 4 | UserDefaultsStorage: backing + `UserDefaultsSuite`; mock tests | UserDefaults inventory covered |
-| 5 | InMemoryStorage: `InMemoryContainers`; mock tests | InMemory inventory covered |
-| 6 | SQLiteStorage: extract `DefaultSQLiteBackingStorage`/`DefaultSQLiteDatabase`; mock tests; move the SQLite integration tests | SQLite inventory covered |
+| 5 | InMemoryStorage: `DefaultInMemoryBackingStoreWrapper`; mock tests | InMemory inventory covered |
+| 6 | SQLiteStorage: extract `DefaultSQLiteBackingStoreWrapper`/`DefaultSQLiteDatabase`; mock tests; move the SQLite integration tests | SQLite inventory covered |
 | 7 | Synchronous coders; `KeyValueCodingStorage` with `update` and built-in observation; delete `KeyValueObservableStorage` | Coding inventory covered |
 | 8 | `IsolatedKeyValueStorage` + tests | Isolation inventory covered |
 | 9 | `UnifiedStorage`, `IsolatedUnifiedStorage`, factory protocol + tests | Facade inventory covered |

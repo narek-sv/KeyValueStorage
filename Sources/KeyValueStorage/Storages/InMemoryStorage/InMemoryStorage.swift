@@ -11,19 +11,15 @@ import Foundation
 
 public final class InMemoryStorage: KeyValueDataStorage {
 
-    public static var defaultBackingStorage: any InMemoryBackingStorage {
-        InMemoryContainers.shared
-    }
-
     // MARK: Properties
 
-    private let storage: any InMemoryBackingStorage
+    private let storage: any InMemoryBackingStore
     private let container: Container
     public let domain: Domain
 
     // MARK: Initializers
 
-    public init(domain: Domain, backingStorage: any InMemoryBackingStorage) {
+    public init(domain: Domain, backingStorage: any InMemoryBackingStore) {
         switch domain {
         case let .app(container):
             self.container = container
@@ -33,8 +29,12 @@ public final class InMemoryStorage: KeyValueDataStorage {
         self.storage = backingStorage
     }
 
-    public convenience init(domain: Domain = .default) {
-        self.init(domain: domain, backingStorage: Self.defaultBackingStorage)
+    public convenience init(domain: Domain) {
+        self.init(domain: domain, backingStorage: DefaultInMemoryBackingStoreWrapper())
+    }
+
+    public convenience init() {
+        self.init(domain: .default)
     }
 
     // MARK: Main Functionality
@@ -49,6 +49,14 @@ public final class InMemoryStorage: KeyValueDataStorage {
 
     public func delete(forKey key: Key) {
         storage.remove(forKey: key, in: container)
+    }
+
+    public func set(_ value: Data?, forKey key: Key) {
+        if let value {
+            save(value, forKey: key)
+        } else {
+            delete(forKey: key)
+        }
     }
 
     public func clear() {

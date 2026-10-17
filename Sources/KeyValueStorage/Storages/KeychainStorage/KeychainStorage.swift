@@ -11,13 +11,9 @@ import Foundation
 
 public final class KeychainStorage: KeyValueDataStorage {
 
-    public static var defaultBackingStorage: any KeychainBackingStorage {
-        DefaultKeychainBackingStorage()
-    }
-
     // MARK: Properties
 
-    private let storage: any KeychainBackingStorage
+    private let storage: any KeychainBackingStore
     private let serviceName: String?
     private let accessGroup: String?
 
@@ -25,7 +21,7 @@ public final class KeychainStorage: KeyValueDataStorage {
 
     // MARK: Initializers
 
-    public init(domain: Domain, backingStorage: any KeychainBackingStorage) {
+    public init(domain: Domain, backingStorage: any KeychainBackingStore) {
         switch domain {
         case let .app(appContainer):
             self.serviceName = appContainer
@@ -39,8 +35,12 @@ public final class KeychainStorage: KeyValueDataStorage {
         self.storage = backingStorage
     }
 
-    public convenience init(domain: Domain = .default) {
-        self.init(domain: domain, backingStorage: Self.defaultBackingStorage)
+    public convenience init(domain: Domain) {
+        self.init(domain: domain, backingStorage: DefaultKeychainBackingStoreWrapper())
+    }
+
+    public convenience init() {
+        self.init(domain: .default)
     }
 
     // MARK: Main Functionality
