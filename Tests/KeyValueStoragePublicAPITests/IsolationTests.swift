@@ -30,31 +30,6 @@ final class IsolationTests: XCTestCase {
     func testCodingStorageActor() async throws {
         try await exerciseAPI(context: "CodingStorageActor")
     }
-    
-    @InMemoryActor
-    func testInMemoryActor() async throws {
-        try await exerciseAPI(context: "InMemoryActor")
-    }
-    
-    @UserDefaultsActor
-    func testUserDefaultsActor() async throws {
-        try await exerciseAPI(context: "UserDefaultsActor")
-    }
-    
-    @FileActor
-    func testFileActor() async throws {
-        try await exerciseAPI(context: "FileActor")
-    }
-    
-    @SQLiteActor
-    func testSQLiteActor() async throws {
-        try await exerciseAPI(context: "SQLiteActor")
-    }
-    
-    @KeychainActor
-    func testKeychainActor() async throws {
-        try await exerciseAPI(context: "KeychainActor")
-    }
 }
 
 // MARK: - Helpers
@@ -70,8 +45,8 @@ private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #is
     let id = "isolation-\(UUID().uuidString)"
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(id, isDirectory: true)
     defer {
+        // The file and SQLite storages below use `<temporary>/<id>`; `exercise` clears the UserDefaults suite itself
         try? FileManager.default.removeItem(at: root)
-        UserDefaults().removePersistentDomain(forName: id)
     }
     
     // Coders
@@ -80,16 +55,22 @@ private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #is
         XCTAssertEqual(decoded, 42, "\(type(of: coder)) from \(context)")
     }
     
-    // Every storage, directly and through the coding and observation layers
-    try await exercise(await InMemoryStorage(domain: id), key: "key", context: context)
-    try await exercise(try await UserDefaultsStorage(domain: id), key: "key", context: context)
-    try await exercise(await FileStorage(fileManager: .default, root: root.appendingPathComponent("Files")), key: "key", context: context)
-    try await exercise(try await SQLiteStorage(fileManager: .default, root: root.appendingPathComponent("SQLite")), key: "key", context: context)
-    try await exercise(await KeychainStorage(keychain: InMemoryKeychain(serviceName: id)), key: .init(name: "key"), context: context)
-    
+    // Every storage, directly and through the coding and observation layers. The keychain and the iCloud key-value store
+    // need entitlements that test bundles can't have, so those storages use in-memory backing storages
+    try await exercise(InMemoryStorage(domain: .app(container: id)), key: "key", context: context)
+    try await exercise(UserDefaultsStorage(domain: .app(.suite(container: id))), key: "key", context: context)
+    try await exercise(FileStorage(domain: .app(.temporary(container: id))), key: .init(name: "key"), context: context)
+    try await exercise(SQLiteStorage(domain: .app(.temporary(container: id))), key: "key", context: context)
+    try await exercise(KeychainStorage(domain: .app(container: id), backingStorage: InMemoryKeychain()),
+                       key: .init(name: "key"), context: context)
+    if #available(watchOS 9.0, *) {
+        try await exercise(UbiquitousStorage(domain: .shared(container: id), backingStorage: InMemoryUbiquitousStore()),
+                           key: "key", context: context)
+    }
+
     // Unified storage
     let storage = UnifiedStorage(factory: ObservableUnifiedStorageFactory())
-    let key = InMemoryKey<Int>(key: "unified", domain: id)
+    let key = InMemoryKey<Int>(key: "unified", domain: .app(container: id))
     let published = Values<Int?>()
     let subscription = try await storage.publisher(forKey: key)?.sink { published.append($0) }
     let stream = try await storage.stream(forKey: key, includingCurrentValue: false)
@@ -104,7 +85,7 @@ private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #is
     try await storage.set(nil, forKey: key)
     try await storage.set(2, forKey: key)
     try await storage.delete(forKey: key)
-    try await storage.clear(storage: InMemoryStorage.self, forDomain: id)
+    try await storage.clear(storage: InMemoryStorage.self, forDomain: .app(container: id))
     let firstStreamed = await streamed.value
     
     XCTAssertEqual(fetched, 1, "UnifiedStorage from \(context)")
@@ -120,16 +101,16 @@ private func exercise<Storage: KeyValueDataStorage>(_ storage: Storage, key: Sto
     
     // Data storage
     _ = storage.domain
-    try await storage.save(data, forKey: key)
-    let saved = try await storage.fetch(forKey: key)
-    try await storage.set(nil, forKey: key)
-    let setToNil = try await storage.fetch(forKey: key)
-    try await storage.set(data, forKey: key)
-    try await storage.delete(forKey: key)
-    let deleted = try await storage.fetch(forKey: key)
-    try await storage.save(data, forKey: key)
-    try await storage.clear()
-    let cleared = try await storage.fetch(forKey: key)
+    try storage.save(data, forKey: key)
+    let saved = try storage.fetch(forKey: key)
+    try storage.set(nil, forKey: key)
+    let setToNil = try storage.fetch(forKey: key)
+    try storage.set(data, forKey: key)
+    try storage.delete(forKey: key)
+    let deleted = try storage.fetch(forKey: key)
+    try storage.save(data, forKey: key)
+    try storage.clear()
+    let cleared = try storage.fetch(forKey: key)
     
     XCTAssertEqual(saved, data, description)
     XCTAssertNil(setToNil, description)
@@ -157,36 +138,6 @@ private func exercise<Storage: KeyValueDataStorage>(_ storage: Storage, key: Sto
     XCTAssertEqual(firstStreamed, 1, description)
     XCTAssertEqual(published.all, [nil, 1, nil, nil], description)
     subscription.cancel()
-}
-
-/// Keeps items in memory, because the real keychain needs entitlements that test bundles can't have.
-private final class InMemoryKeychain: KeychainWrapper, @unchecked Sendable {
-    private let lock = NSLock()
-    private var items = [String: Data]()
-    
-    override func get(forKey key: String, isSynchronizable: Bool = false) throws -> Data? {
-        lock.lock()
-        defer { lock.unlock() }
-        return items[key]
-    }
-    
-    override func set(_ value: Data, forKey key: String, withAccessibility accessibility: KeychainAccessibility? = nil, isSynchronizable: Bool = false) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        items[key] = value
-    }
-    
-    override func remove(forKey key: String, isSynchronizable: Bool = false) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        items[key] = nil
-    }
-    
-    override func removeAll() throws {
-        lock.lock()
-        defer { lock.unlock() }
-        items.removeAll()
-    }
 }
 
 /// Collects values delivered on any thread.

@@ -11,11 +11,11 @@ import Combine
 
 public struct UnifiedStorageKey<Storage: KeyValueDataStorage, Value: CodingValue>: Sendable {
     public let key: Storage.Key
-    public let domain: Storage.Domain?
+    public let domain: Storage.Domain
     public let codingType: Value.Type
     public let storageType: Storage.Type
     
-    public init(key: Storage.Key, domain: Storage.Domain? = nil) {
+    public init(key: Storage.Key, domain: Storage.Domain = .default) {
         self.key = key
         self.domain = domain
         self.codingType = Value.self
@@ -42,7 +42,7 @@ extension UnifiedStorageKey: Hashable {
 // MARK: - Unified Storage Factory
 
 public protocol UnifiedStorageFactory: Sendable {
-    func dataStorage<Storage: KeyValueDataStorage>(for domain: Storage.Domain?) async throws -> Storage
+    func dataStorage<Storage: KeyValueDataStorage>(for domain: Storage.Domain) async throws -> Storage
     func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) async throws -> KeyValueCodingStorage<Storage>
 }
 
@@ -54,12 +54,8 @@ open class DefaultUnifiedStorageFactory: UnifiedStorageFactory, @unchecked Senda
         self.coder = coder
     }
     
-    open func dataStorage<Storage: KeyValueDataStorage>(for domain: Storage.Domain?) async throws -> Storage {
-        if let domain {
-            return try await Storage(domain: domain)
-        }
-        
-        return try await Storage()
+    open func dataStorage<Storage: KeyValueDataStorage>(for domain: Storage.Domain) async throws -> Storage {
+        try Storage(domain: domain)
     }
     
     open func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) async throws -> KeyValueCodingStorage<Storage> {
@@ -122,7 +118,7 @@ public actor UnifiedStorage {
     
     /// Removes everything stored in the given storage and domain.
     /// The storage is loaded on demand, so this also clears values saved in previous launches.
-    public nonisolated func clear<Storage: KeyValueDataStorage>(storage: Storage.Type, forDomain domain: Storage.Domain?) async throws {
+    public nonisolated func clear<Storage: KeyValueDataStorage>(storage: Storage.Type, forDomain domain: Storage.Domain = .default) async throws {
         let storage: KeyValueCodingStorage<Storage> = try await self.storage(for: domain)
         try await storage.clear()
     }
@@ -153,7 +149,7 @@ public actor UnifiedStorage {
     
     /// Caches the creation task before awaiting it, so concurrent first calls share one storage instead of
     /// each creating their own while the actor is suspended. Failures aren't cached, so a later call can retry.
-    private func storage<Storage: KeyValueDataStorage>(for domain: Storage.Domain?) async throws -> KeyValueCodingStorage<Storage> {
+    private func storage<Storage: KeyValueDataStorage>(for domain: Storage.Domain) async throws -> KeyValueCodingStorage<Storage> {
         let underlyingKey = UnderlyingStorageKey<Storage>(domain: domain)
         if let task = storages[underlyingKey] as? Task<KeyValueCodingStorage<Storage>, Error> {
             return try await task.value
@@ -180,10 +176,10 @@ public actor UnifiedStorage {
 
 extension UnifiedStorage {
     private struct UnderlyingStorageKey<Storage: KeyValueDataStorage>: Hashable, Sendable {
-        let domain: Storage.Domain?
+        let domain: Storage.Domain
         let storageType: Storage.Type
         
-        init(domain: Storage.Domain?) {
+        init(domain: Storage.Domain) {
             self.domain = domain
             self.storageType = Storage.self
         }

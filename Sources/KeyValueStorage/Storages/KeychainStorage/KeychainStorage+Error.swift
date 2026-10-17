@@ -1,0 +1,17 @@
+//
+//  KeychainStorage+Error.swift
+//  KeyValueStorage
+//
+//  Created by nsahakyan@servicetitan.com on 16.10.26.
+//
+
+import Foundation
+
+// MARK: - KeychainStorage + Error
+
+public extension KeychainStorage {
+    enum Error: KeyValueDataStorageError {
+        case os(OSStatus)
+        case other(Swift.Error)
+    }
+}

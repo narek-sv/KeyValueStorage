@@ -47,7 +47,7 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
     private let coder: DataCoder
     private let storage: Storage
     
-    public var domain: Storage.Domain? {
+    public var domain: Storage.Domain {
         storage.domain
     }
     
@@ -61,7 +61,7 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
     // MARK: Main Functionality
     
     public func fetch<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws -> Value? {
-        if let data = try await storage.fetch(forKey: key.key) {
+        if let data = try storage.fetch(forKey: key.key) {
             // Explicit, because the return type would otherwise make the coder decode `Value?`
             return try await coder.decode(data) as Value
         }
@@ -71,7 +71,7 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
     
     public func save<Value: CodingValue>(_ value: Value, forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws {
         let encoded = try await coder.encode(value)
-        try await storage.save(encoded, forKey: key.key)
+        try storage.save(encoded, forKey: key.key)
     }
     
     public func set<Value: CodingValue>(_ value: Value?, forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws {
@@ -83,11 +83,11 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
     }
     
     public func delete<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws {
-        try await storage.delete(forKey: key.key)
+        try storage.delete(forKey: key.key)
     }
     
     public func clear() async throws {
-        try await storage.clear()
+        try storage.clear()
     }
 }
 
