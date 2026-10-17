@@ -11,7 +11,7 @@ import Foundation
 
 public extension KeychainStorage {
     enum Error: KeyValueDataStorageError {
+        case decodedWrongType
         case os(OSStatus)
-        case other(Swift.Error)
     }
 }

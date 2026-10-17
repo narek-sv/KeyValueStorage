@@ -48,10 +48,16 @@ public final class KeychainStorage: KeyValueDataStorage {
     public func fetch(forKey key: Key) throws -> Data? {
         let (status, result) = storage.read(query(for: key, returnData: true, matchLimit: .one))
         switch status {
-        case .success, .notFound:
-            return result as? Data
+        case .success:
+            guard let data = result as? Data else {
+                throw Error.decodedWrongType
+            }
+
+            return data
+        case .notFound:
+            return nil
         default:
-            throw Error.os(status.status)
+            throw Error.os(status.code)
         }
     }
 
@@ -63,7 +69,7 @@ public final class KeychainStorage: KeyValueDataStorage {
         case .duplicate:
             break
         default:
-            throw Error.os(addStatus.status)
+            throw Error.os(addStatus.code)
         }
 
         let updateAttributes = KeychainQuery(
@@ -76,7 +82,7 @@ public final class KeychainStorage: KeyValueDataStorage {
             return
         }
 
-        throw Error.os(updateStatus.status)
+        throw Error.os(updateStatus.code)
     }
 
     public func delete(forKey key: Key) throws {
@@ -85,7 +91,7 @@ public final class KeychainStorage: KeyValueDataStorage {
             return
         }
 
-        throw Error.os(status.status)
+        throw Error.os(status.code)
     }
 
     public func clear() throws {
@@ -94,7 +100,7 @@ public final class KeychainStorage: KeyValueDataStorage {
             return
         }
 
-        throw Error.os(status.status)
+        throw Error.os(status.code)
     }
 
     // MARK: Helpers

@@ -117,7 +117,7 @@ final class DefaultSQLiteDatabase: SQLiteDatabase {
 
             switch sqlite3_step(statement) {
             case SQLITE_ROW:
-                return blob(statement, column: 0)
+                return try blob(statement, column: 0)
             case SQLITE_DONE:
                 return nil
             case let code:
@@ -184,8 +184,13 @@ final class DefaultSQLiteDatabase: SQLiteDatabase {
         }
     }
 
-    private func blob(_ statement: OpaquePointer, column: Int32) -> Data {
+    private func blob(_ statement: OpaquePointer, column: Int32) throws -> Data {
         guard let bytes = sqlite3_column_blob(statement, column) else {
+            let code = sqlite3_errcode(database) // NULL also means out of memory
+            guard code != SQLITE_NOMEM else {
+                throw error(code)
+            }
+
             return Data()
         }
 

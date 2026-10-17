@@ -13,7 +13,7 @@ public final class FileStorage: KeyValueDataStorage {
 
     // MARK: Properties
 
-    static let directoryPrefixName = "Files"
+    private static let directoryPrefixName = "Files"
 
     private let storage: any FileBackingStore
     private let root: URL
@@ -166,7 +166,7 @@ public final class FileStorage: KeyValueDataStorage {
         return .other(error)
     }
 
-    static func isProtectedDataUnavailable(_ error: Swift.Error) -> Bool {
+    private static func isProtectedDataUnavailable(_ error: Swift.Error) -> Bool {
         let error = error as NSError
         guard error.domain == NSCocoaErrorDomain,
               error.code == NSFileReadNoPermissionError || error.code == NSFileWriteNoPermissionError,

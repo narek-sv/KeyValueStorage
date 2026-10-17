@@ -22,25 +22,21 @@ public protocol KeychainBackingStore {
 final class DefaultKeychainBackingStoreWrapper: KeychainBackingStore {
     func read(_ query: KeychainQuery) -> (KeychainOperationStatus, AnyObject?) {
         var result: AnyObject?
-        let status = check(SecItemCopyMatching(query.dictionary as CFDictionary, &result))
+        let status = KeychainOperationStatus(status: SecItemCopyMatching(query.dictionary, &result))
         return (status, result)
     }
     
     func add(_ query: KeychainQuery) -> KeychainOperationStatus {
         let query = query.dictionary
-        return check(SecItemAdd(query as CFDictionary, nil))
+        return KeychainOperationStatus(status: SecItemAdd(query as CFDictionary, nil))
     }
     
     func update(_ query: KeychainQuery, with attributes: KeychainQuery) -> KeychainOperationStatus {
-        check(SecItemUpdate(query.dictionary as CFDictionary, attributes.dictionary as CFDictionary))
+        KeychainOperationStatus(status: SecItemUpdate(query.dictionary, attributes.dictionary))
     }
     
     func remove(_ query: KeychainQuery) -> KeychainOperationStatus {
-        check(SecItemDelete(query.dictionary as CFDictionary))
-    }
-    
-    func check(_ status: OSStatus) -> KeychainOperationStatus {
-        KeychainOperationStatus(status: status)
+        KeychainOperationStatus(status: SecItemDelete(query.dictionary))
     }
 }
 
@@ -82,7 +78,7 @@ public struct KeychainQuery: Sendable, Equatable {
         self.valueData = valueData
     }
     
-    internal var dictionary: [String: Any] {
+    var dictionary: CFDictionary {
         var dictionary = [String: Any]()
         dictionary[kSecClass as String] = itemClass?.value
         dictionary[kSecAttrService as String] = service
@@ -94,7 +90,7 @@ public struct KeychainQuery: Sendable, Equatable {
         dictionary[kSecReturnData as String] = returnData
         dictionary[kSecMatchLimit as String] = matchLimit?.value
         dictionary[kSecValueData as String] = valueData
-        return dictionary
+        return dictionary as CFDictionary
     }
 }
 
@@ -104,7 +100,7 @@ public extension KeychainQuery {
     enum ItemClass: Sendable {
         case genericPassword
         
-        internal var value: CFString {
+        fileprivate var value: CFString {
             switch self {
             case .genericPassword:  return kSecClassGenericPassword
             }
@@ -116,7 +112,7 @@ public extension KeychainQuery {
         case no
         case any
         
-        internal var value: CFTypeRef {
+        fileprivate var value: CFTypeRef {
             switch self {
             case .yes:  return kCFBooleanTrue
             case .no:   return kCFBooleanFalse
@@ -129,7 +125,7 @@ public extension KeychainQuery {
         case one
         case all
         
-        internal var value: CFString {
+        fileprivate var value: CFString {
             switch self {
             case .one:  return kSecMatchLimitOne
             case .all:  return kSecMatchLimitAll
@@ -141,7 +137,7 @@ public extension KeychainQuery {
 // MARK: - KeychainStorage.Key.Accessibility + Value
 
 extension KeychainStorage.Key.Accessibility {
-    var value: CFString {
+    fileprivate var value: CFString {
         switch self {
         case .afterFirstUnlock:                 return kSecAttrAccessibleAfterFirstUnlock
         case .afterFirstUnlockThisDeviceOnly:   return kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
@@ -173,7 +169,7 @@ public enum KeychainOperationStatus: Equatable, Sendable {
         }
     }
     
-    var status: OSStatus {
+    var code: OSStatus {
         switch self {
         case .success:                return errSecSuccess
         case .notFound:               return errSecItemNotFound

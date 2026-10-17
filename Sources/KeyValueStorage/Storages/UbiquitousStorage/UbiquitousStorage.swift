@@ -14,9 +14,8 @@ public final class UbiquitousStorage: KeyValueDataStorage {
 
     // MARK: Properties
 
-    static let maximumKeyLength = 128
-
-    static let maximumValueSize = 1024 * 1024
+    private static let maximumKeyLength = 128
+    private static let maximumValueSize = 1024 * 1024
 
     private let storage: any UbiquitousBackingStore
     private let keyPrefix: String?

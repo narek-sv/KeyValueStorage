@@ -13,8 +13,8 @@ public final class SQLiteStorage: KeyValueDataStorage {
 
     // MARK: Properties
 
-    static let databaseName = "KeyValueStorage.sqlite"
-    static let directoryPrefixName = "SQLite"
+    private static let databaseName = "KeyValueStorage.sqlite"
+    private static let directoryPrefixName = "SQLite"
 
     private let database: any SQLiteDatabase
     public let domain: Domain

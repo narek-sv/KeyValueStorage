@@ -8,7 +8,5 @@
 // MARK: - InMemoryStorage + Error
 
 public extension InMemoryStorage {
-    enum Error: KeyValueDataStorageError {
-        case unknown
-    }
+    typealias Error = Never
 }
