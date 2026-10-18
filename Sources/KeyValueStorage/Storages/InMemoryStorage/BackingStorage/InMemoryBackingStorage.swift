@@ -25,18 +25,26 @@ public final class DefaultInMemoryBackingStoreWrapper: InMemoryBackingStore, Sen
     public init() { }
     
     public func read(forKey key: String, in container: String) -> Data? {
-        Self.lock.withLock { Self.containers[container]?[key] }
+        Self.lock.withLock {
+            Self.containers[container]?[key]
+        }
     }
     
     public func write(_ data: Data, forKey key: String, in container: String) {
-        _ = Self.lock.withLock { Self.containers[container, default: [:]].updateValue(data, forKey: key) } // old value freed after unlock
+        _ = Self.lock.withLock {
+            Self.containers[container, default: [:]].updateValue(data, forKey: key)
+        } // old value freed after unlock
     }
 
     public func remove(forKey key: String, in container: String) {
-        _ = Self.lock.withLock { Self.containers[container]?.removeValue(forKey: key) } // old value freed after unlock
+        _ = Self.lock.withLock {
+            Self.containers[container]?.removeValue(forKey: key)
+        } // old value freed after unlock
     }
 
     public func removeAll(in container: String) {
-        _ = Self.lock.withLock { Self.containers.removeValue(forKey: container) } // old value freed after unlock
+        _ = Self.lock.withLock {
+            Self.containers.removeValue(forKey: container)
+        } // old value freed after unlock
     }
 }
