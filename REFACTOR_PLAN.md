@@ -2,6 +2,7 @@
 
 ## Status (2026-10-17)
 
+- **First up: name resolvers.** To be specified.
 - **Done: phases 0–6, the source side.** The synchronous `KeyValueDataStorage` with `init(scope:backingStorage:)`, `StorageDirectoryResolving`, every storage on its backing storage, the global actors removed, and `KeychainWrapper.swift` deleted.
 - **Added: `UbiquitousStorage`** (§5.7), on the same pattern.
 - **Updated: the public API test target**, which now exercises Keychain and Ubiquitous through in-memory backing storages.

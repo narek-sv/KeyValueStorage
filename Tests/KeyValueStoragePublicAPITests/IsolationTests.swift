@@ -61,10 +61,10 @@ private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #is
     try await exercise(UserDefaultsStorage(scope: .app(.suite(container: id))), key: "key", context: context)
     try await exercise(FileStorage(scope: .app(.temporary(container: id))), key: .init(name: "key"), context: context)
     try await exercise(SQLiteStorage(scope: .app(.temporary(container: id))), key: "key", context: context)
-    try await exercise(KeychainStorage(scope: .app(container: id), backingStorage: InMemoryKeychain()),
+    try await exercise(KeychainStorage(scope: .app(container: id), backingStore: InMemoryKeychain()),
                        key: .init(name: "key"), context: context)
     if #available(watchOS 9.0, *) {
-        try await exercise(UbiquitousStorage(scope: .shared(container: id), backingStorage: InMemoryUbiquitousStore()),
+        try await exercise(UbiquitousStorage(scope: .shared(container: id), backingStore: InMemoryUbiquitousStore()),
                            key: "key", context: context)
     }
 

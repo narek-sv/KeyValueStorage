@@ -21,7 +21,7 @@ public final class KeychainStorage: KeyValueDataStorage {
 
     // MARK: Initializers
 
-    public init(scope: Scope, backingStorage: any KeychainBackingStore) {
+    public init(scope: Scope, backingStore: any KeychainBackingStore) {
         switch scope {
         case let .app(appContainer):
             self.serviceName = appContainer
@@ -32,11 +32,11 @@ public final class KeychainStorage: KeyValueDataStorage {
         }
 
         self.scope = scope
-        self.storage = backingStorage
+        self.storage = backingStore
     }
 
     public convenience init(scope: Scope) {
-        self.init(scope: scope, backingStorage: DefaultKeychainBackingStoreWrapper())
+        self.init(scope: scope, backingStore: DefaultKeychainBackingStoreWrapper())
     }
 
     public convenience init() {
@@ -45,7 +45,7 @@ public final class KeychainStorage: KeyValueDataStorage {
 
     // MARK: Main Functionality
 
-    public func fetch(forKey key: Key) throws -> Data? {
+    public func fetch(forKey key: Key) throws(Error) -> Data? {
         let (status, result) = storage.read(query(for: key, returnData: true, matchLimit: .one))
         switch status {
         case .success:
@@ -61,7 +61,7 @@ public final class KeychainStorage: KeyValueDataStorage {
         }
     }
 
-    public func save(_ value: Data, forKey key: Key) throws {
+    public func save(_ value: Data, forKey key: Key) throws(Error) {
         let addStatus = storage.add(query(for: key, accessibility: key.accessibility, valueData: value))
         switch addStatus {
         case .success:
@@ -85,7 +85,7 @@ public final class KeychainStorage: KeyValueDataStorage {
         throw Error.os(updateStatus.code)
     }
 
-    public func delete(forKey key: Key) throws {
+    public func delete(forKey key: Key) throws(Error) {
         let status = storage.remove(query(for: key))
         guard status != .success && status != .notFound else {
             return
@@ -94,7 +94,7 @@ public final class KeychainStorage: KeyValueDataStorage {
         throw Error.os(status.code)
     }
 
-    public func clear() throws {
+    public func clear() throws(Error) {
         let status = storage.remove(query(account: nil, synchronizable: .any))
         guard status != .success && status != .notFound else {
             return

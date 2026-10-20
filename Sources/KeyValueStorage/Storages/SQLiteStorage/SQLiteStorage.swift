@@ -13,49 +13,49 @@ public final class SQLiteStorage: KeyValueDataStorage {
 
     // MARK: Properties
 
-    private static let databaseName = "KeyValueStorage.sqlite"
+    private static let databaseName = ".\(Scope.defaultName).sqlite"
 
     private let database: any SQLiteDatabase
     public let scope: Scope
 
     // MARK: Initializers
 
-    public init(scope: Scope, backingStorage: any SQLiteBackingStore) throws {
-        let root = try Self.root(for: scope, resolver: backingStorage)
+    public init(scope: Scope, backingStore: any SQLiteBackingStore) throws(Error) {
+        let root = try Self.root(for: scope, resolver: backingStore)
         let protection = Self.fileProtection(for: scope)
         self.database = try Self.execute {
-            try backingStorage.createDirectory(at: root)
-            return try backingStorage.open(at: root.appendingPathComponent(Self.databaseName, isDirectory: false), protection: protection)
+            try backingStore.createDirectory(at: root)
+            return try backingStore.open(at: root.appendingPathComponent(Self.databaseName, isDirectory: false), protection: protection)
         }
 
         self.scope = scope
     }
 
-    public convenience init(scope: Scope) throws {
-        try self.init(scope: scope, backingStorage: DefaultSQLiteBackingStoreWrapper())
+    public convenience init(scope: Scope) throws(Error) {
+        try self.init(scope: scope, backingStore: DefaultSQLiteBackingStoreWrapper())
     }
 
     // MARK: Main Functionality
 
-    public func fetch(forKey key: Key) throws -> Data? {
+    public func fetch(forKey key: Key) throws(Error) -> Data? {
         try Self.execute {
             try database.read(forKey: key)
         }
     }
 
-    public func save(_ value: Data, forKey key: Key) throws {
+    public func save(_ value: Data, forKey key: Key) throws(Error) {
         try Self.execute {
             try database.write(value, forKey: key)
         }
     }
 
-    public func delete(forKey key: Key) throws {
+    public func delete(forKey key: Key) throws(Error) {
         try Self.execute {
             try database.remove(forKey: key)
         }
     }
 
-    public func clear() throws {
+    public func clear() throws(Error) {
         try Self.execute {
             try database.removeAll()
         }
@@ -63,7 +63,7 @@ public final class SQLiteStorage: KeyValueDataStorage {
 
     // MARK: Helpers
 
-    private static func root(for scope: Scope, resolver: any StorageDirectoryResolving) throws -> URL {
+    private static func root(for scope: Scope, resolver: any StorageDirectoryResolving) throws(Error) -> URL {
         let directory: StorageDirectory
         switch scope {
         case .app(.applicationSupport, _, _):   directory = .applicationSupport
@@ -80,14 +80,14 @@ public final class SQLiteStorage: KeyValueDataStorage {
         case nil:                   namespace = nil
         }
 
-        do {
+        do throws(StorageDirectory.Failure) {
             return try directory.url(namespace: namespace, resolver: resolver)
-        } catch StorageDirectory.Failure.directoryNotFound(let name) {
-            throw Error.failedToFindDirectory(name)
-        } catch StorageDirectory.Failure.groupNotFound(let groupId) {
-            throw Error.failedToFindGroupDirectory(groupId)
-        } catch StorageDirectory.Failure.invalidDirectory(let url) {
-            throw Error.invalidDirectory(url)
+        } catch {
+            switch error {
+            case let .directoryNotFound(name):  throw .failedToFindDirectory(name)
+            case let .groupNotFound(groupId):   throw .failedToFindGroupDirectory(groupId)
+            case let .invalidDirectory(url):    throw .invalidDirectory(url)
+            }
         }
     }
 
@@ -116,7 +116,7 @@ public final class SQLiteStorage: KeyValueDataStorage {
     }
 
     @discardableResult
-    private static func execute<T>(_ block: () throws -> T) rethrows -> T {
+    private static func execute<T>(_ block: () throws -> T) throws(Error) -> T {
         do {
             return try block()
         } catch {

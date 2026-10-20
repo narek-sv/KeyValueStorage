@@ -39,7 +39,7 @@ public extension UserDefaultsStorage {
         }
         
         public static var `default`: Self {
-            .app(.suite(named: Self.defaultScopeName), namespace: .keyPrefix(named: Self.defaultNamespace))
+            .app(.suite(named: Self.defaultName), namespace: .keyPrefix(named: Self.defaultName))
         }
     }
 }

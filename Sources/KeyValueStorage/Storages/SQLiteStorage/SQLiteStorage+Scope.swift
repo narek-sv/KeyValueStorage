@@ -10,7 +10,7 @@ import Foundation
 // MARK: - SQLiteStorage + Scope
 
 public extension SQLiteStorage {
-    /// Separates databases within a scope; `nil` (the default) stores `KeyValueStorage.sqlite` directly in the scope's directory.
+    /// Separates databases within a scope; `nil` (the default) stores the hidden `.KeyValueStorage.sqlite` directly in the scope's directory.
     enum Namespace: KeyValueDataStorageNamespace {
         /// A separate database in the subdirectory with this name.
         case directory(named: String)
@@ -61,7 +61,7 @@ public extension SQLiteStorage {
         }
         
         public static var `default`: Self {
-            .app(.applicationSupport, namespace: .directory(named: Self.defaultNamespace))
+            .app(.applicationSupport, namespace: .directory(named: Self.defaultName))
         }
     }
 }

@@ -26,12 +26,15 @@ public protocol UserDefaultsSuite: AnyObject {
 
 // MARK: - DefaultUserDefaultsBackingStoreWrapper
 
-final class DefaultUserDefaultsBackingStoreWrapper: UserDefaultsBackingStore {
-    var standard: any UserDefaultsSuite {
+/// The live `UserDefaults`; subclass it to change single operations, such as which suite a name opens.
+open class DefaultUserDefaultsBackingStoreWrapper: UserDefaultsBackingStore {
+    public init() { }
+
+    open var standard: any UserDefaultsSuite {
         DefaultUserDefaultsSuite(.standard)
     }
 
-    func suite(named name: String) -> (any UserDefaultsSuite)? {
+    open func suite(named name: String) -> (any UserDefaultsSuite)? {
         UserDefaults(suiteName: name).map(DefaultUserDefaultsSuite.init)
     }
 }

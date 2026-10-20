@@ -26,7 +26,7 @@ public extension InMemoryStorage {
         }
         
         public static var `default`: Self {
-            .app(namespace: .bucket(named: Self.defaultNamespace))
+            .app(namespace: .bucket(named: Self.defaultName))
         }
     }
 }

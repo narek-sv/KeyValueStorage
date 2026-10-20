@@ -105,17 +105,17 @@ final class PublicAPITests: XCTestCase {
         XCTAssertEqual(sqlite.scope, sqliteScope)
         if #available(watchOS 9.0, *) {
             let ubiquitousScope = UbiquitousStorage.Scope.shared(container: "publicAPIScope")
-            XCTAssertEqual(UbiquitousStorage(scope: ubiquitousScope, backingStorage: InMemoryUbiquitousStore()).scope, ubiquitousScope)
+            XCTAssertEqual(UbiquitousStorage(scope: ubiquitousScope, backingStore: InMemoryUbiquitousStore()).scope, ubiquitousScope)
         }
     }
 
-    func testStoragesAcceptBackingStorages() throws {
+    func testStoragesAcceptBackingStores() throws {
         // Given: two default in-memory storages with the same scope, and one with a backing store of its own
         let container = "publicAPIBacking-\(UUID().uuidString)"
         let first = InMemoryStorage(scope: .app(container: container))
         let second = InMemoryStorage(scope: .app(container: container))
-        let isolated = InMemoryStorage(scope: .app(container: container), backingStorage: IsolatedInMemoryStore())
-        let keychain = KeychainStorage(scope: .default, backingStorage: InMemoryKeychain())
+        let isolated = InMemoryStorage(scope: .app(container: container), backingStore: IsolatedInMemoryStore())
+        let keychain = KeychainStorage(scope: .default, backingStore: InMemoryKeychain())
 
         // When
         first.save(Data([1]), forKey: "key")
@@ -164,13 +164,13 @@ private final class CountingFactory: DefaultUnifiedStorageFactory, @unchecked Se
     private(set) var dataStorageCalls = 0
     private(set) var codingStorageCalls = 0
 
-    override func dataStorage<Storage: KeyValueDataStorage>(for scope: Storage.Scope) async throws -> Storage {
+    override func dataStorage<Storage: KeyValueDataStorage>(for scope: Storage.Scope) async throws(Storage.Error) -> Storage {
         dataStorageCalls += 1
         return try await super.dataStorage(for: scope)
     }
 
-    override func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) async throws -> KeyValueCodingStorage<Storage> {
+    override func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) async -> KeyValueCodingStorage<Storage> {
         codingStorageCalls += 1
-        return try await super.codingStorage(for: storage)
+        return await super.codingStorage(for: storage)
     }
 }

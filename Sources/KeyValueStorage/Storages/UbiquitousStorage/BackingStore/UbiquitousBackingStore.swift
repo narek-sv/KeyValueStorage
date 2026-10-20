@@ -19,27 +19,30 @@ public protocol UbiquitousBackingStore {
 
 // MARK: - DefaultUbiquitousBackingStoreWrapper
 
+/// The live iCloud key-value store; subclass it to change single operations, such as when it synchronizes.
 @available(watchOS 9.0, *)
-final class DefaultUbiquitousBackingStoreWrapper: UbiquitousBackingStore {
+open class DefaultUbiquitousBackingStoreWrapper: UbiquitousBackingStore {
     private var store: NSUbiquitousKeyValueStore { .default }
 
-    func read(forKey key: String) -> Data? {
+    public init() { }
+
+    open func read(forKey key: String) -> Data? {
         store.data(forKey: key)
     }
 
-    func write(_ data: Data, forKey key: String) {
+    open func write(_ data: Data, forKey key: String) {
         store.set(data, forKey: key)
     }
 
-    func remove(forKey key: String) {
+    open func remove(forKey key: String) {
         store.removeObject(forKey: key)
     }
 
-    func keys() -> [String] {
+    open func keys() -> [String] {
         Array(store.dictionaryRepresentation.keys)
     }
 
-    func synchronize() -> Bool {
+    open func synchronize() -> Bool {
         store.synchronize()
     }
 }

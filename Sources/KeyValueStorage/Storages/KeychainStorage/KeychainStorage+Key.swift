@@ -9,6 +9,7 @@
 
 public extension KeychainStorage {
     /// A generic password item whose account (`kSecAttrAccount`) is `name`.
+    /// - Warning: A synchronizable item can't use a `ThisDeviceOnly` accessibility, so saving it fails.
     struct Key: KeyValueDataStorageKey {
         public let name: String
         public let accessibility: Accessibility
@@ -23,6 +24,16 @@ public extension KeychainStorage {
             self.accessibility = accessibility
             self.isSynchronizable = isSynchronizable
         }
+    }
+}
+
+// MARK: - KeychainStorage.Key + ExpressibleByStringLiteral
+
+extension KeychainStorage.Key: ExpressibleByStringLiteral {
+    /// A key with this name and the defaults: `.whenUnlocked`, and not synchronized through iCloud Keychain.
+    /// - Warning: Its item can't be read while the device is locked, for example by background work.
+    public init(stringLiteral name: String) {
+        self.init(name: name)
     }
 }
 

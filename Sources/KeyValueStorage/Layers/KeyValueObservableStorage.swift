@@ -31,7 +31,7 @@ open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodi
     /// - Parameter includingCurrentValue: Whether the stream starts with the currently stored value, or `nil` if there's none.
     ///   Reading it can throw, for example when the stored data can't be decoded.
     public func stream<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>,
-                                           includingCurrentValue: Bool = true) async throws -> AsyncStream<Value?> {
+                                           includingCurrentValue: Bool = true) async throws(Error) -> AsyncStream<Value?> {
         let publisher = try await publisher(forKey: key, includingCurrentValue: includingCurrentValue)
         return AsyncStream(bufferingPolicy: .unbounded) { continuation in
             let subscription = Subscription(publisher.sink {
@@ -47,7 +47,7 @@ open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodi
     /// - Parameter includingCurrentValue: Whether the publisher first emits the currently stored value, or `nil` if there's none.
     ///   Reading it can throw, for example when the stored data can't be decoded.
     public func publisher<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>,
-                                              includingCurrentValue: Bool = true) async throws -> KeyValuePublisher<Value?> {
+                                              includingCurrentValue: Bool = true) async throws(Error) -> KeyValuePublisher<Value?> {
         let observation = await register(forKey: key)
         let token = ObservationToken { [self] in
             Task { @CodingStorageActor in
@@ -66,17 +66,17 @@ open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodi
     
     // MARK: Main Functionality
     
-    public override func save<Value: CodingValue>(_ value: Value, forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws {
+    public override func save<Value: CodingValue>(_ value: Value, forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws(Error) {
         try await super.save(value, forKey: key)
         await send(value, forKey: key)
     }
     
-    public override func delete<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws {
+    public override func delete<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws(Error) {
         try await super.delete(forKey: key)
         await send(nil, forKey: key)
     }
     
-    public override func clear() async throws {
+    public override func clear() async throws(Error) {
         try await super.clear()
         await sendNilToAll()
     }

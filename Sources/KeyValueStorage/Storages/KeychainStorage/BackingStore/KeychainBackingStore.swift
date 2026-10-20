@@ -19,23 +19,26 @@ public protocol KeychainBackingStore {
 
 // MARK: - DefaultKeychainBackingStoreWrapper
 
-final class DefaultKeychainBackingStoreWrapper: KeychainBackingStore {
-    func read(_ query: KeychainQuery) -> (KeychainOperationStatus, AnyObject?) {
+/// The live keychain; subclass it to change single operations, such as the queries it sends.
+open class DefaultKeychainBackingStoreWrapper: KeychainBackingStore {
+    public init() { }
+    
+    open func read(_ query: KeychainQuery) -> (KeychainOperationStatus, AnyObject?) {
         var result: AnyObject?
         let status = KeychainOperationStatus(status: SecItemCopyMatching(query.dictionary, &result))
         return (status, result)
     }
     
-    func add(_ query: KeychainQuery) -> KeychainOperationStatus {
+    open func add(_ query: KeychainQuery) -> KeychainOperationStatus {
         let query = query.dictionary
         return KeychainOperationStatus(status: SecItemAdd(query as CFDictionary, nil))
     }
     
-    func update(_ query: KeychainQuery, with attributes: KeychainQuery) -> KeychainOperationStatus {
+    open func update(_ query: KeychainQuery, with attributes: KeychainQuery) -> KeychainOperationStatus {
         KeychainOperationStatus(status: SecItemUpdate(query.dictionary, attributes.dictionary))
     }
     
-    func remove(_ query: KeychainQuery) -> KeychainOperationStatus {
+    open func remove(_ query: KeychainQuery) -> KeychainOperationStatus {
         KeychainOperationStatus(status: SecItemDelete(query.dictionary))
     }
 }

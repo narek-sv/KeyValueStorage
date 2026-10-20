@@ -20,19 +20,19 @@ public final class FileStorage: KeyValueDataStorage {
 
     // MARK: Initializers
 
-    public init(scope: Scope, backingStorage: any FileBackingStore) throws {
-        self.root = try Self.root(for: scope, resolver: backingStorage)
+    public init(scope: Scope, backingStore: any FileBackingStore) throws(Error) {
+        self.root = try Self.root(for: scope, resolver: backingStore)
         self.scope = scope
-        self.storage = backingStorage
+        self.storage = backingStore
     }
 
-    public convenience init(scope: Scope) throws {
-        try self.init(scope: scope, backingStorage: DefaultFileBackingStoreWrapper())
+    public convenience init(scope: Scope) throws(Error) {
+        try self.init(scope: scope, backingStore: DefaultFileBackingStoreWrapper())
     }
 
     // MARK: Main Functionality
 
-    public func fetch(forKey key: Key) throws -> Data? {
+    public func fetch(forKey key: Key) throws(Error) -> Data? {
         try execute {
             do {
                 return try storage.read(at: url(for: key))
@@ -42,7 +42,7 @@ public final class FileStorage: KeyValueDataStorage {
         }
     }
 
-    public func save(_ value: Data, forKey key: Key) throws {
+    public func save(_ value: Data, forKey key: Key) throws(Error) {
         try execute {
             let url = try url(for: key)
             let options = Self.writingOptions(for: key.protection)
@@ -56,22 +56,22 @@ public final class FileStorage: KeyValueDataStorage {
         }
     }
 
-    public func delete(forKey key: Key) throws {
+    public func delete(forKey key: Key) throws(Error) {
         try execute {
             try deleteFileIfExists(at: url(for: key))
         }
     }
     
-    public func clear() throws {
+    public func clear() throws(Error) {
         try execute {
             let fileNames: [String]
             do {
-                fileNames = try storage.contents(at: root)
+                fileNames = try storage.fileNames(at: root)
             } catch CocoaError.fileReadNoSuchFile {
                 return
             }
 
-            for fileName in fileNames {
+            for fileName in fileNames where Self.isValueFileName(fileName) {
                 try deleteFileIfExists(at: root.appendingPathComponent(fileName))
             }
         }
@@ -79,7 +79,7 @@ public final class FileStorage: KeyValueDataStorage {
     
     // MARK: Helpers
 
-    private static func root(for scope: Scope, resolver: any StorageDirectoryResolving) throws -> URL {
+    private static func root(for scope: Scope, resolver: any StorageDirectoryResolving) throws(Error) -> URL {
         let directory: StorageDirectory
         switch scope {
         case .app(.applicationSupport, _):  directory = .applicationSupport
@@ -96,14 +96,14 @@ public final class FileStorage: KeyValueDataStorage {
         case nil:                   namespace = nil
         }
 
-        do {
+        do throws(StorageDirectory.Failure) {
             return try directory.url(namespace: namespace, resolver: resolver)
-        } catch StorageDirectory.Failure.directoryNotFound(let name) {
-            throw Error.failedToFindDirectory(name)
-        } catch StorageDirectory.Failure.groupNotFound(let groupId) {
-            throw Error.failedToFindGroupDirectory(groupId)
-        } catch StorageDirectory.Failure.invalidDirectory(let url) {
-            throw Error.invalidDirectory(url)
+        } catch {
+            switch error {
+            case let .directoryNotFound(name):  throw .failedToFindDirectory(name)
+            case let .groupNotFound(groupId):   throw .failedToFindGroupDirectory(groupId)
+            case let .invalidDirectory(url):    throw .invalidDirectory(url)
+            }
         }
     }
 
@@ -147,11 +147,21 @@ public final class FileStorage: KeyValueDataStorage {
         return root.appendingPathComponent(fileName, isDirectory: false)
     }
 
+    /// Whether some key's file has this name, so `clear()` leaves other files alone, such as SQLite's dot files.
+    private static func isValueFileName(_ fileName: String) -> Bool {
+        guard let name = fileName.removingPercentEncoding else {
+            return false
+        }
+
+        return Self.fileName(for: name) == fileName.precomposedStringWithCanonicalMapping
+    }
+
     private static func fileName(for name: String) -> String {
         var fileName = ""
         for character in name.precomposedStringWithCanonicalMapping {
             let string = String(character)
-            if character == "%" || string.folding(options: .caseInsensitive, locale: nil) != string {
+            // A leading `.` too, so values are never dot files, which SQLite storages and the system use
+            if character == "%" || (fileName.isEmpty && character == ".") || string.folding(options: .caseInsensitive, locale: nil) != string {
                 fileName += string.utf8.map { String(format: "%%%02X", $0) }.joined()
             } else {
                 fileName += string
@@ -185,7 +195,7 @@ public final class FileStorage: KeyValueDataStorage {
     }
     
     @discardableResult
-    private func execute<T>(_ block: () throws -> T) rethrows -> T {
+    private func execute<T>(_ block: () throws -> T) throws(Error) -> T {
         do {
             return try block()
         } catch {

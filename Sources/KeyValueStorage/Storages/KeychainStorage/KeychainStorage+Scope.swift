@@ -31,7 +31,7 @@ public extension KeychainStorage {
         }
         
         public static var `default`: Self {
-            .app(namespace: .service(named: Self.defaultNamespace))
+            .app(namespace: .service(named: Self.defaultName))
         }
     }
 }

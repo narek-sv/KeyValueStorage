@@ -9,11 +9,11 @@ import Foundation
 
 // MARK: - KeyNamespace
 
-/// Key prefixes of containers inside a shared store.
+/// Key prefixes of namespaces inside a shared store.
 enum KeyNamespace {
-    /// `<container>/`, with `%` and `/` percent-encoded, so containers never collide.
-    static func prefix(for container: String) -> String {
-        container
+    /// `<namespace>/`, with `%` and `/` percent-encoded, so namespaces never collide.
+    static func prefix(for namespace: String) -> String {
+        namespace
             .replacingOccurrences(of: "%", with: "%25")
             .replacingOccurrences(of: "/", with: "%2F") + "/"
     }

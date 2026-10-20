@@ -18,24 +18,24 @@ public protocol KeyValueDataStorage {
     
     var scope: Scope { get }
     
-    init() throws
-    init(scope: Scope) throws
+    init() throws(Error)
+    init(scope: Scope) throws(Error)
     
-    func fetch(forKey key: Key) throws -> Data?
-    func save(_ value: Data, forKey key: Key) throws
-    func delete(forKey key: Key) throws
-    func clear() throws
+    func fetch(forKey key: Key) throws(Error) -> Data?
+    func save(_ value: Data, forKey key: Key) throws(Error)
+    func delete(forKey key: Key) throws(Error)
+    func clear() throws(Error)
 }
 
 // MARK: - KeyValueDataStorage + Defaults
 
 public extension KeyValueDataStorage {
-    init() throws {
+    init() throws(Error) {
         try self.init(scope: .default)
     }
     
     /// Saves `value`, or deletes it if `nil`.
-    func set(_ value: Data?, forKey key: Key) throws {
+    func set(_ value: Data?, forKey key: Key) throws(Error) {
         if let value {
             try save(value, forKey: key)
         } else {
@@ -47,12 +47,9 @@ public extension KeyValueDataStorage {
 // MARK: - KeyValueDataStorageScope + Defaults
 
 public extension KeyValueDataStorageScope {
-    static var defaultScopeName: String {
-        "KeyValueStorageScope"
-    }
-    
-    static var defaultNamespace: String {
-        "KeyValueStorageNamespace"
+    /// The package's name, used by every `default` scope as its suite, directory, service, key prefix or bucket.
+    static var defaultName: String {
+        "KeyValueStorage"
     }
 }
 

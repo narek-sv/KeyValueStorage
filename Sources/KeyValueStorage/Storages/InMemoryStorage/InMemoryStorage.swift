@@ -19,7 +19,7 @@ public final class InMemoryStorage: KeyValueDataStorage {
 
     // MARK: Initializers
 
-    public init(scope: Scope, backingStorage: any InMemoryBackingStore) {
+    public init(scope: Scope, backingStore: any InMemoryBackingStore) {
         switch scope {
         case .app(nil):
             self.bucket = nil
@@ -28,11 +28,11 @@ public final class InMemoryStorage: KeyValueDataStorage {
         }
 
         self.scope = scope
-        self.storage = backingStorage
+        self.storage = backingStore
     }
 
     public convenience init(scope: Scope) {
-        self.init(scope: scope, backingStorage: DefaultInMemoryBackingStoreWrapper())
+        self.init(scope: scope, backingStore: DefaultInMemoryBackingStoreWrapper())
     }
 
     public convenience init() {

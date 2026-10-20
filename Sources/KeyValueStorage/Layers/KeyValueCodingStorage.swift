@@ -5,6 +5,8 @@
 //  Created by Narek Sahakyan on 11.12.23.
 //
 
+import Foundation
+
 // MARK: - KeyValueCodingStorageKey
 
 public struct KeyValueCodingStorageKey<Storage: KeyValueDataStorage, Value: CodingValue>: Sendable {
@@ -60,34 +62,75 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
     
     // MARK: Main Functionality
     
-    public func fetch<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws -> Value? {
-        if let data = try storage.fetch(forKey: key.key) {
+    public func fetch<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws(Error) -> Value? {
+        let data: Data?
+        do throws(Storage.Error) {
+            data = try storage.fetch(forKey: key.key)
+        } catch {
+            throw .storage(error)
+        }
+
+        guard let data else {
+            return nil
+        }
+
+        do {
             // Explicit, because the return type would otherwise make the coder decode `Value?`
             return try await coder.decode(data) as Value
+        } catch {
+            throw .coding(error)
         }
-        
-        return nil
     }
-    
-    public func save<Value: CodingValue>(_ value: Value, forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws {
-        let encoded = try await coder.encode(value)
-        try storage.save(encoded, forKey: key.key)
+
+    public func save<Value: CodingValue>(_ value: Value, forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws(Error) {
+        let encoded: Data
+        do {
+            encoded = try await coder.encode(value)
+        } catch {
+            throw .coding(error)
+        }
+
+        do throws(Storage.Error) {
+            try storage.save(encoded, forKey: key.key)
+        } catch {
+            throw .storage(error)
+        }
     }
-    
-    public func set<Value: CodingValue>(_ value: Value?, forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws {
+
+    public func set<Value: CodingValue>(_ value: Value?, forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws(Error) {
         if let value {
             try await save(value, forKey: key)
         } else {
             try await delete(forKey: key)
         }
     }
-    
-    public func delete<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws {
-        try storage.delete(forKey: key.key)
+
+    public func delete<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws(Error) {
+        do throws(Storage.Error) {
+            try storage.delete(forKey: key.key)
+        } catch {
+            throw .storage(error)
+        }
     }
-    
-    public func clear() async throws {
-        try storage.clear()
+
+    public func clear() async throws(Error) {
+        do throws(Storage.Error) {
+            try storage.clear()
+        } catch {
+            throw .storage(error)
+        }
+    }
+}
+
+// MARK: - KeyValueCodingStorage + Error
+
+public extension KeyValueCodingStorage {
+    /// The errors a `KeyValueCodingStorage` throws.
+    enum Error: KeyValueDataStorageError {
+        /// The underlying storage failed.
+        case storage(Storage.Error)
+        /// The coder couldn't encode or decode the value.
+        case coding(any Swift.Error)
     }
 }
 

@@ -28,7 +28,7 @@ public extension UbiquitousStorage {
         }
         
         public static var `default`: Self {
-            .shared(namespace: .keyPrefix(named: Self.defaultNamespace))
+            .shared(namespace: .keyPrefix(named: Self.defaultName))
         }
     }
 }

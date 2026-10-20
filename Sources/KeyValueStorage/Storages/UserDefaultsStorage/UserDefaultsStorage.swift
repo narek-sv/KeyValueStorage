@@ -19,14 +19,14 @@ public final class UserDefaultsStorage: KeyValueDataStorage {
 
     // MARK: Initializers
 
-    public init(scope: Scope, backingStorage: any UserDefaultsBackingStore) throws {
+    public init(scope: Scope, backingStore: any UserDefaultsBackingStore) throws(Error) {
         switch scope {
         case .app(.standard, _):
-            self.suite = backingStorage.standard
+            self.suite = backingStore.standard
         case let .app(.suite(name), _):
-            self.suite = try Self.suite(named: name, in: backingStorage)
+            self.suite = try Self.suite(named: name, in: backingStore)
         case let .appGroup(groupId, _):
-            self.suite = try Self.suite(named: groupId, in: backingStorage)
+            self.suite = try Self.suite(named: groupId, in: backingStore)
         }
 
         switch scope.namespace {
@@ -39,8 +39,8 @@ public final class UserDefaultsStorage: KeyValueDataStorage {
         self.scope = scope
     }
 
-    public convenience init(scope: Scope) throws {
-        try self.init(scope: scope, backingStorage: DefaultUserDefaultsBackingStoreWrapper())
+    public convenience init(scope: Scope) throws(Error) {
+        try self.init(scope: scope, backingStore: DefaultUserDefaultsBackingStoreWrapper())
     }
 
     // MARK: Main Functionality
@@ -77,8 +77,8 @@ public final class UserDefaultsStorage: KeyValueDataStorage {
         keyPrefix.map { $0 + key } ?? key
     }
 
-    private static func suite(named name: String, in backingStorage: any UserDefaultsBackingStore) throws -> any UserDefaultsSuite {
-        guard let suite = backingStorage.suite(named: name) else {
+    private static func suite(named name: String, in backingStore: any UserDefaultsBackingStore) throws(Error) -> any UserDefaultsSuite {
+        guard let suite = backingStore.suite(named: name) else {
             throw Error.invalidSuiteName(name)
         }
 

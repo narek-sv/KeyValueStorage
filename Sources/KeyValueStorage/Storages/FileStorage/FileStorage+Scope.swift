@@ -11,7 +11,7 @@ import Foundation
 
 public extension FileStorage {
     /// Separates sets of files within a scope; `nil` (the default) stores the files directly in the scope's directory.
-    /// - Warning: With a `nil` namespace, `clear()` deletes everything in the directory, including other files and folders.
+    /// - Warning: `clear()` deletes every file in its directory that a key could have written, other code's too; it skips folders and dot files.
     enum Namespace: KeyValueDataStorageNamespace {
         /// The files in the subdirectory with this name.
         case directory(named: String)
@@ -48,7 +48,7 @@ public extension FileStorage {
         }
         
         public static var `default`: Self {
-            .app(.applicationSupport, namespace: .directory(named: Self.defaultNamespace))
+            .app(.applicationSupport, namespace: .directory(named: Self.defaultName))
         }
     }
 }

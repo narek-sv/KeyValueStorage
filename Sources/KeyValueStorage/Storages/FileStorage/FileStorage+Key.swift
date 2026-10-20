@@ -8,7 +8,7 @@
 // MARK: - FileStorage + Key
 
 public extension FileStorage {
-    /// A value in its own file, named `name` with `%` and characters that change with case percent-encoded.
+    /// A value in its own file, named `name` with `%`, a leading `.` and characters that change with case percent-encoded.
     struct Key: KeyValueDataStorageKey {
         public let name: String
         public let protection: Protection
@@ -17,6 +17,15 @@ public extension FileStorage {
             self.name = name
             self.protection = protection
         }
+    }
+}
+
+// MARK: - FileStorage.Key + ExpressibleByStringLiteral
+
+extension FileStorage.Key: ExpressibleByStringLiteral {
+    /// A key with this name and the default protection, `.inherited`.
+    public init(stringLiteral name: String) {
+        self.init(name: name)
     }
 }
 

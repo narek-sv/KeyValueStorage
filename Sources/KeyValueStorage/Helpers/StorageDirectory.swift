@@ -21,27 +21,6 @@ public protocol StorageDirectoryResolving {
     func groupDirectory(for groupId: String) -> URL?
 }
 
-// MARK: - FoundationStorageDirectoryResolving
-
-/// Live lookups, adopted only by default backing storages, so mocks never reach the system.
-protocol FoundationStorageDirectoryResolving: StorageDirectoryResolving { }
-
-// MARK: - FoundationStorageDirectoryResolving + Defaults
-
-extension FoundationStorageDirectoryResolving {
-    var temporaryDirectory: URL {
-        FileManager.default.temporaryDirectory
-    }
-
-    func directory(for directory: FileManager.SearchPathDirectory) -> URL? {
-        FileManager.default.urls(for: directory, in: .userDomainMask).first
-    }
-
-    func groupDirectory(for groupId: String) -> URL? {
-        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupId)
-    }
-}
-
 // MARK: - StorageDirectory
 
 /// A file-based storage's folder: the base directory, given directory or group container itself, or its `namespace` subdirectory.
@@ -64,7 +43,7 @@ enum StorageDirectory {
         case invalidDirectory(URL)
     }
 
-    func url(namespace: String?, resolver: any StorageDirectoryResolving) throws -> URL {
+    func url(namespace: String?, resolver: any StorageDirectoryResolving) throws(Failure) -> URL {
         let folder: URL
         switch self {
         case .applicationSupport:
@@ -96,7 +75,7 @@ enum StorageDirectory {
         _ directory: FileManager.SearchPathDirectory,
         named name: String,
         resolver: any StorageDirectoryResolving
-    ) throws -> URL {
+    ) throws(Failure) -> URL {
         guard let url = resolver.directory(for: directory) else {
             throw Failure.directoryNotFound(name)
         }

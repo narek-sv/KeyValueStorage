@@ -23,18 +23,18 @@ public final class UbiquitousStorage: KeyValueDataStorage {
 
     // MARK: Initializers
 
-    public init(scope: Scope, backingStorage: any UbiquitousBackingStore) {
+    public init(scope: Scope, backingStore: any UbiquitousBackingStore) {
         switch scope {
         case let .shared(container):
             self.keyPrefix = container.map(KeyNamespace.prefix(for:))
         }
 
         self.scope = scope
-        self.storage = backingStorage
+        self.storage = backingStore
     }
 
     public convenience init(scope: Scope) {
-        self.init(scope: scope, backingStorage: DefaultUbiquitousBackingStoreWrapper())
+        self.init(scope: scope, backingStore: DefaultUbiquitousBackingStoreWrapper())
     }
 
     public convenience init() {
@@ -43,11 +43,11 @@ public final class UbiquitousStorage: KeyValueDataStorage {
 
     // MARK: Main Functionality
 
-    public func fetch(forKey key: Key) throws -> Data? {
+    public func fetch(forKey key: Key) throws(Error) -> Data? {
         try storage.read(forKey: storedKey(for: key))
     }
 
-    public func save(_ value: Data, forKey key: Key) throws {
+    public func save(_ value: Data, forKey key: Key) throws(Error) {
         let storedKey = try storedKey(for: key)
         guard value.count <= Self.maximumValueSize else {
             throw Error.valueTooLarge(key: key, size: value.count)
@@ -56,7 +56,7 @@ public final class UbiquitousStorage: KeyValueDataStorage {
         storage.write(value, forKey: storedKey)
     }
 
-    public func delete(forKey key: Key) throws {
+    public func delete(forKey key: Key) throws(Error) {
         try storage.remove(forKey: storedKey(for: key))
     }
 
@@ -73,7 +73,7 @@ public final class UbiquitousStorage: KeyValueDataStorage {
 
     // MARK: Helpers
 
-    private func storedKey(for key: Key) throws -> String {
+    private func storedKey(for key: Key) throws(Error) -> String {
         let storedKey = keyPrefix.map { $0 + key } ?? key
         guard storedKey.utf16.count <= Self.maximumKeyLength else {
             throw Error.invalidKey(key)
