@@ -104,14 +104,14 @@ open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodi
     
     @CodingStorageActor
     private func register<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) -> Observation {
-        if let observation = KeyValueObservations.observations[domain]?[key] as? Observation {
+        if let observation = KeyValueObservations.observations[scope]?[key] as? Observation {
             observation.references += 1
             return observation
         }
         
         let observation = Observation()
         observation.references = 1
-        KeyValueObservations.observations[domain, default: [:]][key] = observation
+        KeyValueObservations.observations[scope, default: [:]][key] = observation
         return observation
     }
     
@@ -119,24 +119,24 @@ open class KeyValueObservableStorage<Storage: KeyValueDataStorage>: KeyValueCodi
     @CodingStorageActor
     private func release<Value: CodingValue>(_ observation: Observation, forKey key: KeyValueCodingStorageKey<Storage, Value>) {
         observation.references -= 1
-        guard observation.references == 0, KeyValueObservations.observations[domain]?[key] as? Observation === observation else {
+        guard observation.references == 0, KeyValueObservations.observations[scope]?[key] as? Observation === observation else {
             return
         }
         
-        KeyValueObservations.observations[domain]?[key] = nil
-        if KeyValueObservations.observations[domain]?.isEmpty == true {
-            KeyValueObservations.observations[domain] = nil
+        KeyValueObservations.observations[scope]?[key] = nil
+        if KeyValueObservations.observations[scope]?.isEmpty == true {
+            KeyValueObservations.observations[scope] = nil
         }
     }
     
     @CodingStorageActor
     private func send<Value: CodingValue>(_ value: Value?, forKey key: KeyValueCodingStorageKey<Storage, Value>) {
-        (KeyValueObservations.observations[domain]?[key] as? Observation)?.change(to: value)
+        (KeyValueObservations.observations[scope]?[key] as? Observation)?.change(to: value)
     }
     
     @CodingStorageActor
     private func sendNilToAll() {
-        for observation in (KeyValueObservations.observations[domain] ?? [:]).values {
+        for observation in (KeyValueObservations.observations[scope] ?? [:]).values {
             (observation as? Observation)?.change(to: nil)
         }
     }

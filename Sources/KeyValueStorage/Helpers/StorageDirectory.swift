@@ -11,9 +11,6 @@ import Foundation
 
 /// Directory lookups of file-based storages, provided by their backing storages.
 public protocol StorageDirectoryResolving {
-    /// The bundle identifier, or the process name for command-line tools.
-    var appIdentifier: String { get }
-
     /// `FileManager.temporaryDirectory`.
     var temporaryDirectory: URL { get }
 
@@ -32,10 +29,6 @@ protocol FoundationStorageDirectoryResolving: StorageDirectoryResolving { }
 // MARK: - FoundationStorageDirectoryResolving + Defaults
 
 extension FoundationStorageDirectoryResolving {
-    var appIdentifier: String {
-        AppIdentifier.current
-    }
-
     var temporaryDirectory: URL {
         FileManager.default.temporaryDirectory
     }
@@ -49,24 +42,16 @@ extension FoundationStorageDirectoryResolving {
     }
 }
 
-// MARK: - AppIdentifier
-
-/// The identity in app-private paths and suite names, so they stay private even without App Sandbox.
-enum AppIdentifier {
-    static var current: String {
-        Bundle.main.bundleIdentifier ?? ProcessInfo.processInfo.processName
-    }
-}
-
 // MARK: - StorageDirectory
 
-/// A file-based storage's folder: `<base>/<app id>/<container>/<folder>`, or `<group container>/<container>/<folder>`.
+/// A file-based storage's folder: the base directory, given directory or group container itself, or its `namespace` subdirectory.
 enum StorageDirectory {
-    case applicationSupport(container: String)
-    case cache(container: String)
-    case documents(container: String)
-    case temporary(container: String)
-    case appGroup(groupId: String, container: String)
+    case applicationSupport
+    case cache
+    case documents
+    case temporary
+    case directory(at: URL)
+    case appGroup(groupId: String)
 
     enum Failure: Error {
         /// No such base directory.
@@ -74,36 +59,37 @@ enum StorageDirectory {
 
         /// No container for the App Group.
         case groupNotFound(String)
+
+        /// Not a file URL.
+        case invalidDirectory(URL)
     }
 
-    func url(storageFolder: String, resolver: any StorageDirectoryResolving) throws -> URL {
+    func url(namespace: String?, resolver: any StorageDirectoryResolving) throws -> URL {
         let folder: URL
         switch self {
-        case let .applicationSupport(container):
+        case .applicationSupport:
             folder = try Self.base(.applicationSupportDirectory, named: "Application Support", resolver: resolver)
-                .appendingPathComponent(resolver.appIdentifier, isDirectory: true)
-                .appendingPathComponent(container, isDirectory: true)
-        case let .cache(container):
+        case .cache:
             folder = try Self.base(.cachesDirectory, named: "Caches", resolver: resolver)
-                .appendingPathComponent(resolver.appIdentifier, isDirectory: true)
-                .appendingPathComponent(container, isDirectory: true)
-        case let .documents(container):
+        case .documents:
             folder = try Self.base(.documentDirectory, named: "Documents", resolver: resolver)
-                .appendingPathComponent(resolver.appIdentifier, isDirectory: true)
-                .appendingPathComponent(container, isDirectory: true)
-        case let .temporary(container):
+        case .temporary:
             folder = resolver.temporaryDirectory
-                .appendingPathComponent(resolver.appIdentifier, isDirectory: true)
-                .appendingPathComponent(container, isDirectory: true)
-        case let .appGroup(groupId, container):
+        case let .directory(url):
+            guard url.isFileURL else {
+                throw Failure.invalidDirectory(url)
+            }
+
+            folder = url
+        case let .appGroup(groupId):
             guard let url = resolver.groupDirectory(for: groupId) else {
                 throw Failure.groupNotFound(groupId)
             }
 
-            folder = url.appendingPathComponent(container, isDirectory: true)
+            folder = url
         }
 
-        return folder.appendingPathComponent(storageFolder, isDirectory: true)
+        return namespace.map { folder.appendingPathComponent($0, isDirectory: true) } ?? folder
     }
 
     private static func base(

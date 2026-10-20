@@ -47,8 +47,8 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
     private let coder: DataCoder
     private let storage: Storage
     
-    public var domain: Storage.Domain {
-        storage.domain
+    public var scope: Storage.Scope {
+        storage.scope
     }
     
     // MARK: Initializers

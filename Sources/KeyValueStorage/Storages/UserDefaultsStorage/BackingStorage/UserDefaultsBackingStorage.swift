@@ -10,8 +10,6 @@ import Foundation
 // MARK: - UserDefaultsBackingStore
 
 public protocol UserDefaultsBackingStore {
-    var appIdentifier: String { get }
-
     var standard: any UserDefaultsSuite { get }
 
     func suite(named name: String) -> (any UserDefaultsSuite)?
@@ -29,10 +27,6 @@ public protocol UserDefaultsSuite: AnyObject {
 // MARK: - DefaultUserDefaultsBackingStoreWrapper
 
 final class DefaultUserDefaultsBackingStoreWrapper: UserDefaultsBackingStore {
-    var appIdentifier: String {
-        AppIdentifier.current
-    }
-
     var standard: any UserDefaultsSuite {
         DefaultUserDefaultsSuite(.standard)
     }

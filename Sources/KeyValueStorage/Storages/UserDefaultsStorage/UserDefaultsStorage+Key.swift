@@ -8,5 +8,6 @@
 // MARK: - UserDefaultsStorage + Key
 
 public extension UserDefaultsStorage {
+    /// Any string; a namespace adds its prefix.
     typealias Key = String
 }

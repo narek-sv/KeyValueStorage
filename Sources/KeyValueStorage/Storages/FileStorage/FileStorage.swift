@@ -13,23 +13,21 @@ public final class FileStorage: KeyValueDataStorage {
 
     // MARK: Properties
 
-    private static let directoryPrefixName = "Files"
-
     private let storage: any FileBackingStore
     private let root: URL
 
-    public let domain: Domain
+    public let scope: Scope
 
     // MARK: Initializers
 
-    public init(domain: Domain, backingStorage: any FileBackingStore) throws {
-        self.root = try Self.root(for: domain, resolver: backingStorage)
-        self.domain = domain
+    public init(scope: Scope, backingStorage: any FileBackingStore) throws {
+        self.root = try Self.root(for: scope, resolver: backingStorage)
+        self.scope = scope
         self.storage = backingStorage
     }
 
-    public convenience init(domain: Domain) throws {
-        try self.init(domain: domain, backingStorage: DefaultFileBackingStoreWrapper())
+    public convenience init(scope: Scope) throws {
+        try self.init(scope: scope, backingStorage: DefaultFileBackingStoreWrapper())
     }
 
     // MARK: Main Functionality
@@ -81,22 +79,31 @@ public final class FileStorage: KeyValueDataStorage {
     
     // MARK: Helpers
 
-    private static func root(for domain: Domain, resolver: any StorageDirectoryResolving) throws -> URL {
+    private static func root(for scope: Scope, resolver: any StorageDirectoryResolving) throws -> URL {
         let directory: StorageDirectory
-        switch domain {
-        case let .app(.applicationSupport(container)):  directory = .applicationSupport(container: container)
-        case let .app(.cache(container)):               directory = .cache(container: container)
-        case let .app(.documents(container)):           directory = .documents(container: container)
-        case let .app(.temporary(container)):           directory = .temporary(container: container)
-        case let .appGroup(groupId, container):         directory = .appGroup(groupId: groupId, container: container)
+        switch scope {
+        case .app(.applicationSupport, _):  directory = .applicationSupport
+        case .app(.cache, _):               directory = .cache
+        case .app(.documents, _):           directory = .documents
+        case .app(.temporary, _):           directory = .temporary
+        case let .app(.directory(url), _):  directory = .directory(at: url)
+        case let .appGroup(groupId, _):     directory = .appGroup(groupId: groupId)
+        }
+
+        let namespace: String?
+        switch scope.namespace {
+        case let .directory(name)?: namespace = name
+        case nil:                   namespace = nil
         }
 
         do {
-            return try directory.url(storageFolder: directoryPrefixName, resolver: resolver)
+            return try directory.url(namespace: namespace, resolver: resolver)
         } catch StorageDirectory.Failure.directoryNotFound(let name) {
             throw Error.failedToFindDirectory(name)
         } catch StorageDirectory.Failure.groupNotFound(let groupId) {
             throw Error.failedToFindGroupDirectory(groupId)
+        } catch StorageDirectory.Failure.invalidDirectory(let url) {
+            throw Error.invalidDirectory(url)
         }
     }
 

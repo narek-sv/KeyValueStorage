@@ -78,7 +78,7 @@ final class RawDataCoderTests: XCTestCase {
     
     func testCodingStorageUsesRawCoderByDefault() async throws {
         // Given
-        let underlyingStorage = await InMemoryStorage(domain: "rawDefault")
+        let underlyingStorage = await InMemoryStorage(scope: "rawDefault")
         let storage = KeyValueCodingStorage(storage: underlyingStorage)
         
         // When
@@ -106,8 +106,8 @@ final class RawDataCoderTests: XCTestCase {
         let storage = UnifiedStorage()
         
         // When
-        let token = try await storage.fetch(forKey: UserDefaultsKey<Data>(key: "token", domain: suiteName))
-        let name = try await storage.fetch(forKey: UserDefaultsKey<String>(key: "name", domain: suiteName))
+        let token = try await storage.fetch(forKey: UserDefaultsKey<Data>(key: "token", scope: suiteName))
+        let name = try await storage.fetch(forKey: UserDefaultsKey<String>(key: "name", scope: suiteName))
         
         // Then
         XCTAssertEqual(token, Data([0x01, 0x02, 0x03]))

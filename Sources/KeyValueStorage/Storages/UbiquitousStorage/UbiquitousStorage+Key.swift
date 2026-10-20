@@ -9,5 +9,6 @@
 
 @available(watchOS 9.0, *)
 public extension UbiquitousStorage {
+    /// A string of at most 128 UTF-16 code units, including the namespace prefix.
     typealias Key = String
 }

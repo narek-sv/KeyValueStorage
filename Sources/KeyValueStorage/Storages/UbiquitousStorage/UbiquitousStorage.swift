@@ -19,26 +19,26 @@ public final class UbiquitousStorage: KeyValueDataStorage {
 
     private let storage: any UbiquitousBackingStore
     private let keyPrefix: String?
-    public let domain: Domain
+    public let scope: Scope
 
     // MARK: Initializers
 
-    public init(domain: Domain, backingStorage: any UbiquitousBackingStore) {
-        switch domain {
+    public init(scope: Scope, backingStorage: any UbiquitousBackingStore) {
+        switch scope {
         case let .shared(container):
             self.keyPrefix = container.map(KeyNamespace.prefix(for:))
         }
 
-        self.domain = domain
+        self.scope = scope
         self.storage = backingStorage
     }
 
-    public convenience init(domain: Domain) {
-        self.init(domain: domain, backingStorage: DefaultUbiquitousBackingStoreWrapper())
+    public convenience init(scope: Scope) {
+        self.init(scope: scope, backingStorage: DefaultUbiquitousBackingStoreWrapper())
     }
 
     public convenience init() {
-        self.init(domain: .default)
+        self.init(scope: .default)
     }
 
     // MARK: Main Functionality

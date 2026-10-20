@@ -13,13 +13,13 @@ import Foundation
 /// It reaches the system only through its backing storage.
 public protocol KeyValueDataStorage {
     associatedtype Key: KeyValueDataStorageKey
-    associatedtype Domain: KeyValueDataStorageDomain
+    associatedtype Scope: KeyValueDataStorageScope
     associatedtype Error: KeyValueDataStorageError
     
-    var domain: Domain { get }
+    var scope: Scope { get }
     
     init() throws
-    init(domain: Domain) throws
+    init(scope: Scope) throws
     
     func fetch(forKey key: Key) throws -> Data?
     func save(_ value: Data, forKey key: Key) throws
@@ -31,7 +31,7 @@ public protocol KeyValueDataStorage {
 
 public extension KeyValueDataStorage {
     init() throws {
-        try self.init(domain: .default)
+        try self.init(scope: .default)
     }
     
     /// Saves `value`, or deletes it if `nil`.
@@ -44,20 +44,31 @@ public extension KeyValueDataStorage {
     }
 }
 
-// MARK: - KeyValueDataStorageDomain + Defaults
+// MARK: - KeyValueDataStorageScope + Defaults
 
-public extension KeyValueDataStorageDomain {
-    /// The package-owned container of `default` domains, so `clear()` never touches other code's data.
-    static var defaultContainerName: String {
-        "KeyValueStorage"
+public extension KeyValueDataStorageScope {
+    static var defaultScopeName: String {
+        "KeyValueStorageScope"
+    }
+    
+    static var defaultNamespace: String {
+        "KeyValueStorageNamespace"
     }
 }
 
 // MARK: - Associated Type Requirements
 
+/// Identifies a value within a scope.
 public typealias KeyValueDataStorageKey = Hashable & Sendable
+/// The errors a storage throws.
 public typealias KeyValueDataStorageError = Error & Sendable
-public typealias KeyValueDataStorageContainer = Hashable & Sendable
-public protocol KeyValueDataStorageDomain: Hashable & Sendable {
+/// Separates sets of values within a scope, such as a directory, a keychain service or a key prefix.
+public typealias KeyValueDataStorageNamespace = Hashable & Sendable
+/// Where a storage keeps its values and who can read them. Cases default to a `nil` namespace; `default` uses the package's.
+public protocol KeyValueDataStorageScope: Hashable & Sendable {
+    /// The storage's way of separating values within the scope.
+    associatedtype Namespace: KeyValueDataStorageNamespace
+
+    var namespace: Namespace? { get }
     static var `default`: Self { get }
 }

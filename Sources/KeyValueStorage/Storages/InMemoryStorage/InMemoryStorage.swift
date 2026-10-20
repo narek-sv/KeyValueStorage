@@ -14,41 +14,43 @@ public final class InMemoryStorage: KeyValueDataStorage {
     // MARK: Properties
 
     private let storage: any InMemoryBackingStore
-    private let container: Container
-    public let domain: Domain
+    private let bucket: String?
+    public let scope: Scope
 
     // MARK: Initializers
 
-    public init(domain: Domain, backingStorage: any InMemoryBackingStore) {
-        switch domain {
-        case let .app(container):
-            self.container = container
+    public init(scope: Scope, backingStorage: any InMemoryBackingStore) {
+        switch scope {
+        case .app(nil):
+            self.bucket = nil
+        case let .app(.bucket(name)?):
+            self.bucket = name
         }
 
-        self.domain = domain
+        self.scope = scope
         self.storage = backingStorage
     }
 
-    public convenience init(domain: Domain) {
-        self.init(domain: domain, backingStorage: DefaultInMemoryBackingStoreWrapper())
+    public convenience init(scope: Scope) {
+        self.init(scope: scope, backingStorage: DefaultInMemoryBackingStoreWrapper())
     }
 
     public convenience init() {
-        self.init(domain: .default)
+        self.init(scope: .default)
     }
 
     // MARK: Main Functionality
 
     public func fetch(forKey key: Key) -> Data? {
-        storage.read(forKey: key, in: container)
+        storage.read(forKey: key, in: bucket)
     }
 
     public func save(_ value: Data, forKey key: Key) {
-        storage.write(value, forKey: key, in: container)
+        storage.write(value, forKey: key, in: bucket)
     }
 
     public func delete(forKey key: Key) {
-        storage.remove(forKey: key, in: container)
+        storage.remove(forKey: key, in: bucket)
     }
 
     public func set(_ value: Data?, forKey key: Key) {
@@ -60,6 +62,6 @@ public final class InMemoryStorage: KeyValueDataStorage {
     }
 
     public func clear() {
-        storage.removeAll(in: container)
+        storage.removeAll(in: bucket)
     }
 }

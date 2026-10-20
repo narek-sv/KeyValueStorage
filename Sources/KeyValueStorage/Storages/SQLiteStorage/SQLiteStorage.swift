@@ -14,26 +14,25 @@ public final class SQLiteStorage: KeyValueDataStorage {
     // MARK: Properties
 
     private static let databaseName = "KeyValueStorage.sqlite"
-    private static let directoryPrefixName = "SQLite"
 
     private let database: any SQLiteDatabase
-    public let domain: Domain
+    public let scope: Scope
 
     // MARK: Initializers
 
-    public init(domain: Domain, backingStorage: any SQLiteBackingStore) throws {
-        let root = try Self.root(for: domain, resolver: backingStorage)
-        let protection = Self.fileProtection(for: domain)
+    public init(scope: Scope, backingStorage: any SQLiteBackingStore) throws {
+        let root = try Self.root(for: scope, resolver: backingStorage)
+        let protection = Self.fileProtection(for: scope)
         self.database = try Self.execute {
             try backingStorage.createDirectory(at: root)
             return try backingStorage.open(at: root.appendingPathComponent(Self.databaseName, isDirectory: false), protection: protection)
         }
 
-        self.domain = domain
+        self.scope = scope
     }
 
-    public convenience init(domain: Domain) throws {
-        try self.init(domain: domain, backingStorage: DefaultSQLiteBackingStoreWrapper())
+    public convenience init(scope: Scope) throws {
+        try self.init(scope: scope, backingStorage: DefaultSQLiteBackingStoreWrapper())
     }
 
     // MARK: Main Functionality
@@ -64,29 +63,38 @@ public final class SQLiteStorage: KeyValueDataStorage {
 
     // MARK: Helpers
 
-    private static func root(for domain: Domain, resolver: any StorageDirectoryResolving) throws -> URL {
+    private static func root(for scope: Scope, resolver: any StorageDirectoryResolving) throws -> URL {
         let directory: StorageDirectory
-        switch domain {
-        case let .app(.applicationSupport(container), _):   directory = .applicationSupport(container: container)
-        case let .app(.cache(container), _):                directory = .cache(container: container)
-        case let .app(.documents(container), _):            directory = .documents(container: container)
-        case let .app(.temporary(container), _):            directory = .temporary(container: container)
-        case let .appGroup(groupId, container, _):          directory = .appGroup(groupId: groupId, container: container)
+        switch scope {
+        case .app(.applicationSupport, _, _):   directory = .applicationSupport
+        case .app(.cache, _, _):                directory = .cache
+        case .app(.documents, _, _):            directory = .documents
+        case .app(.temporary, _, _):            directory = .temporary
+        case let .app(.directory(url), _, _):   directory = .directory(at: url)
+        case let .appGroup(groupId, _, _):      directory = .appGroup(groupId: groupId)
+        }
+
+        let namespace: String?
+        switch scope.namespace {
+        case let .directory(name)?: namespace = name
+        case nil:                   namespace = nil
         }
 
         do {
-            return try directory.url(storageFolder: directoryPrefixName, resolver: resolver)
+            return try directory.url(namespace: namespace, resolver: resolver)
         } catch StorageDirectory.Failure.directoryNotFound(let name) {
             throw Error.failedToFindDirectory(name)
         } catch StorageDirectory.Failure.groupNotFound(let groupId) {
             throw Error.failedToFindGroupDirectory(groupId)
+        } catch StorageDirectory.Failure.invalidDirectory(let url) {
+            throw Error.invalidDirectory(url)
         }
     }
 
-    private static func fileProtection(for domain: Domain) -> FileProtectionType? {
+    private static func fileProtection(for scope: Scope) -> FileProtectionType? {
         let protection: Protection
-        switch domain {
-        case let .app(_, value), let .appGroup(_, _, value):
+        switch scope {
+        case let .app(_, _, value), let .appGroup(_, _, value):
             protection = value
         }
 

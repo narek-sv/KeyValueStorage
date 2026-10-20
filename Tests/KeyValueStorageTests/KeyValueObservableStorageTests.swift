@@ -21,7 +21,7 @@ final class KeyValueObservableStorageTests: XCTestCase {
         InMemoryStorage.container = [nil: [:]]
     }
     
-    func testPublisherSameStorageSameDomainSameKey() async throws  {
+    func testPublisherSameStorageSameScopeSameKey() async throws  {
         // Given
         let operations = [
             ("save", 1),
@@ -73,7 +73,7 @@ final class KeyValueObservableStorageTests: XCTestCase {
         await wait(to: [publisherExpectation], timeout: 1)
     }
     
-    func testPublisherDifferentStorageSameDomainSameKey1() async throws  {
+    func testPublisherDifferentStorageSameScopeSameKey1() async throws  {
         // Given
         let operations = [
             ("save", 1, 1),
@@ -127,7 +127,7 @@ final class KeyValueObservableStorageTests: XCTestCase {
         await wait(to: [publisherExpectation], timeout: 1)
     }
     
-    func testPublisherDifferentStorageSameDomainSameKey2() async throws  {
+    func testPublisherDifferentStorageSameScopeSameKey2() async throws  {
         // Given
         let operations = [
             ("save", 1, 1),
@@ -144,8 +144,8 @@ final class KeyValueObservableStorageTests: XCTestCase {
         
         var operationIndex1 = 0
         var operationIndex2 = 0
-        let storage1 = await KeyValueObservableStorage(storage: InMemoryStorage(domain: "x"), coder: coder)
-        let storage2 = await KeyValueObservableStorage(storage: InMemoryStorage(domain: "x"), coder: coder)
+        let storage1 = await KeyValueObservableStorage(storage: InMemoryStorage(scope: "x"), coder: coder)
+        let storage2 = await KeyValueObservableStorage(storage: InMemoryStorage(scope: "x"), coder: coder)
         let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
         var subscriptions = Set<AnyCancellable>()
         try await storage1.publisher(forKey: key, includingCurrentValue: false).sink(receiveValue: {
@@ -181,7 +181,7 @@ final class KeyValueObservableStorageTests: XCTestCase {
         await wait(to: [publisherExpectation], timeout: 1)
     }
     
-    func testDifferentDomainsSameKey() async throws {
+    func testDifferentScopesSameKey() async throws {
         // Given
         let operations1 = [
             ("save", 1),
@@ -208,7 +208,7 @@ final class KeyValueObservableStorageTests: XCTestCase {
         var operationIndex1 = 0
         var operationIndex2 = 0
         let storage1 = await KeyValueObservableStorage(storage: InMemoryStorage(), coder: coder)
-        let storage2 = await KeyValueObservableStorage(storage: InMemoryStorage(domain: "other"), coder: coder)
+        let storage2 = await KeyValueObservableStorage(storage: InMemoryStorage(scope: "other"), coder: coder)
         let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
         var subscriptions = Set<AnyCancellable>()
         try await storage1.publisher(forKey: key, includingCurrentValue: false).sink(receiveValue: {
@@ -315,7 +315,7 @@ final class KeyValueObservableStorageTests: XCTestCase {
 extension KeyValueObservableStorageTests {
     func testPublisherStartsWithCurrentValue() async throws {
         // Given
-        let storage = KeyValueObservableStorage(storage: await InMemoryStorage(domain: "currentValue"), coder: coder)
+        let storage = KeyValueObservableStorage(storage: await InMemoryStorage(scope: "currentValue"), coder: coder)
         let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
         let values = Recorded<Int?>()
         try await storage.save(1, forKey: key)
@@ -332,7 +332,7 @@ extension KeyValueObservableStorageTests {
     
     func testPublisherStartsWithNilWhenNothingIsStored() async throws {
         // Given
-        let storage = KeyValueObservableStorage(storage: await InMemoryStorage(domain: "noValue"), coder: coder)
+        let storage = KeyValueObservableStorage(storage: await InMemoryStorage(scope: "noValue"), coder: coder)
         let values = Recorded<Int?>()
         
         // When
@@ -345,7 +345,7 @@ extension KeyValueObservableStorageTests {
     
     func testPublisherWithoutCurrentValueEmitsOnlyChanges() async throws {
         // Given
-        let storage = KeyValueObservableStorage(storage: await InMemoryStorage(domain: "changesOnly"), coder: coder)
+        let storage = KeyValueObservableStorage(storage: await InMemoryStorage(scope: "changesOnly"), coder: coder)
         let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
         let values = Recorded<Int?>()
         try await storage.save(1, forKey: key)
@@ -366,7 +366,7 @@ extension KeyValueObservableStorageTests {
     
     func testStreamStartsWithCurrentValue() async throws {
         // Given
-        let storage = KeyValueObservableStorage(storage: await InMemoryStorage(domain: "streamCurrentValue"), coder: coder)
+        let storage = KeyValueObservableStorage(storage: await InMemoryStorage(scope: "streamCurrentValue"), coder: coder)
         let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
         try await storage.save(5, forKey: key)
         
@@ -384,7 +384,7 @@ extension KeyValueObservableStorageTests {
     
     func testValueSavedBeforeSubscribingWinsOverReadValue() async throws {
         // Given
-        let storage = KeyValueObservableStorage(storage: await InMemoryStorage(domain: "savedBeforeSubscribing"), coder: coder)
+        let storage = KeyValueObservableStorage(storage: await InMemoryStorage(scope: "savedBeforeSubscribing"), coder: coder)
         let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
         let values = Recorded<Int?>()
         try await storage.save(1, forKey: key)
@@ -421,7 +421,7 @@ extension KeyValueObservableStorageTests {
     
     func testReadingCurrentValueDoesntNotifyChangeSubscribers() async throws {
         // Given
-        let storage = KeyValueObservableStorage(storage: await InMemoryStorage(domain: "seeding"), coder: coder)
+        let storage = KeyValueObservableStorage(storage: await InMemoryStorage(scope: "seeding"), coder: coder)
         let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
         let changes = Recorded<Int?>()
         let values = Recorded<Int?>()
@@ -447,7 +447,7 @@ extension KeyValueObservableStorageTests {
     
     func testFailureToReadCurrentValueThrows() async throws {
         // Given
-        let underlyingStorage = await InMemoryStorage(domain: "unreadable")
+        let underlyingStorage = await InMemoryStorage(scope: "unreadable")
         await underlyingStorage.save(Data("not a number".utf8), forKey: "key")
         let storage = KeyValueObservableStorage(storage: underlyingStorage, coder: coder)
         let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
@@ -469,7 +469,7 @@ extension KeyValueObservableStorageTests {
     func testObservationIsReleasedWhenUnused() async throws {
         // Given
         let coder = CountingCoder()
-        let storage = KeyValueObservableStorage(storage: await InMemoryStorage(domain: "release"), coder: coder)
+        let storage = KeyValueObservableStorage(storage: await InMemoryStorage(scope: "release"), coder: coder)
         let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
         try await storage.save(1, forKey: key)
         
@@ -493,7 +493,7 @@ extension KeyValueObservableStorageTests {
     func testStreamReleasesObservationWhenDeallocated() async throws {
         // Given
         let coder = CountingCoder()
-        let storage = KeyValueObservableStorage(storage: await InMemoryStorage(domain: "streamRelease"), coder: coder)
+        let storage = KeyValueObservableStorage(storage: await InMemoryStorage(scope: "streamRelease"), coder: coder)
         let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
         try await storage.save(1, forKey: key)
         
@@ -522,20 +522,20 @@ extension KeyValueObservableStorageTests {
 /// Takes the stored value, then waits until the test lets the read return, like a slow read that a save overtakes.
 private actor SlowReadStorage: KeyValueDataStorage {
     typealias Key = String
-    typealias Domain = String
+    typealias Scope = String
     enum Error: Swift.Error { }
     
-    nonisolated let domain: Domain?
+    nonisolated let scope: Scope?
     private var values = [Key: Data]()
     private var pausedRead: CheckedContinuation<Void, Never>?
     private var readStarted: CheckedContinuation<Void, Never>?
     
     init() {
-        self.domain = nil
+        self.scope = nil
     }
     
-    init(domain: Domain) {
-        self.domain = domain
+    init(scope: Scope) {
+        self.scope = scope
     }
     
     func fetch(forKey key: Key) async -> Data? {

@@ -12,7 +12,7 @@ import SQLite3
 @testable import KeyValueStorage
 
 final class SQLiteStorageTests: XCTestCase {
-    static let otherStorageDomain = "other"
+    static let otherStorageScope = "other"
     var fileManager = FileManager.default
     var standardStorage: SQLiteStorage!
     var otherStorage: SQLiteStorage!
@@ -20,7 +20,7 @@ final class SQLiteStorageTests: XCTestCase {
     @SQLiteActor
     override func setUp() async throws {
         standardStorage = try SQLiteStorage()
-        otherStorage = try SQLiteStorage(domain: Self.otherStorageDomain)
+        otherStorage = try SQLiteStorage(scope: Self.otherStorageScope)
         try standardStorage.clear()
         try otherStorage.clear()
     }
@@ -34,9 +34,9 @@ final class SQLiteStorageTests: XCTestCase {
     }
     
     @SQLiteActor
-    func testSQLiteDomain() async {
-        XCTAssertEqual(standardStorage.domain, nil)
-        XCTAssertEqual(otherStorage.domain, Self.otherStorageDomain)
+    func testSQLiteScope() async {
+        XCTAssertEqual(standardStorage.scope, nil)
+        XCTAssertEqual(otherStorage.scope, Self.otherStorageScope)
     }
     
     @SQLiteActor
@@ -117,7 +117,7 @@ final class SQLiteStorageTests: XCTestCase {
     }
     
     @SQLiteActor
-    func testSQLiteDifferentDomains() async throws {
+    func testSQLiteDifferentScopes() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -183,7 +183,7 @@ final class SQLiteStorageTests: XCTestCase {
     @SQLiteActor
     func testSharedLocationDoesNotDependOnBundleIdentifier() async throws {
         // Given
-        let expectedPath = fileManager.containerURL(forSecurityApplicationGroupIdentifier: Self.otherStorageDomain)!
+        let expectedPath = fileManager.containerURL(forSecurityApplicationGroupIdentifier: Self.otherStorageScope)!
             .appendingPathComponent("KeyValueStorage")
             .appendingPathComponent(SQLiteStorage.directoryName)
             .appendingPathComponent(SQLiteStorage.databaseName)
@@ -191,19 +191,19 @@ final class SQLiteStorageTests: XCTestCase {
         
         // When
         try otherStorage.save(Data([0xAA]), forKey: "key")
-        let sameDomainStorage = try SQLiteStorage(domain: Self.otherStorageDomain)
+        let sameScopeStorage = try SQLiteStorage(scope: Self.otherStorageScope)
         
         // Then
         XCTAssertTrue(fileManager.fileExists(atPath: expectedPath))
         XCTAssertFalse(expectedPath.contains(Bundle.main.bundleIdentifier!))
-        XCTAssertEqual(try sameDomainStorage.fetch(forKey: "key"), Data([0xAA]))
+        XCTAssertEqual(try sameScopeStorage.fetch(forKey: "key"), Data([0xAA]))
     }
     
     @SQLiteActor
     func testFileStorageAndSQLiteStorageDontAffectEachOther() async throws {
         // Given
         let fileStorage = try await FileStorage()
-        let sharedFileStorage = try await FileStorage(domain: Self.otherStorageDomain)
+        let sharedFileStorage = try await FileStorage(scope: Self.otherStorageScope)
         try standardStorage.save(Data([0xAA]), forKey: "key")
         try otherStorage.save(Data([0xAA]), forKey: "key")
         try await fileStorage.save(Data([0xBB]), forKey: "key")
@@ -246,7 +246,7 @@ final class SQLiteStorageTests: XCTestCase {
         
         // Then
         XCTAssertEqual(try reopened.fetch(forKey: "key"), Data([0xAA]))
-        XCTAssertNil(reopened.domain)
+        XCTAssertNil(reopened.scope)
     }
     
     @SQLiteActor
@@ -323,7 +323,7 @@ final class SQLiteStorageTests: XCTestCase {
         // Given
         let storage = UnifiedStorage(factory: ObservableUnifiedStorageFactory())
         let key = SQLiteKey<String>(key: "unified")
-        let sharedKey = SQLiteKey<Int>(key: "unified", domain: Self.otherStorageDomain)
+        let sharedKey = SQLiteKey<Int>(key: "unified", scope: Self.otherStorageScope)
         let values = Recorded<String?>()
         let subscription = try await storage.publisher(forKey: key)!.sink { values.append($0) }
         
@@ -340,7 +340,7 @@ final class SQLiteStorageTests: XCTestCase {
         
         // When
         try await storage.delete(forKey: key)
-        try await storage.clear(storage: SQLiteStorage.self, forDomain: Self.otherStorageDomain)
+        try await storage.clear(storage: SQLiteStorage.self, forScope: Self.otherStorageScope)
         
         // Then
         let deleted = try await storage.fetch(forKey: key)

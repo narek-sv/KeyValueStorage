@@ -15,28 +15,32 @@ public final class UserDefaultsStorage: KeyValueDataStorage {
 
     private let suite: any UserDefaultsSuite
     private let keyPrefix: String?
-    public let domain: Domain
+    public let scope: Scope
 
     // MARK: Initializers
 
-    public init(domain: Domain, backingStorage: any UserDefaultsBackingStore) throws {
-        switch domain {
-        case .app(.standard):
+    public init(scope: Scope, backingStorage: any UserDefaultsBackingStore) throws {
+        switch scope {
+        case .app(.standard, _):
             self.suite = backingStorage.standard
-            self.keyPrefix = nil
-        case let .app(.suite(container)):
-            self.suite = try Self.suite(named: backingStorage.appIdentifier + "." + container, in: backingStorage)
-            self.keyPrefix = nil
-        case let .appGroup(groupId, container):
+        case let .app(.suite(name), _):
+            self.suite = try Self.suite(named: name, in: backingStorage)
+        case let .appGroup(groupId, _):
             self.suite = try Self.suite(named: groupId, in: backingStorage)
-            self.keyPrefix = KeyNamespace.prefix(for: container)
         }
 
-        self.domain = domain
+        switch scope.namespace {
+        case let .keyPrefix(name)?:
+            self.keyPrefix = KeyNamespace.prefix(for: name)
+        case nil:
+            self.keyPrefix = nil
+        }
+
+        self.scope = scope
     }
 
-    public convenience init(domain: Domain) throws {
-        try self.init(domain: domain, backingStorage: DefaultUserDefaultsBackingStoreWrapper())
+    public convenience init(scope: Scope) throws {
+        try self.init(scope: scope, backingStorage: DefaultUserDefaultsBackingStoreWrapper())
     }
 
     // MARK: Main Functionality
@@ -75,7 +79,7 @@ public final class UserDefaultsStorage: KeyValueDataStorage {
 
     private static func suite(named name: String, in backingStorage: any UserDefaultsBackingStore) throws -> any UserDefaultsSuite {
         guard let suite = backingStorage.suite(named: name) else {
-            throw Error.failedToInitSharedDefaults
+            throw Error.invalidSuiteName(name)
         }
 
         return suite

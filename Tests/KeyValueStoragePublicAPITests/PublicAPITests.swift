@@ -70,52 +70,52 @@ final class PublicAPITests: XCTestCase {
     
     func testKeychainIsConfigurable() {
         // Given: an existing Keychain Sharing group and a service that other code already saves items under
-        let domain = KeychainStorage.Domain.appGroup(groupId: "TEAMID.group.shared", container: "existing.service")
+        let scope = KeychainStorage.Scope.appGroup(groupId: "TEAMID.group.shared", container: "existing.service")
 
         // When
-        let storage = KeychainStorage(domain: domain)
+        let storage = KeychainStorage(scope: scope)
 
         // Then
-        XCTAssertEqual(storage.domain, domain)
+        XCTAssertEqual(storage.scope, scope)
     }
 
-    func testDomainIsReadable() throws {
+    func testScopeIsReadable() throws {
         // Given
         let container = UUID().uuidString
         addTeardownBlock {
             try? FileManager.default.removeItem(at: FileManager.default.temporaryDirectory.appendingPathComponent(container, isDirectory: true))
         }
 
-        let inMemoryDomain = InMemoryStorage.Domain.app(container: "publicAPIDomain")
-        let userDefaultsDomain = UserDefaultsStorage.Domain.app(.suite(container: "publicAPIDomain"))
-        let keychainDomain = KeychainStorage.Domain.appGroup(groupId: "group.shared", container: "publicAPIDomain")
-        let fileDomain = FileStorage.Domain.app(.temporary(container: container))
-        let sqliteDomain = SQLiteStorage.Domain.app(.temporary(container: container))
-        let inMemory = InMemoryStorage(domain: inMemoryDomain)
-        let userDefaults = try UserDefaultsStorage(domain: userDefaultsDomain)
-        let keychain = KeychainStorage(domain: keychainDomain)
-        let file = try FileStorage(domain: fileDomain)
-        let sqlite = try SQLiteStorage(domain: sqliteDomain)
+        let inMemoryScope = InMemoryStorage.Scope.app(container: "publicAPIScope")
+        let userDefaultsScope = UserDefaultsStorage.Scope.app(.suite(container: "publicAPIScope"))
+        let keychainScope = KeychainStorage.Scope.appGroup(groupId: "group.shared", container: "publicAPIScope")
+        let fileScope = FileStorage.Scope.app(.temporary(container: container))
+        let sqliteScope = SQLiteStorage.Scope.app(.temporary(container: container))
+        let inMemory = InMemoryStorage(scope: inMemoryScope)
+        let userDefaults = try UserDefaultsStorage(scope: userDefaultsScope)
+        let keychain = KeychainStorage(scope: keychainScope)
+        let file = try FileStorage(scope: fileScope)
+        let sqlite = try SQLiteStorage(scope: sqliteScope)
 
         // When - Then
-        XCTAssertEqual(inMemory.domain, inMemoryDomain)
-        XCTAssertEqual(userDefaults.domain, userDefaultsDomain)
-        XCTAssertEqual(keychain.domain, keychainDomain)
-        XCTAssertEqual(file.domain, fileDomain)
-        XCTAssertEqual(sqlite.domain, sqliteDomain)
+        XCTAssertEqual(inMemory.scope, inMemoryScope)
+        XCTAssertEqual(userDefaults.scope, userDefaultsScope)
+        XCTAssertEqual(keychain.scope, keychainScope)
+        XCTAssertEqual(file.scope, fileScope)
+        XCTAssertEqual(sqlite.scope, sqliteScope)
         if #available(watchOS 9.0, *) {
-            let ubiquitousDomain = UbiquitousStorage.Domain.shared(container: "publicAPIDomain")
-            XCTAssertEqual(UbiquitousStorage(domain: ubiquitousDomain, backingStorage: InMemoryUbiquitousStore()).domain, ubiquitousDomain)
+            let ubiquitousScope = UbiquitousStorage.Scope.shared(container: "publicAPIScope")
+            XCTAssertEqual(UbiquitousStorage(scope: ubiquitousScope, backingStorage: InMemoryUbiquitousStore()).scope, ubiquitousScope)
         }
     }
 
     func testStoragesAcceptBackingStorages() throws {
-        // Given: two default in-memory storages with the same domain, and one with a backing store of its own
+        // Given: two default in-memory storages with the same scope, and one with a backing store of its own
         let container = "publicAPIBacking-\(UUID().uuidString)"
-        let first = InMemoryStorage(domain: .app(container: container))
-        let second = InMemoryStorage(domain: .app(container: container))
-        let isolated = InMemoryStorage(domain: .app(container: container), backingStorage: IsolatedInMemoryStore())
-        let keychain = KeychainStorage(domain: .default, backingStorage: InMemoryKeychain())
+        let first = InMemoryStorage(scope: .app(container: container))
+        let second = InMemoryStorage(scope: .app(container: container))
+        let isolated = InMemoryStorage(scope: .app(container: container), backingStorage: IsolatedInMemoryStore())
+        let keychain = KeychainStorage(scope: .default, backingStorage: InMemoryKeychain())
 
         // When
         first.save(Data([1]), forKey: "key")
@@ -131,8 +131,8 @@ final class PublicAPITests: XCTestCase {
     func testStoragesThatCantFailSetWithoutTry() throws {
         // Given
         let container = "publicAPISet-\(UUID().uuidString)"
-        let inMemory = InMemoryStorage(domain: .app(container: container))
-        let userDefaults = try UserDefaultsStorage(domain: .app(.suite(container: container)))
+        let inMemory = InMemoryStorage(scope: .app(container: container))
+        let userDefaults = try UserDefaultsStorage(scope: .app(.suite(container: container)))
         defer { userDefaults.clear() }
 
         // When - Then: no `try`
@@ -147,16 +147,16 @@ final class PublicAPITests: XCTestCase {
         XCTAssertNil(userDefaults.fetch(forKey: "key"))
     }
 
-    func testDefaultInitializersUseTheDefaultDomain() throws {
+    func testDefaultInitializersUseTheDefaultScope() throws {
         // No `try`: these storages can't fail to initialize
-        XCTAssertEqual(InMemoryStorage().domain, .default)
-        XCTAssertEqual(KeychainStorage().domain, .default)
+        XCTAssertEqual(InMemoryStorage().scope, .default)
+        XCTAssertEqual(KeychainStorage().scope, .default)
         if #available(watchOS 9.0, *) {
-            XCTAssertEqual(UbiquitousStorage().domain, .default)
+            XCTAssertEqual(UbiquitousStorage().scope, .default)
         }
 
-        XCTAssertEqual(try FileStorage().domain, .default)
-        XCTAssertEqual(try UserDefaultsStorage().domain, .default)
+        XCTAssertEqual(try FileStorage().scope, .default)
+        XCTAssertEqual(try UserDefaultsStorage().scope, .default)
     }
 }
 
@@ -164,9 +164,9 @@ private final class CountingFactory: DefaultUnifiedStorageFactory, @unchecked Se
     private(set) var dataStorageCalls = 0
     private(set) var codingStorageCalls = 0
 
-    override func dataStorage<Storage: KeyValueDataStorage>(for domain: Storage.Domain) async throws -> Storage {
+    override func dataStorage<Storage: KeyValueDataStorage>(for scope: Storage.Scope) async throws -> Storage {
         dataStorageCalls += 1
-        return try await super.dataStorage(for: domain)
+        return try await super.dataStorage(for: scope)
     }
 
     override func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) async throws -> KeyValueCodingStorage<Storage> {

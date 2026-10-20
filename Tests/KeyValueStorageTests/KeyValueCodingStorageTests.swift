@@ -137,7 +137,7 @@ final class KeyValueCodingStorageTests: XCTestCase {
     func testFetchDecodesTheKeyValueType() async throws {
         // Given
         let coder = TypeRecordingCoder()
-        let storage = KeyValueCodingStorage(storage: await InMemoryStorage(domain: "decodedType"), coder: coder)
+        let storage = KeyValueCodingStorage(storage: await InMemoryStorage(scope: "decodedType"), coder: coder)
         let key = KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "key")
         try await storage.save(42, forKey: key)
         
@@ -151,7 +151,7 @@ final class KeyValueCodingStorageTests: XCTestCase {
     
     func testFetchingNullForNonOptionalValueThrows() async throws {
         // Given
-        let underlyingStorage = await InMemoryStorage(domain: "null")
+        let underlyingStorage = await InMemoryStorage(scope: "null")
         await underlyingStorage.save(Data("null".utf8), forKey: "key")
         let storage = KeyValueCodingStorage(storage: underlyingStorage, coder: JSONDataCoder())
         

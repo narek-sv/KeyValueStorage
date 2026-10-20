@@ -10,7 +10,7 @@ import Foundation
 @testable import KeyValueStorage
 
 final class FileStorageTests: XCTestCase {
-    static let otherStorageDomain = "other"
+    static let otherStorageScope = "other"
     var fileManager = FileManager.default
     var standardPath: URL!
     var otherPath: URL!
@@ -23,7 +23,7 @@ final class FileStorageTests: XCTestCase {
         standardPath = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(id, isDirectory: true)
             .appendingPathComponent("KeyValueStorage/Files", isDirectory: true)
-        otherPath = fileManager.containerURL(forSecurityApplicationGroupIdentifier: Self.otherStorageDomain)!
+        otherPath = fileManager.containerURL(forSecurityApplicationGroupIdentifier: Self.otherStorageScope)!
             .appendingPathComponent("KeyValueStorage/Files", isDirectory: true)
         
         try? fileManager.createDirectory(at: standardPath, withIntermediateDirectories: true)
@@ -32,13 +32,13 @@ final class FileStorageTests: XCTestCase {
         try fileManager.clearDirectoryContents(url: otherPath)
         
         standardStorage = try FileStorage()
-        otherStorage = try FileStorage(domain: Self.otherStorageDomain)
+        otherStorage = try FileStorage(scope: Self.otherStorageScope)
     }
     
     @FileActor
-    func testFileDomain() async {
-        XCTAssertEqual(standardStorage.domain, nil)
-        XCTAssertEqual(otherStorage.domain, Self.otherStorageDomain)
+    func testFileScope() async {
+        XCTAssertEqual(standardStorage.scope, nil)
+        XCTAssertEqual(otherStorage.scope, Self.otherStorageScope)
     }
     
     @FileActor
@@ -111,7 +111,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testFileFetchDifferentDomains() async throws {
+    func testFileFetchDifferentScopes() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -215,7 +215,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testFileSaveDifferentDomains() async throws {
+    func testFileSaveDifferentScopes() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -283,7 +283,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testFileDeleteDifferentDomains() async throws {
+    func testFileDeleteDifferentScopes() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -357,7 +357,7 @@ final class FileStorageTests: XCTestCase {
     }
     
     @FileActor
-    func testFileSetDifferentDomains() async throws {
+    func testFileSetDifferentScopes() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -714,7 +714,7 @@ final class FileStorageTests: XCTestCase {
     @FileActor
     func testSharedLocationDoesNotDependOnBundleIdentifier() async throws {
         // Given
-        let expectedPath = fileManager.containerURL(forSecurityApplicationGroupIdentifier: Self.otherStorageDomain)!
+        let expectedPath = fileManager.containerURL(forSecurityApplicationGroupIdentifier: Self.otherStorageScope)!
             .appendingPathComponent("KeyValueStorage")
             .appendingPathComponent(FileStorage.directoryName)
             .appendingPathComponent("key")
@@ -722,12 +722,12 @@ final class FileStorageTests: XCTestCase {
         
         // When
         try otherStorage.save(Data([0xAA]), forKey: "key")
-        let sameDomainStorage = try FileStorage(domain: Self.otherStorageDomain)
+        let sameScopeStorage = try FileStorage(scope: Self.otherStorageScope)
         
         // Then
         XCTAssertEqual(fileManager.contents(atPath: expectedPath), Data([0xAA]))
         XCTAssertFalse(expectedPath.contains(Bundle.main.bundleIdentifier!))
-        XCTAssertEqual(try sameDomainStorage.fetch(forKey: "key"), Data([0xAA]))
+        XCTAssertEqual(try sameScopeStorage.fetch(forKey: "key"), Data([0xAA]))
     }
     
     @FileActor
@@ -740,7 +740,7 @@ final class FileStorageTests: XCTestCase {
         try storage.save(Data([0xAA]), forKey: "key")
         
         // Then
-        XCTAssertNil(storage.domain)
+        XCTAssertNil(storage.scope)
         XCTAssertEqual(fileManager.contents(atPath: root.appendingPathComponent("key").path), Data([0xAA]))
     }
     

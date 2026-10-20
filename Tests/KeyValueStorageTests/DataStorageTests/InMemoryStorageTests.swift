@@ -10,22 +10,22 @@ import Foundation
 @testable import KeyValueStorage
 
 final class InMemoryStorageTests: XCTestCase {
-    static let otherStorageDomain = "other"
+    static let otherStorageScope = "other"
     var standardStorage: InMemoryStorage!
     var otherStorage: InMemoryStorage!
     
     @InMemoryActor
     override func setUp() async throws {
         standardStorage = InMemoryStorage()
-        otherStorage = InMemoryStorage(domain: Self.otherStorageDomain)
+        otherStorage = InMemoryStorage(scope: Self.otherStorageScope)
         
         InMemoryStorage.container = [:]
     }
     
     @InMemoryActor
-    func testInMemoryDomain() async {
-        XCTAssertEqual(standardStorage.domain, nil)
-        XCTAssertEqual(otherStorage.domain, Self.otherStorageDomain)
+    func testInMemoryScope() async {
+        XCTAssertEqual(standardStorage.scope, nil)
+        XCTAssertEqual(otherStorage.scope, Self.otherStorageScope)
     }
     
     @InMemoryActor
@@ -91,7 +91,7 @@ final class InMemoryStorageTests: XCTestCase {
     }
     
     @InMemoryActor
-    func testInMemoryFetchDifferentDomains() async {
+    func testInMemoryFetchDifferentScopes() async {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -182,7 +182,7 @@ final class InMemoryStorageTests: XCTestCase {
     }
     
     @InMemoryActor
-    func testInMemorySaveDifferentDomains() async {
+    func testInMemorySaveDifferentScopes() async {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -242,7 +242,7 @@ final class InMemoryStorageTests: XCTestCase {
     }
     
     @InMemoryActor
-    func testInMemoryDeleteDifferentDomains() async {
+    func testInMemoryDeleteDifferentScopes() async {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -310,7 +310,7 @@ final class InMemoryStorageTests: XCTestCase {
     }
     
     @InMemoryActor
-    func testInMemorySetDifferentDomains() async {
+    func testInMemorySetDifferentScopes() async {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])

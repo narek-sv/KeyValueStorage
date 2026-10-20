@@ -10,7 +10,7 @@ import Foundation
 @testable import KeyValueStorage
 
 final class KeychainStorageTests: XCTestCase {
-    static let otherStorageDomain = KeychainStorage.Domain(groupId: "xxx", teamId: "yyy")
+    static let otherStorageScope = KeychainStorage.Scope(groupId: "xxx", teamId: "yyy")
     var standardKeychain: KeychainWrapper!
     var otherKeychain: KeychainWrapper!
     var standardStorage: KeychainStorage!
@@ -21,20 +21,20 @@ final class KeychainStorageTests: XCTestCase {
     @KeychainActor
     override func setUp() async throws {
         standardKeychain = KeychainWrapper(serviceName: KeychainStorage.defaultService)
-        otherKeychain = KeychainWrapper(serviceName: Self.otherStorageDomain.service, accessGroup: Self.otherStorageDomain.accessGroup)
+        otherKeychain = KeychainWrapper(serviceName: Self.otherStorageScope.service, accessGroup: Self.otherStorageScope.accessGroup)
 
         try standardKeychain.removeAll()
         try otherKeychain.removeAll()
         
         standardStorage = KeychainStorage()
-        otherStorage = KeychainStorage(domain: Self.otherStorageDomain)
+        otherStorage = KeychainStorage(scope: Self.otherStorageScope)
         
     }
     
     @KeychainActor
-    func testKeychainDomain() async {
-        XCTAssertEqual(standardStorage.domain, nil)
-        XCTAssertEqual(otherStorage.domain, Self.otherStorageDomain)
+    func testKeychainScope() async {
+        XCTAssertEqual(standardStorage.scope, nil)
+        XCTAssertEqual(otherStorage.scope, Self.otherStorageScope)
     }
     
     @KeychainActor
@@ -104,7 +104,7 @@ final class KeychainStorageTests: XCTestCase {
     }
     
     @KeychainActor
-    func testKeychainFetchDifferentDomains() async throws {
+    func testKeychainFetchDifferentScopes() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -204,7 +204,7 @@ final class KeychainStorageTests: XCTestCase {
     }
     
     @KeychainActor
-    func testKeychainSaveDifferentDomains() async throws {
+    func testKeychainSaveDifferentScopes() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -268,7 +268,7 @@ final class KeychainStorageTests: XCTestCase {
     }
     
     @KeychainActor
-    func testKeychainDeleteDifferentDomains() async throws {
+    func testKeychainDeleteDifferentScopes() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -341,7 +341,7 @@ final class KeychainStorageTests: XCTestCase {
     }
     
     @KeychainActor
-    func testKeychainSetDifferentDomains() async throws {
+    func testKeychainSetDifferentScopes() async throws {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -433,7 +433,7 @@ final class KeychainStorageTests: XCTestCase {
     @KeychainActor
     func testErrorCaseAccessGroupWithoutEntitlement() async throws {
         // Given: sharing through an access group the app isn't entitled to, a common keychain sharing mistake
-        let storage = KeychainStorage(domain: .init(accessGroup: "not.entitled"))
+        let storage = KeychainStorage(scope: .init(accessGroup: "not.entitled"))
         let key = KeychainStorage.Key(name: "key")
         
         // When - Then: the keychain's error is reported instead of a missing value
@@ -489,52 +489,52 @@ final class KeychainStorageTests: XCTestCase {
     #endif
     
     @KeychainActor
-    func testDomain() async {
+    func testScope() async {
         // Given
-        var domain = KeychainStorage.Domain(groupId: "a", teamId: "b")
+        var scope = KeychainStorage.Scope(groupId: "a", teamId: "b")
         
         // When
-        let group = domain.accessGroup
+        let group = scope.accessGroup
         
         // Then
         XCTAssertEqual(group, "b.a")
         XCTAssertEqual(KeychainStorage.defaultService, "KeyValueStorage")
-        XCTAssertEqual(domain.service, "KeyValueStorage.b.a")
-        XCTAssertNotEqual(domain.service, KeychainStorage.defaultService)
-        XCTAssertEqual(domain, KeychainStorage.Domain(accessGroup: "b.a"))
+        XCTAssertEqual(scope.service, "KeyValueStorage.b.a")
+        XCTAssertNotEqual(scope.service, KeychainStorage.defaultService)
+        XCTAssertEqual(scope, KeychainStorage.Scope(accessGroup: "b.a"))
         
         // When
-        domain = KeychainStorage.Domain(groupId: "a", teamId: "b", service: "custom")
+        scope = KeychainStorage.Scope(groupId: "a", teamId: "b", service: "custom")
         
         // Then
-        XCTAssertEqual(domain.service, "custom")
-        XCTAssertNotEqual(domain, KeychainStorage.Domain(groupId: "a", teamId: "b"))
+        XCTAssertEqual(scope.service, "custom")
+        XCTAssertNotEqual(scope, KeychainStorage.Scope(groupId: "a", teamId: "b"))
     }
     
     @KeychainActor
-    func testAppGroupDomain() async {
+    func testAppGroupScope() async {
         // Given
-        let domain = KeychainStorage.Domain(accessGroup: "group.com.company.app")
+        let scope = KeychainStorage.Scope(accessGroup: "group.com.company.app")
         
         // Then
-        XCTAssertEqual(domain.accessGroup, "group.com.company.app")
-        XCTAssertEqual(domain.service, "KeyValueStorage.group.com.company.app")
-        XCTAssertEqual(KeychainStorage.Domain(accessGroup: "group.com.company.app", service: "custom").service, "custom")
+        XCTAssertEqual(scope.accessGroup, "group.com.company.app")
+        XCTAssertEqual(scope.service, "KeyValueStorage.group.com.company.app")
+        XCTAssertEqual(KeychainStorage.Scope(accessGroup: "group.com.company.app", service: "custom").service, "custom")
     }
     
     @KeychainActor
-    func testInitDomains() async {
+    func testInitScopes() async {
         // When
         var storage = KeychainStorage()
         
         // Then
-        XCTAssertNil(storage.domain)
+        XCTAssertNil(storage.scope)
         
         // When
-        storage = KeychainStorage(domain: .init(groupId: "a", teamId: "b"))
+        storage = KeychainStorage(scope: .init(groupId: "a", teamId: "b"))
         
         // Then
-        XCTAssertEqual(storage.domain, .init(groupId: "a", teamId: "b"))
+        XCTAssertEqual(storage.scope, .init(groupId: "a", teamId: "b"))
     }
     
     @KeychainActor
@@ -546,7 +546,7 @@ final class KeychainStorageTests: XCTestCase {
         let storage = KeychainStorage(keychain: keychain)
         
         // Then
-        XCTAssertNil(storage.domain)
+        XCTAssertNil(storage.scope)
     }
     
     func testWrapperItemQueryIgnoresAccessibility() {

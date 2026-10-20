@@ -17,12 +17,12 @@ public final class KeychainStorage: KeyValueDataStorage {
     private let serviceName: String?
     private let accessGroup: String?
 
-    public let domain: Domain
+    public let scope: Scope
 
     // MARK: Initializers
 
-    public init(domain: Domain, backingStorage: any KeychainBackingStore) {
-        switch domain {
+    public init(scope: Scope, backingStorage: any KeychainBackingStore) {
+        switch scope {
         case let .app(appContainer):
             self.serviceName = appContainer
             self.accessGroup = nil
@@ -31,16 +31,16 @@ public final class KeychainStorage: KeyValueDataStorage {
             self.accessGroup = groupId
         }
 
-        self.domain = domain
+        self.scope = scope
         self.storage = backingStorage
     }
 
-    public convenience init(domain: Domain) {
-        self.init(domain: domain, backingStorage: DefaultKeychainBackingStoreWrapper())
+    public convenience init(scope: Scope) {
+        self.init(scope: scope, backingStorage: DefaultKeychainBackingStoreWrapper())
     }
 
     public convenience init() {
-        self.init(domain: .default)
+        self.init(scope: .default)
     }
 
     // MARK: Main Functionality

@@ -11,7 +11,7 @@ import Combine
 import KeyValueStorage // intentionally not @testable: calls the API like clients do
 
 /// Calls every public API from different isolation contexts, so each Swift version's runtime isolation checks
-/// run for every entry point. Swift 6.0, for example, crashed when a storage's `domain` was read outside its actor.
+/// run for every entry point. Swift 6.0, for example, crashed when a storage's `scope` was read outside its actor.
 final class IsolationTests: XCTestCase {
     func testNonisolated() async throws {
         try await exerciseAPI(context: "nonisolated")
@@ -57,20 +57,20 @@ private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #is
     
     // Every storage, directly and through the coding and observation layers. The keychain and the iCloud key-value store
     // need entitlements that test bundles can't have, so those storages use in-memory backing storages
-    try await exercise(InMemoryStorage(domain: .app(container: id)), key: "key", context: context)
-    try await exercise(UserDefaultsStorage(domain: .app(.suite(container: id))), key: "key", context: context)
-    try await exercise(FileStorage(domain: .app(.temporary(container: id))), key: .init(name: "key"), context: context)
-    try await exercise(SQLiteStorage(domain: .app(.temporary(container: id))), key: "key", context: context)
-    try await exercise(KeychainStorage(domain: .app(container: id), backingStorage: InMemoryKeychain()),
+    try await exercise(InMemoryStorage(scope: .app(container: id)), key: "key", context: context)
+    try await exercise(UserDefaultsStorage(scope: .app(.suite(container: id))), key: "key", context: context)
+    try await exercise(FileStorage(scope: .app(.temporary(container: id))), key: .init(name: "key"), context: context)
+    try await exercise(SQLiteStorage(scope: .app(.temporary(container: id))), key: "key", context: context)
+    try await exercise(KeychainStorage(scope: .app(container: id), backingStorage: InMemoryKeychain()),
                        key: .init(name: "key"), context: context)
     if #available(watchOS 9.0, *) {
-        try await exercise(UbiquitousStorage(domain: .shared(container: id), backingStorage: InMemoryUbiquitousStore()),
+        try await exercise(UbiquitousStorage(scope: .shared(container: id), backingStorage: InMemoryUbiquitousStore()),
                            key: "key", context: context)
     }
 
     // Unified storage
     let storage = UnifiedStorage(factory: ObservableUnifiedStorageFactory())
-    let key = InMemoryKey<Int>(key: "unified", domain: .app(container: id))
+    let key = InMemoryKey<Int>(key: "unified", scope: .app(container: id))
     let published = Values<Int?>()
     let subscription = try await storage.publisher(forKey: key)?.sink { published.append($0) }
     let stream = try await storage.stream(forKey: key, includingCurrentValue: false)
@@ -85,7 +85,7 @@ private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #is
     try await storage.set(nil, forKey: key)
     try await storage.set(2, forKey: key)
     try await storage.delete(forKey: key)
-    try await storage.clear(storage: InMemoryStorage.self, forDomain: .app(container: id))
+    try await storage.clear(storage: InMemoryStorage.self, forScope: .app(container: id))
     let firstStreamed = await streamed.value
     
     XCTAssertEqual(fetched, 1, "UnifiedStorage from \(context)")
@@ -100,7 +100,7 @@ private func exercise<Storage: KeyValueDataStorage>(_ storage: Storage, key: Sto
     let data = Data([1, 2, 3])
     
     // Data storage
-    _ = storage.domain
+    _ = storage.scope
     try storage.save(data, forKey: key)
     let saved = try storage.fetch(forKey: key)
     try storage.set(nil, forKey: key)
@@ -117,7 +117,7 @@ private func exercise<Storage: KeyValueDataStorage>(_ storage: Storage, key: Sto
     XCTAssertNil(deleted, description)
     XCTAssertNil(cleared, description)
     
-    // Coding and observation, which read the storage's domain on CodingStorageActor
+    // Coding and observation, which read the storage's scope on CodingStorageActor
     let observable = KeyValueObservableStorage(storage: storage, coder: RawDataCoder())
     let codingKey = KeyValueCodingStorageKey<Storage, Int>(key: key)
     let published = Values<Int?>()

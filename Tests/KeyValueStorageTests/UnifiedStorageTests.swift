@@ -13,22 +13,22 @@ final class UnifiedStorageTests: XCTestCase {
     
     override func setUp() async throws {
         await InMemoryStorage().clear()
-        await InMemoryStorage(domain: "other").clear()
+        await InMemoryStorage(scope: "other").clear()
         
         await UserDefaultsStorage().clear()
-        try await UserDefaultsStorage(domain: "other").clear()
+        try await UserDefaultsStorage(scope: "other").clear()
     }
     
     func testStorage() async throws {
         // Given
         let key1 = InMemoryKey<String>(key: "key1")
         let key2 = InMemoryKey<String>(key: "key2")
-        let key3 = InMemoryKey<String>(key: "key3", domain: "other")
-        let key4 = InMemoryKey<String>(key: "key4", domain: "other")
+        let key3 = InMemoryKey<String>(key: "key3", scope: "other")
+        let key4 = InMemoryKey<String>(key: "key4", scope: "other")
         let key5 = UserDefaultsKey<String>(key: "key1")
         let key6 = UserDefaultsKey<String>(key: "key2")
-        let key7 = UserDefaultsKey<String>(key: "key3", domain: "other")
-        let key8 = UserDefaultsKey<String>(key: "key4", domain: "other")
+        let key7 = UserDefaultsKey<String>(key: "key3", scope: "other")
+        let key8 = UserDefaultsKey<String>(key: "key4", scope: "other")
         let storage = UnifiedStorage()
         
         // When
@@ -177,7 +177,7 @@ final class UnifiedStorageTests: XCTestCase {
         try await storage.save("newData7", forKey: key7)
         try await storage.save("newData8", forKey: key8)
         
-        try await storage.clear(storage: InMemoryStorage.self, forDomain: nil)
+        try await storage.clear(storage: InMemoryStorage.self, forScope: nil)
         
         fetched1 = try await storage.fetch(forKey: key1)
         fetched2 = try await storage.fetch(forKey: key2)
@@ -199,7 +199,7 @@ final class UnifiedStorageTests: XCTestCase {
         XCTAssertEqual(fetched8, "newData8")
         
         // When
-        try await storage.clear(storage: InMemoryStorage.self, forDomain: "other")
+        try await storage.clear(storage: InMemoryStorage.self, forScope: "other")
         
         fetched1 = try await storage.fetch(forKey: key1)
         fetched2 = try await storage.fetch(forKey: key2)
@@ -221,7 +221,7 @@ final class UnifiedStorageTests: XCTestCase {
         XCTAssertEqual(fetched8, "newData8")
         
         // When
-        try await storage.clear(storage: UserDefaultsStorage.self, forDomain: nil)
+        try await storage.clear(storage: UserDefaultsStorage.self, forScope: nil)
         
         fetched1 = try await storage.fetch(forKey: key1)
         fetched2 = try await storage.fetch(forKey: key2)
@@ -243,7 +243,7 @@ final class UnifiedStorageTests: XCTestCase {
         XCTAssertEqual(fetched8, "newData8")
         
         // When
-        try await storage.clear(storage: UserDefaultsStorage.self, forDomain: "other")
+        try await storage.clear(storage: UserDefaultsStorage.self, forScope: "other")
         
         fetched1 = try await storage.fetch(forKey: key1)
         fetched2 = try await storage.fetch(forKey: key2)
@@ -267,11 +267,11 @@ final class UnifiedStorageTests: XCTestCase {
     
     func testClearStorageOnFreshInstance() async throws {
         // Given
-        let key = InMemoryKey<String>(key: "key", domain: "other")
+        let key = InMemoryKey<String>(key: "key", scope: "other")
         try await UnifiedStorage().save("value", forKey: key)
         
         // When
-        try await UnifiedStorage().clear(storage: InMemoryStorage.self, forDomain: "other")
+        try await UnifiedStorage().clear(storage: InMemoryStorage.self, forScope: "other")
         
         // Then
         let fetched = try await UnifiedStorage().fetch(forKey: key)
@@ -301,10 +301,10 @@ final class UnifiedStorageTests: XCTestCase {
         for factory in [DefaultUnifiedStorageFactory(), ObservableUnifiedStorageFactory()] {
             // Given
             let storage = UnifiedStorage(factory: factory)
-            let underlyingStorage = await InMemoryStorage(domain: "factoryCoder")
+            let underlyingStorage = await InMemoryStorage(scope: "factoryCoder")
             
             // When
-            try await storage.save(Data([0xAA]), forKey: InMemoryKey<Data>(key: "data", domain: "factoryCoder"))
+            try await storage.save(Data([0xAA]), forKey: InMemoryKey<Data>(key: "data", scope: "factoryCoder"))
             
             // Then
             let stored = await underlyingStorage.fetch(forKey: "data")
@@ -315,21 +315,21 @@ final class UnifiedStorageTests: XCTestCase {
     
     func testKeyHashing() {
         // Given
-        let key = InMemoryKey<String>(key: "key", domain: "domain")
+        let key = InMemoryKey<String>(key: "key", scope: "scope")
         let differentKeys: [AnyHashable] = [
-            InMemoryKey<String>(key: "other", domain: "domain"),
-            InMemoryKey<String>(key: "key", domain: "other"),
+            InMemoryKey<String>(key: "other", scope: "scope"),
+            InMemoryKey<String>(key: "key", scope: "other"),
             InMemoryKey<String>(key: "key"),
-            InMemoryKey<Int>(key: "key", domain: "domain"),
-            UserDefaultsKey<String>(key: "key", domain: "domain")
+            InMemoryKey<Int>(key: "key", scope: "scope"),
+            UserDefaultsKey<String>(key: "key", scope: "scope")
         ]
         
         // When
-        let set = Set([AnyHashable(key), AnyHashable(InMemoryKey<String>(key: "key", domain: "domain"))] + differentKeys)
+        let set = Set([AnyHashable(key), AnyHashable(InMemoryKey<String>(key: "key", scope: "scope"))] + differentKeys)
         
         // Then
-        XCTAssertEqual(key, InMemoryKey<String>(key: "key", domain: "domain"))
-        XCTAssertEqual(key.hashValue, InMemoryKey<String>(key: "key", domain: "domain").hashValue)
+        XCTAssertEqual(key, InMemoryKey<String>(key: "key", scope: "scope"))
+        XCTAssertEqual(key.hashValue, InMemoryKey<String>(key: "key", scope: "scope").hashValue)
         XCTAssertEqual(set.count, differentKeys.count + 1)
     }
     
@@ -433,14 +433,14 @@ final class CountingUnifiedStorageFactory: DefaultUnifiedStorageFactory, @unchec
         self.failures = failures
     }
     
-    override func dataStorage<Storage: KeyValueDataStorage>(for domain: Storage.Domain?) async throws -> Storage {
+    override func dataStorage<Storage: KeyValueDataStorage>(for scope: Storage.Scope?) async throws -> Storage {
         let shouldFail = registerCall()
         try await Task.sleep(nanoseconds: 10_000_000)
         if shouldFail {
             throw CocoaError(.featureUnsupported)
         }
         
-        return try await super.dataStorage(for: domain)
+        return try await super.dataStorage(for: scope)
     }
     
     /// Returns whether this call should fail.
@@ -454,16 +454,16 @@ final class CountingUnifiedStorageFactory: DefaultUnifiedStorageFactory, @unchec
 }
 
 final class MockedUnifiedStorageFactory: DefaultUnifiedStorageFactory, @unchecked Sendable {
-    override func dataStorage<Storage: KeyValueDataStorage>(for domain: Storage.Domain?) async throws -> Storage {
+    override func dataStorage<Storage: KeyValueDataStorage>(for scope: Storage.Scope?) async throws -> Storage {
         switch Storage.self {
         case is InMemoryMock.Type:
-            if let domain = domain as? InMemoryStorage.Domain {
-                return await InMemoryMock(domain: domain) as! Storage
+            if let scope = scope as? InMemoryStorage.Scope {
+                return await InMemoryMock(scope: scope) as! Storage
             } else {
                 return await InMemoryMock() as! Storage
             }
         default:
-            return try await super.dataStorage(for: domain)
+            return try await super.dataStorage(for: scope)
         }
     }
 }

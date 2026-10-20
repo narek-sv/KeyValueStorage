@@ -9,13 +9,13 @@
 
 public struct UnifiedStorageKey<Storage: KeyValueDataStorage, Value: CodingValue>: Sendable {
     public let key: Storage.Key
-    public let domain: Storage.Domain
+    public let scope: Storage.Scope
     public let codingType: Value.Type
     public let storageType: Storage.Type
     
-    public init(key: Storage.Key, domain: Storage.Domain = .default) {
+    public init(key: Storage.Key, scope: Storage.Scope = .default) {
         self.key = key
-        self.domain = domain
+        self.scope = scope
         self.codingType = Value.self
         self.storageType = Storage.self
     }
@@ -26,14 +26,14 @@ public struct UnifiedStorageKey<Storage: KeyValueDataStorage, Value: CodingValue
 extension UnifiedStorageKey: Hashable {
     public static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.key == rhs.key &&
-        lhs.domain == rhs.domain &&
+        lhs.scope == rhs.scope &&
         lhs.codingType == rhs.codingType &&
         lhs.storageType == rhs.storageType
     }
     
     public func hash(into hasher: inout Hasher) {
         hasher.combine(key)
-        hasher.combine(domain)
+        hasher.combine(scope)
         hasher.combine(ObjectIdentifier(codingType))
         hasher.combine(ObjectIdentifier(storageType))
     }
@@ -42,7 +42,7 @@ extension UnifiedStorageKey: Hashable {
 // MARK: - UnifiedStorageFactory
 
 public protocol UnifiedStorageFactory: Sendable {
-    func dataStorage<Storage: KeyValueDataStorage>(for domain: Storage.Domain) async throws -> Storage
+    func dataStorage<Storage: KeyValueDataStorage>(for scope: Storage.Scope) async throws -> Storage
     func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) async throws -> KeyValueCodingStorage<Storage>
 }
 
@@ -56,8 +56,8 @@ open class DefaultUnifiedStorageFactory: UnifiedStorageFactory, @unchecked Senda
         self.coder = coder
     }
     
-    open func dataStorage<Storage: KeyValueDataStorage>(for domain: Storage.Domain) async throws -> Storage {
-        try Storage(domain: domain)
+    open func dataStorage<Storage: KeyValueDataStorage>(for scope: Storage.Scope) async throws -> Storage {
+        try Storage(scope: scope)
     }
     
     open func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) async throws -> KeyValueCodingStorage<Storage> {
@@ -101,29 +101,29 @@ public actor UnifiedStorage {
     // MARK: Main Functionality
     
     public nonisolated func fetch<Storage: KeyValueDataStorage, Value: CodingValue>(forKey key: Key<Storage, Value>) async throws -> Value? {
-        let storage: KeyValueCodingStorage<Storage> = try await storage(for: key.domain)
+        let storage: KeyValueCodingStorage<Storage> = try await storage(for: key.scope)
         return try await storage.fetch(forKey: .init(key: key.key))
     }
     
     public nonisolated func save<Storage: KeyValueDataStorage, Value: CodingValue>(_ value: Value, forKey key: Key<Storage, Value>) async throws {
-        let storage: KeyValueCodingStorage<Storage> = try await storage(for: key.domain)
+        let storage: KeyValueCodingStorage<Storage> = try await storage(for: key.scope)
         try await storage.save(value, forKey: .init(key: key.key))
     }
     
     public nonisolated func set<Storage: KeyValueDataStorage, Value: CodingValue>(_ value: Value?, forKey key: Key<Storage, Value>) async throws {
-        let storage: KeyValueCodingStorage<Storage> = try await storage(for: key.domain)
+        let storage: KeyValueCodingStorage<Storage> = try await storage(for: key.scope)
         try await storage.set(value, forKey: .init(key: key.key))
     }
     
     public nonisolated func delete<Storage: KeyValueDataStorage, Value: CodingValue>(forKey key: Key<Storage, Value>) async throws {
-        let storage: KeyValueCodingStorage<Storage> = try await storage(for: key.domain)
+        let storage: KeyValueCodingStorage<Storage> = try await storage(for: key.scope)
         try await storage.delete(forKey: .init(key: key.key, codingType: key.codingType))
     }
     
-    /// Removes everything stored in the given storage and domain.
+    /// Removes everything stored in the given storage and scope.
     /// The storage is loaded on demand, so this also clears values saved in previous launches.
-    public nonisolated func clear<Storage: KeyValueDataStorage>(storage: Storage.Type, forDomain domain: Storage.Domain = .default) async throws {
-        let storage: KeyValueCodingStorage<Storage> = try await self.storage(for: domain)
+    public nonisolated func clear<Storage: KeyValueDataStorage>(storage: Storage.Type, forScope scope: Storage.Scope = .default) async throws {
+        let storage: KeyValueCodingStorage<Storage> = try await self.storage(for: scope)
         try await storage.clear()
     }
     
@@ -134,7 +134,7 @@ public actor UnifiedStorage {
     /// - Returns: `nil` if the storage isn't observable, i.e. it wasn't created by an `ObservableUnifiedStorageFactory`.
     public nonisolated func publisher<Storage: KeyValueDataStorage, Value: CodingValue>(forKey key: Key<Storage, Value>, includingCurrentValue: Bool = true)
     async throws -> KeyValuePublisher<Value?>? {
-        let storage: KeyValueCodingStorage<Storage> = try await storage(for: key.domain)
+        let storage: KeyValueCodingStorage<Storage> = try await storage(for: key.scope)
         let codingKey = KeyValueCodingStorageKey<Storage, Value>(key: key.key)
         return try await (storage as? KeyValueObservableStorage<Storage>)?.publisher(forKey: codingKey, includingCurrentValue: includingCurrentValue)
     }
@@ -144,7 +144,7 @@ public actor UnifiedStorage {
     /// - Returns: `nil` if the storage isn't observable, i.e. it wasn't created by an `ObservableUnifiedStorageFactory`.
     public nonisolated func stream<Storage: KeyValueDataStorage, Value: CodingValue>(forKey key: Key<Storage, Value>, includingCurrentValue: Bool = true)
     async throws -> AsyncStream<Value?>? {
-        let storage: KeyValueCodingStorage<Storage> = try await storage(for: key.domain)
+        let storage: KeyValueCodingStorage<Storage> = try await storage(for: key.scope)
         let codingKey = KeyValueCodingStorageKey<Storage, Value>(key: key.key)
         return try await (storage as? KeyValueObservableStorage<Storage>)?.stream(forKey: codingKey, includingCurrentValue: includingCurrentValue)
     }
@@ -153,15 +153,15 @@ public actor UnifiedStorage {
     
     /// Caches the creation task before awaiting it, so concurrent first calls share one storage instead of
     /// each creating their own while the actor is suspended. Failures aren't cached, so a later call can retry.
-    private func storage<Storage: KeyValueDataStorage>(for domain: Storage.Domain) async throws -> KeyValueCodingStorage<Storage> {
-        let underlyingKey = UnderlyingStorageKey<Storage>(domain: domain)
+    private func storage<Storage: KeyValueDataStorage>(for scope: Storage.Scope) async throws -> KeyValueCodingStorage<Storage> {
+        let underlyingKey = UnderlyingStorageKey<Storage>(scope: scope)
         if let task = storages[underlyingKey] as? Task<KeyValueCodingStorage<Storage>, Error> {
             return try await task.value
         }
         
         let factory = factory
         let task = Task {
-            let dataStorage: Storage = try await factory.dataStorage(for: domain)
+            let dataStorage: Storage = try await factory.dataStorage(for: scope)
             return try await factory.codingStorage(for: dataStorage)
         }
         storages[underlyingKey] = task
@@ -182,21 +182,21 @@ public actor UnifiedStorage {
 
 extension UnifiedStorage {
     private struct UnderlyingStorageKey<Storage: KeyValueDataStorage>: Hashable, Sendable {
-        let domain: Storage.Domain
+        let scope: Storage.Scope
         let storageType: Storage.Type
         
-        init(domain: Storage.Domain) {
-            self.domain = domain
+        init(scope: Storage.Scope) {
+            self.scope = scope
             self.storageType = Storage.self
         }
         
         static func == (lhs: Self, rhs: Self) -> Bool {
-            lhs.domain == rhs.domain &&
+            lhs.scope == rhs.scope &&
             lhs.storageType == rhs.storageType
         }
         
         func hash(into hasher: inout Hasher) {
-            hasher.combine(domain)
+            hasher.combine(scope)
             hasher.combine(ObjectIdentifier(storageType))
         }
     }

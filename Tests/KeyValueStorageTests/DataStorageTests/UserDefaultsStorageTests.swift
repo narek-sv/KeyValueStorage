@@ -10,7 +10,7 @@ import Foundation
 @testable import KeyValueStorage
 
 final class UserDefaultsStorageTests: XCTestCase {
-    static let otherStorageDomain = "other"
+    static let otherStorageScope = "other"
     var standardUserDefaults: UserDefaults!
     var otherUserDefaults: UserDefaults!
     var standardStorage: UserDefaultsStorage!
@@ -19,30 +19,30 @@ final class UserDefaultsStorageTests: XCTestCase {
     @UserDefaultsActor
     override func setUp() async throws {
         standardUserDefaults = UserDefaults.standard
-        otherUserDefaults = UserDefaults(suiteName: Self.otherStorageDomain)!
+        otherUserDefaults = UserDefaults(suiteName: Self.otherStorageScope)!
         
         standardUserDefaults.clearStandardStorage()
-        otherUserDefaults.removePersistentDomain(forName: Self.otherStorageDomain)
+        otherUserDefaults.removePersistentDomain(forName: Self.otherStorageScope)
         
         standardStorage = UserDefaultsStorage()
-        otherStorage = try UserDefaultsStorage(domain: Self.otherStorageDomain)
+        otherStorage = try UserDefaultsStorage(scope: Self.otherStorageScope)
     }
     
     @UserDefaultsActor
-    func testUserDefaultsDomain() async {
-        XCTAssertEqual(standardStorage.domain, nil)
-        XCTAssertEqual(otherStorage.domain, Self.otherStorageDomain)
+    func testUserDefaultsScope() async {
+        XCTAssertEqual(standardStorage.scope, nil)
+        XCTAssertEqual(otherStorage.scope, Self.otherStorageScope)
     }
     
     @UserDefaultsActor
-    func testErrorCaseDomainIsTheAppItself() async {
+    func testErrorCaseScopeIsTheAppItself() async {
         // Given: UserDefaults doesn't allow the app's own bundle identifier as the name of a shared domain
-        let domain = Bundle.main.bundleIdentifier!
+        let scope = Bundle.main.bundleIdentifier!
         
         // When
-        XCTAssertThrowsError(try UserDefaultsStorage(domain: domain)) { error in
+        XCTAssertThrowsError(try UserDefaultsStorage(scope: scope)) { error in
             // Then
-            guard case .failedToInitSharedDefaults = error as? UserDefaultsStorage.Error else {
+            guard case .invalidSuiteName = error as? UserDefaultsStorage.Error else {
                 return XCTFail("Unexpected error \(error)")
             }
         }
@@ -113,7 +113,7 @@ final class UserDefaultsStorageTests: XCTestCase {
     }
     
     @UserDefaultsActor
-    func testUserDefaultsFetchDifferentDomains() async {
+    func testUserDefaultsFetchDifferentScopes() async {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -208,7 +208,7 @@ final class UserDefaultsStorageTests: XCTestCase {
     }
     
     @UserDefaultsActor
-    func testUserDefaultsSaveDifferentDomains() async {
+    func testUserDefaultsSaveDifferentScopes() async {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -269,7 +269,7 @@ final class UserDefaultsStorageTests: XCTestCase {
     }
     
     @UserDefaultsActor
-    func testUserDefaultsDeleteDifferentDomains() async {
+    func testUserDefaultsDeleteDifferentScopes() async {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -339,7 +339,7 @@ final class UserDefaultsStorageTests: XCTestCase {
     }
     
     @UserDefaultsActor
-    func testUserDefaultsSetDifferentDomains() async {
+    func testUserDefaultsSetDifferentScopes() async {
         // Given
         let data1 = Data([0xAA, 0xBB, 0xCC])
         let data2 = Data([0xDD, 0xEE, 0xFF])
@@ -473,7 +473,7 @@ final class UserDefaultsStorageTests: XCTestCase {
         let storage = UserDefaultsStorage(userDefaults: userDefaults)
         
         // Then
-        XCTAssertNil(storage.domain)
+        XCTAssertNil(storage.scope)
     }
     
     func testThreadSafety() async {

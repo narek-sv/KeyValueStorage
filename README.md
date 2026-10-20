@@ -42,8 +42,8 @@ Here's how the built-in storages compare:
 **User Defaults** - settings, flags and other small values.
 * Very fast reads from an in-memory cache, while writes reach the disk asynchronously.
 * Shared with extensions through an App Group suite.
-* Not for sensitive data: the values are stored unencrypted. Keep it small, since the whole domain is loaded into memory.
-* Clearing removes every value of the domain, including the ones that weren't saved through `KeyValueStorage`.
+* Not for sensitive data: the values are stored unencrypted. Keep it small, since the whole scope is loaded into memory.
+* Clearing removes every value of the scope, including the ones that weren't saved through `KeyValueStorage`.
 
 **Keychain** - tokens, passwords and other secrets.
 * Encrypted by the system, with `accessibility` controlling when the items can be read, for example only while the device is unlocked.
@@ -61,7 +61,7 @@ Here's how the built-in storages compare:
 * Keys must be valid file names, and keys that differ only in case are separate values on every platform.
 
 **SQLite** - many small and medium values, especially when an app and its extensions write the same data.
-* All values of a domain live in one database, which is much faster than separate files for small values. For large values, separate files are faster.
+* All values of a scope live in one database, which is much faster than separate files for small values. For large values, separate files are faster.
 * Any string is a valid key.
 * Every operation is a transaction across all processes, the strongest guarantee of all storages.
 * A fetch followed by a save isn't atomic across processes, and a write fails if another process keeps the database busy for over a second.
@@ -80,7 +80,7 @@ Quick guide:
 ---
 ## Setup
 
-`KeyValueStorage` works out of the box: keys without a domain need no setup, except for the keychain on macOS. If you want to share values among your apps and extensions, you need a little setup in Xcode first. Here's what each setup is for:
+`KeyValueStorage` works out of the box: keys without a scope need no setup, except for the keychain on macOS. If you want to share values among your apps and extensions, you need a little setup in Xcode first. Here's what each setup is for:
 
 * [App Groups](#app-groups) - share values of any storage with your extensions and your other apps.
 * [Keychain Sharing](#keychain-sharing) - share keychain items through a keychain access group instead of an App Group.
@@ -95,18 +95,18 @@ You need this when your app and its extensions, or several of your apps, read an
 1. In Xcode, select your app target, open **Signing & Capabilities**, click **+ Capability** and add **App Groups**.
 2. Add a group, for example `group.com.company.app`. On macOS, use the group exactly as the capability shows it.
 3. Add the capability to every extension and app that shares the values, and select the same group.
-4. Use the group as the domain of the keys:
+4. Use the group as the scope of the keys:
 
 ```swift
-let onboarded = UserDefaultsKey<Bool>(key: "onboarded", domain: "group.com.company.app")
-let token = KeychainKey<String>(key: .init(name: "token"), domain: .init(accessGroup: "group.com.company.app"))
+let onboarded = UserDefaultsKey<Bool>(key: "onboarded", scope: "group.com.company.app")
+let token = KeychainKey<String>(key: .init(name: "token"), scope: .init(accessGroup: "group.com.company.app"))
 ```
 
 A target without the group doesn't see the shared values: User Defaults quietly keeps its own values, and the keychain throws `errSecMissingEntitlement`.
 
-Here is what a `domain` means for each built-in storage:
+Here is what a `scope` means for each built-in storage:
 
-| Storage | Domain | Where the values live |
+| Storage | Scope | Where the values live |
 | --- | --- | --- |
 | `UserDefaultsKey` | App Group ID, e.g. `"group.com.company.app"` | `UserDefaults(suiteName:)` of that group |
 | `FileKey` | App Group ID | `<group container>/KeyValueStorage/Files` |
@@ -122,7 +122,7 @@ You need this only to share keychain items through a keychain access group inste
 
 1. Add the **Keychain Sharing** capability to every app and extension that shares the items.
 2. Add the same group to each of them, for example `com.company.shared`. Xcode prefixes it with your team ID.
-3. Use the group and your team ID as the domain: `.init(groupId: "com.company.shared", teamId: "ABCDE12345")`. Your team ID is in the membership details of your Apple Developer account.
+3. Use the group and your team ID as the scope: `.init(groupId: "com.company.shared", teamId: "ABCDE12345")`. Your team ID is in the membership details of your Apple Developer account.
 
 ### iCloud Keychain
 
@@ -168,15 +168,15 @@ or you can define your own ones. [See how to do that](#custom-storages)
 import KeyValueStorage
 
 let key = UserDefaultsKey<String>(key: "myKey")
-// or alternatively provide the domain
-let otherKey = UserDefaultsKey<String>(key: "myKey", domain: "sharedContainer")
+// or alternatively provide the scope
+let otherKey = UserDefaultsKey<String>(key: "myKey", scope: "sharedContainer")
 ```
 
 As you can see, the key holds all the necessary information about the value:
 * The key name - `"myKey"`
 * The storage type - `UserDefaults`
 * The value type - `String`
-* The domain (*optional*) - `"sharedContainer"`
+* The scope (*optional*) - `"sharedContainer"`
 
 
 Now all that is left is to instantiate the storage and use it:
@@ -199,12 +199,12 @@ try await storage.delete(forKey: key)
 try await storage.set("Bob", forKey: key) // save
 try await storage.set(nil, forKey: key) // delete
 
-// Removes everything stored in the specified storage and domain,
+// Removes everything stored in the specified storage and scope,
 // including the values saved in previous launches
-try await storage.clear(storage: KeychainStorage.self, forDomain: nil)
+try await storage.clear(storage: KeychainStorage.self, forScope: nil)
 ```
 
-***NOTE***! Clearing `UserDefaultsStorage` removes ***every*** value of its domain, including the values that weren't saved through `KeyValueStorage`.
+***NOTE***! Clearing `UserDefaultsStorage` removes ***every*** value of its scope, including the values that weren't saved through `KeyValueStorage`.
 
 ---
 ## Type Inference
@@ -227,7 +227,7 @@ try await storage.save(/* accepts only MyType*/, forKey: key)
 * `User-Defaults` - This storage type persists the items within the app's lifetime.
 * `File-System` -  This storage saves every value as a separate file in `Application Support/<bundle identifier>/KeyValueStorage/Files`, or in the App Group container. The file is replaced atomically, so a crash never leaves a value half-written or missing. Since the key is used as the file name, it must be a single path component: an empty key, `.`, `..` and keys containing `/` throw `FileStorage.Error.invalidKey`. Uppercase letters, other characters that change with case, and `%` are percent-encoded in the file name, so `Key` is saved as `%4Bey` and never shares a file with `key`, even on a case-insensitive disk. A file name can be at most 255 bytes, and an encoded character takes three bytes for each of its UTF-8 bytes, so longer keys throw `invalidKey` too.
 * `Keychain` - This storage type keeps the items in secure storage and persists even after app re-installations. Supports `iCloud` synchronization.
-* `SQLite` - This storage keeps all values of a domain in one SQLite database, `Application Support/<bundle identifier>/KeyValueStorage/SQLite/KeyValueStorage.sqlite`, or in the App Group container. Any string is a valid key, and all storages of a domain, in your app and its extensions, share the same database at the same time. Each operation is atomic across processes, but a fetch followed by a save is not: another process can save in between.
+* `SQLite` - This storage keeps all values of a scope in one SQLite database, `Application Support/<bundle identifier>/KeyValueStorage/SQLite/KeyValueStorage.sqlite`, or in the App Group container. Any string is a valid key, and all storages of a scope, in your app and its extensions, share the same database at the same time. Each operation is atomic across processes, but a fetch followed by a save is not: another process can save in between.
 
 You can also define your own storage, and it will work with it seamlessly with `UnifiedStorage` out of the box.
 All you need to do is:
@@ -257,20 +257,20 @@ To get the advantages of Xcode autocompletion, it is recommended to declare all 
 ```swift
 extension UnifiedStorageKey {
     static var key1: UserDefaultsKey<Int> {
-        .init(key: "key1", domain: nil)
+        .init(key: "key1", scope: nil)
     }
     
     static var key2: InMemoryKey<Date> {
-        .init(key: "key2", domain: "sharedContainer")
+        .init(key: "key2", scope: "sharedContainer")
     }
     
     static var key3: KeychainKey<Double> {
         .init(key: .init(name: "key3", accessibility: .afterFirstUnlock, isSynchronizable: true), 
-              domain: .init(groupId: "groupId", teamId: "teamId"))
+              scope: .init(groupId: "groupId", teamId: "teamId"))
     }
     
     static var key4: FileKey<UUID> {
-        .init(key: "key4", domain: "otherContainer")
+        .init(key: "key4", scope: "otherContainer")
     }
 }
 ```
@@ -299,24 +299,24 @@ Set `isSynchronizable` to `true` to sync the item across the user's devices thro
 
 ```swift
 let key = KeychainKey<String>(key: .init(name: "key", accessibility: .afterFirstUnlock, isSynchronizable: true),
-                              domain: .init(groupId: "groupId", teamId: "teamId"))
+                              scope: .init(groupId: "groupId", teamId: "teamId"))
 ```
 
 To share items with your other apps and extensions, use an App Group they all belong to, or a Keychain Sharing group. Set up the capability first, see [Setup](#setup):
 
 ```swift
 // An App Group, written as in the App Groups capability, without a team prefix
-let key = KeychainKey<String>(key: .init(name: "token"), domain: .init(accessGroup: "group.com.company.app"))
+let key = KeychainKey<String>(key: .init(name: "token"), scope: .init(accessGroup: "group.com.company.app"))
 
 // A Keychain Sharing group, which the access group prefixes with your team ID
-let otherKey = KeychainKey<String>(key: .init(name: "token"), domain: .init(groupId: "com.company.shared", teamId: "ABCDE12345"))
+let otherKey = KeychainKey<String>(key: .init(name: "token"), scope: .init(groupId: "com.company.shared", teamId: "ABCDE12345"))
 ```
 
-Items without a domain are saved under the `KeyValueStorage` service. Items with a domain use `KeyValueStorage.<access group>` by default, or the `service` you provide, for example to read the items that other code already saved:
+Items without a scope are saved under the `KeyValueStorage` service. Items with a scope use `KeyValueStorage.<access group>` by default, or the `service` you provide, for example to read the items that other code already saved:
 
 ```swift
 let key = KeychainKey<String>(key: .init(name: "authToken"),
-                              domain: .init(groupId: "groupId", teamId: "teamId", service: "com.company.auth"))
+                              scope: .init(groupId: "groupId", teamId: "teamId", service: "com.company.auth"))
 ```
 
 Clearing the keychain storage removes the synchronizable items too.
@@ -387,12 +387,12 @@ However, it's important to note that only the changes made through observable st
 ## Error handling
 
 All the methods of the `UnifiedStorage` are throwing. Even with a correct setup, some errors can't be avoided and are worth handling:
-* `KeychainStorage.Error.os` - for example, `errSecInteractionNotAllowed` while the device is locked and the item is only accessible `.whenUnlocked`, or `errSecMissingEntitlement` when the domain's access group isn't in the app's entitlements.
+* `KeychainStorage.Error.os` - for example, `errSecInteractionNotAllowed` while the device is locked and the item is only accessible `.whenUnlocked`, or `errSecMissingEntitlement` when the scope's access group isn't in the app's entitlements.
 * `FileStorage.Error` - an invalid key, missing permissions, or a file that is protected while the device is locked.
 * `SQLiteStorage.Error.sqlite` - the database file is damaged, or another process kept it busy for longer than a second.
 * `DecodingError` - the stored data doesn't match the key's value type, for example after changing the type of an existing key.
 * `FileStorage.Error.failedToInitSharedDirectory` and `SQLiteStorage.Error.failedToInitSharedDirectory` - the system has no container for the App Group, for example when the target isn't in the group.
-* `UserDefaultsStorage.Error` - the domain is a name `UserDefaults` doesn't allow: your app's own bundle identifier, or `NSGlobalDomain`.
+* `UserDefaultsStorage.Error` - the scope is a name `UserDefaults` doesn't allow: your app's own bundle identifier, or `NSGlobalDomain`.
 
 ---
 ## Thread Safety

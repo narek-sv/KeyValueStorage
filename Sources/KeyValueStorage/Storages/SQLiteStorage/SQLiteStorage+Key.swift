@@ -8,5 +8,6 @@
 // MARK: - SQLiteStorage + Key
 
 public extension SQLiteStorage {
+    /// Any string.
     typealias Key = String
 }
