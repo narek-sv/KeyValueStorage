@@ -17,7 +17,7 @@ public final class UbiquitousStorage: KeyValueDataStorage {
     private static let maximumKeyLength = 128
     private static let maximumValueSize = 1024 * 1024
 
-    private let storage: any UbiquitousBackingStore
+    private let backingStore: any UbiquitousBackingStore
     private let keyPrefix: String?
     public let scope: Scope
 
@@ -30,7 +30,7 @@ public final class UbiquitousStorage: KeyValueDataStorage {
         }
 
         self.scope = scope
-        self.storage = backingStore
+        self.backingStore = backingStore
     }
 
     public convenience init(scope: Scope) {
@@ -44,7 +44,7 @@ public final class UbiquitousStorage: KeyValueDataStorage {
     // MARK: Main Functionality
 
     public func fetch(forKey key: Key) throws(Error) -> Data? {
-        try storage.read(forKey: storedKey(for: key))
+        try backingStore.read(forKey: storedKey(for: key))
     }
 
     public func save(_ value: Data, forKey key: Key) throws(Error) {
@@ -53,22 +53,22 @@ public final class UbiquitousStorage: KeyValueDataStorage {
             throw Error.valueTooLarge(key: key, size: value.count)
         }
 
-        storage.write(value, forKey: storedKey)
+        backingStore.write(value, forKey: storedKey)
     }
 
     public func delete(forKey key: Key) throws(Error) {
-        try storage.remove(forKey: storedKey(for: key))
+        try backingStore.remove(forKey: storedKey(for: key))
     }
 
     public func clear() {
-        for key in storage.keys() where keyPrefix.map({ key.hasPrefix($0) }) ?? true {
-            storage.remove(forKey: key)
+        for key in backingStore.keys() where keyPrefix.map({ key.hasPrefix($0) }) ?? true {
+            backingStore.remove(forKey: key)
         }
     }
 
     @discardableResult
     public func synchronize() -> Bool {
-        storage.synchronize()
+        backingStore.synchronize()
     }
 
     // MARK: Helpers

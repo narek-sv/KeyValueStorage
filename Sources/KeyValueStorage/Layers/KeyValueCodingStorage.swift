@@ -1,6 +1,6 @@
 //
 //  KeyValueCodingStorage.swift
-//  
+//  KeyValueStorage
 //
 //  Created by Narek Sahakyan on 11.12.23.
 //

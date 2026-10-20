@@ -13,9 +13,9 @@ public extension SQLiteStorage {
     /// The errors an `SQLiteStorage` throws.
     enum Error: KeyValueDataStorageError {
         /// The system has no container for this App Group ID, usually because the app isn't in the group.
-        case failedToFindGroupDirectory(String)
+        case groupDirectoryNotFound(String)
         /// The system returned no such base directory; the value is its name, such as `Documents`.
-        case failedToFindDirectory(String)
+        case directoryNotFound(String)
         /// The URL of `AppScope.directory(at:)` isn't a file URL.
         case invalidDirectory(URL)
         /// An SQLite error, with its result code and message.

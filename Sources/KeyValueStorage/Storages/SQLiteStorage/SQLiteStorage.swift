@@ -1,6 +1,6 @@
 //
 //  SQLiteStorage.swift
-//
+//  KeyValueStorage
 //
 //  Created by Narek Sahakyan on 15.10.26.
 //
@@ -84,8 +84,8 @@ public final class SQLiteStorage: KeyValueDataStorage {
             return try directory.url(namespace: namespace, resolver: resolver)
         } catch {
             switch error {
-            case let .directoryNotFound(name):  throw .failedToFindDirectory(name)
-            case let .groupNotFound(groupId):   throw .failedToFindGroupDirectory(groupId)
+            case let .directoryNotFound(name):  throw .directoryNotFound(name)
+            case let .groupNotFound(groupId):   throw .groupDirectoryNotFound(groupId)
             case let .invalidDirectory(url):    throw .invalidDirectory(url)
             }
         }

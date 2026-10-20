@@ -1,6 +1,6 @@
 //
 //  InMemoryStorage.swift
-//
+//  KeyValueStorage
 //
 //  Created by Narek Sahakyan on 11.12.23.
 //
@@ -13,7 +13,7 @@ public final class InMemoryStorage: KeyValueDataStorage {
 
     // MARK: Properties
 
-    private let storage: any InMemoryBackingStore
+    private let backingStore: any InMemoryBackingStore
     private let bucket: String?
     public let scope: Scope
 
@@ -28,7 +28,7 @@ public final class InMemoryStorage: KeyValueDataStorage {
         }
 
         self.scope = scope
-        self.storage = backingStore
+        self.backingStore = backingStore
     }
 
     public convenience init(scope: Scope) {
@@ -42,15 +42,15 @@ public final class InMemoryStorage: KeyValueDataStorage {
     // MARK: Main Functionality
 
     public func fetch(forKey key: Key) -> Data? {
-        storage.read(forKey: key, in: bucket)
+        backingStore.read(forKey: key, in: bucket)
     }
 
     public func save(_ value: Data, forKey key: Key) {
-        storage.write(value, forKey: key, in: bucket)
+        backingStore.write(value, forKey: key, in: bucket)
     }
 
     public func delete(forKey key: Key) {
-        storage.remove(forKey: key, in: bucket)
+        backingStore.remove(forKey: key, in: bucket)
     }
 
     public func set(_ value: Data?, forKey key: Key) {
@@ -62,6 +62,6 @@ public final class InMemoryStorage: KeyValueDataStorage {
     }
 
     public func clear() {
-        storage.removeAll(in: bucket)
+        backingStore.removeAll(in: bucket)
     }
 }

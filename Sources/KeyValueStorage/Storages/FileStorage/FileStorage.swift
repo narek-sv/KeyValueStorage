@@ -1,6 +1,6 @@
 //
 //  FileStorage.swift
-//
+//  KeyValueStorage
 //
 //  Created by Narek Sahakyan on 17.12.23.
 //
@@ -13,7 +13,7 @@ public final class FileStorage: KeyValueDataStorage {
 
     // MARK: Properties
 
-    private let storage: any FileBackingStore
+    private let backingStore: any FileBackingStore
     private let root: URL
 
     public let scope: Scope
@@ -23,7 +23,7 @@ public final class FileStorage: KeyValueDataStorage {
     public init(scope: Scope, backingStore: any FileBackingStore) throws(Error) {
         self.root = try Self.root(for: scope, resolver: backingStore)
         self.scope = scope
-        self.storage = backingStore
+        self.backingStore = backingStore
     }
 
     public convenience init(scope: Scope) throws(Error) {
@@ -35,7 +35,7 @@ public final class FileStorage: KeyValueDataStorage {
     public func fetch(forKey key: Key) throws(Error) -> Data? {
         try execute {
             do {
-                return try storage.read(at: url(for: key))
+                return try backingStore.read(at: url(for: key))
             } catch CocoaError.fileReadNoSuchFile {
                 return nil
             }
@@ -48,10 +48,10 @@ public final class FileStorage: KeyValueDataStorage {
             let options = Self.writingOptions(for: key.protection)
 
             do {
-                try storage.write(value, at: url, options: options)
+                try backingStore.write(value, at: url, options: options)
             } catch CocoaError.fileNoSuchFile {
-                try storage.createDirectory(at: root)
-                try storage.write(value, at: url, options: options)
+                try backingStore.createDirectory(at: root)
+                try backingStore.write(value, at: url, options: options)
             }
         }
     }
@@ -66,7 +66,7 @@ public final class FileStorage: KeyValueDataStorage {
         try execute {
             let fileNames: [String]
             do {
-                fileNames = try storage.fileNames(at: root)
+                fileNames = try backingStore.fileNames(at: root)
             } catch CocoaError.fileReadNoSuchFile {
                 return
             }
@@ -100,8 +100,8 @@ public final class FileStorage: KeyValueDataStorage {
             return try directory.url(namespace: namespace, resolver: resolver)
         } catch {
             switch error {
-            case let .directoryNotFound(name):  throw .failedToFindDirectory(name)
-            case let .groupNotFound(groupId):   throw .failedToFindGroupDirectory(groupId)
+            case let .directoryNotFound(name):  throw .directoryNotFound(name)
+            case let .groupNotFound(groupId):   throw .groupDirectoryNotFound(groupId)
             case let .invalidDirectory(url):    throw .invalidDirectory(url)
             }
         }
@@ -109,7 +109,7 @@ public final class FileStorage: KeyValueDataStorage {
 
     private func deleteFileIfExists(at url: URL) throws {
         do {
-            try storage.remove(at: url)
+            try backingStore.remove(at: url)
         } catch CocoaError.fileNoSuchFile {
         } catch {
             throw error

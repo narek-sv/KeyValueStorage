@@ -1,6 +1,6 @@
 //
 //  KeychainStorage.swift
-//
+//  KeyValueStorage
 //
 //  Created by Narek Sahakyan on 11.12.23.
 //
@@ -13,7 +13,7 @@ public final class KeychainStorage: KeyValueDataStorage {
 
     // MARK: Properties
 
-    private let storage: any KeychainBackingStore
+    private let backingStore: any KeychainBackingStore
     private let serviceName: String?
     private let accessGroup: String?
 
@@ -32,7 +32,7 @@ public final class KeychainStorage: KeyValueDataStorage {
         }
 
         self.scope = scope
-        self.storage = backingStore
+        self.backingStore = backingStore
     }
 
     public convenience init(scope: Scope) {
@@ -46,11 +46,11 @@ public final class KeychainStorage: KeyValueDataStorage {
     // MARK: Main Functionality
 
     public func fetch(forKey key: Key) throws(Error) -> Data? {
-        let (status, result) = storage.read(query(for: key, returnData: true, matchLimit: .one))
+        let (status, result) = backingStore.read(query(for: key, returnData: true, matchLimit: .one))
         switch status {
         case .success:
             guard let data = result as? Data else {
-                throw Error.decodedWrongType
+                throw Error.unexpectedItemData
             }
 
             return data
@@ -62,7 +62,7 @@ public final class KeychainStorage: KeyValueDataStorage {
     }
 
     public func save(_ value: Data, forKey key: Key) throws(Error) {
-        let addStatus = storage.add(query(for: key, accessibility: key.accessibility, valueData: value))
+        let addStatus = backingStore.add(query(for: key, accessibility: key.accessibility, valueData: value))
         switch addStatus {
         case .success:
             return
@@ -77,7 +77,7 @@ public final class KeychainStorage: KeyValueDataStorage {
             valueData: value
         )
 
-        let updateStatus = storage.update(query(for: key), with: updateAttributes)
+        let updateStatus = backingStore.update(query(for: key), with: updateAttributes)
         guard updateStatus != .success else {
             return
         }
@@ -86,7 +86,7 @@ public final class KeychainStorage: KeyValueDataStorage {
     }
 
     public func delete(forKey key: Key) throws(Error) {
-        let status = storage.remove(query(for: key))
+        let status = backingStore.remove(query(for: key))
         guard status != .success && status != .notFound else {
             return
         }
@@ -95,7 +95,7 @@ public final class KeychainStorage: KeyValueDataStorage {
     }
 
     public func clear() throws(Error) {
-        let status = storage.remove(query(account: nil, synchronizable: .any))
+        let status = backingStore.remove(query(account: nil, synchronizable: .any))
         guard status != .success && status != .notFound else {
             return
         }
