@@ -11,6 +11,7 @@
   - **Done: Ubiquitous** (§5.7): the UserDefaults scheme and the only-`Data` rule, the 128-unit key limit on the stored key, and the escaping fix. Gated files at 100%; the default adapter needs a signed host with the iCloud entitlement.
   - **Done: Keychain** (§5.2): the root uses service `""` and App Group services carry the group, so no scope reaches another's items; only `Data` items are values; KeychainHost runs again, with real-keychain tests. Gated files at 100%.
   - **Done: InMemory** (§5.5): the default store keys buckets and values by bytes, so every storage keeps keys exact (§4.3); locator and storage tests. Gated files at 100%.
+  - **Deferred: locked-device errors** (§13, item 7), which need a real iPhone and a device signing setup for KeychainHost.
   - **Locators are done for all six storages.** What's left of `Tests/Legacy3x/` belongs to the coding, observation and unified layers.
 - **Done: phases 0–6, the source side.** The synchronous `KeyValueDataStorage` with `init(scope:backingStore:)`, typed throws, scopes with namespaces, every storage on its backing store, the global actors removed, and `KeychainWrapper.swift` deleted.
 - **Added: `UbiquitousStorage`** (§5.7), on the same pattern.
@@ -319,7 +320,7 @@ The root encodings (§4.5) and the Keychain services are done.
 **Storage:** resolves the URL, creates its folder, and opens the database with the scope's protection. `clear()` empties the database, which is the scope's alone. `SQLiteError` → `.sqlite(code:message:)`, anything else → `.other`.
 - Nothing that isn't the storage's is removed or replaced: a file where the folder goes → `.other` (the `createDirectory` error); a folder at the database path → `.sqlite(SQLITE_CANTOPEN)`; a corrupt file → `.sqlite(SQLITE_NOTADB)`; another app's `KeyValueStorage` view → `.sqlite(SQLITE_ERROR)`.
 - **Links are followed**, unlike `FileStorage`: `SQLITE_OPEN_NOFOLLOW` rejects a link anywhere in the path, including `/var` → `/private/var` above every temporary and app-container path, so it can't be used.
-- **Protection** (`SQLiteStorage.Protection`, part of the scope, default `.inherited`) is per database, because every key shares one file. It maps to a `SQLITE_OPEN_FILEPROTECTION_*` flag, which also covers `-wal` and `-shm`, and is re-applied on every open. Verified on macOS for `.complete`, `.completeUnlessOpen` and `.completeUntilFirstUserAuthentication`; macOS reports the default class for `.none`. Still to confirm on a locked iOS device: the result code a `.complete` database fails with, which could map to a `.protectedDataUnavailable` like `FileStorage`'s.
+- **Protection** (`SQLiteStorage.Protection`, part of the scope, default `.inherited`) is per database, because every key shares one file. It maps to a `SQLITE_OPEN_FILEPROTECTION_*` flag, which also covers `-wal` and `-shm`, and is re-applied on every open. Verified on macOS for `.complete`, `.completeUnlessOpen` and `.completeUntilFirstUserAuthentication`; macOS reports the default class for `.none`. Still to confirm on a locked iOS device (§13, item 7): the result code a `.complete` database fails with, which could map to a `.protectedDataUnavailable` like `FileStorage`'s.
 
 ### 5.7 UbiquitousStorage (done)
 
@@ -687,6 +688,9 @@ Each phase ends with: the library builds on every CI toolchain, the phase's test
 4. **Observation always on** (recommended, D11) vs opt-in.
 5. ~~**Typed throws** on the data layer.~~ Adopted: every storage, the locators and the coding layer throw typed errors, and they build for the iOS 13 / macOS 10.15 deployment targets.
 6. **watchOS minimum 6 → 9.** That's what `UbiquitousStorage` needs; it would remove its `@available(watchOS 9.0, *)` annotations.
+7. **Locked-device errors (deferred: needs a real iPhone).** `ProtectedDataTests` in KeychainHost records what SQLite (each protection class, on an open and on a new connection) and a `.complete` file do while the device is locked, and that both recover after unlocking. It skips on the Simulator and unless `KVS_LOCK_TEST=1`.
+   - From its report: map SQLite's locked-database result code to a `.protectedDataUnavailable` case, like `FileStorage`'s, and confirm File's `EPERM` mapping on a device.
+   - Blocker: KeychainHost is ad-hoc signed, and its entitlements hardcode a placeholder team (`ABCDE12345`). Running it on a device needs a signing setup that leaves the committed project alone, such as a local, git-ignored xcconfig with the team and bundle ID, and entitlements built from `$(AppIdentifierPrefix)`.
 
 ## 14. Risks and notes
 
