@@ -10,10 +10,15 @@ import Foundation
 // MARK: - UbiquitousBackingStore
 
 public protocol UbiquitousBackingStore {
-    func read(forKey key: String) -> Data?
+    /// `NSUbiquitousKeyValueStore.object(forKey:)`.
+    func read(forKey key: String) -> Any?
+    /// `NSUbiquitousKeyValueStore.set(_:forKey:)`.
     func write(_ data: Data, forKey key: String)
+    /// `NSUbiquitousKeyValueStore.removeObject(forKey:)`.
     func remove(forKey key: String)
+    /// `NSUbiquitousKeyValueStore.dictionaryRepresentation.keys`.
     func keys() -> [String]
+    /// `NSUbiquitousKeyValueStore.synchronize()`.
     func synchronize() -> Bool
 }
 
@@ -26,8 +31,8 @@ open class DefaultUbiquitousBackingStoreWrapper: UbiquitousBackingStore {
 
     public init() { }
 
-    open func read(forKey key: String) -> Data? {
-        store.data(forKey: key)
+    open func read(forKey key: String) -> Any? {
+        store.object(forKey: key)
     }
 
     open func write(_ data: Data, forKey key: String) {

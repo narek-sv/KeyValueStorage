@@ -8,7 +8,8 @@
   - **Done: every storage has its locator.** All naming lives in `Storages/<Name>/Dependencies/<Name>Locator.swift`; `StorageDirectory`, `StorageDirectoryLookup` and `KeyNamespace` are gone. The other five moved their rules as they were; their steps still bring the clash fixes (§4.5), the error audit and the tests.
   - **Done: SQLite** (§5.6): locator and storage tests, integration tests against real SQLite, the error audit (no force unwraps left), and the 3.x tests ported and deleted. Gated files at 100%.
   - **Done: UserDefaults** (§5.4): only `Data` is a value (§4.6, now the rule for every storage), root keys escaped so `clear()` is exact, byte-exact keys, and the 3.x tests ported and deleted. Gated files at 100%.
-  - **Next:** Ubiquitous, Keychain, InMemory.
+  - **Done: Ubiquitous** (§5.7): the UserDefaults scheme and the only-`Data` rule, the 128-unit key limit on the stored key, and the escaping fix. Gated files at 100%; the default adapter needs a signed host with the iCloud entitlement.
+  - **Next:** Keychain, InMemory.
 - **Done: phases 0–6, the source side.** The synchronous `KeyValueDataStorage` with `init(scope:backingStore:)`, typed throws, scopes with namespaces, every storage on its backing store, the global actors removed, and `KeychainWrapper.swift` deleted.
 - **Added: `UbiquitousStorage`** (§5.7), on the same pattern.
 - **Tests:** the public API target and the coder tests are on the 4.0 API and pass. The 3.x unit tests live in `Tests/Legacy3x/` (not a target) as the porting reference; each storage's locator step ports and deletes its file.
@@ -192,7 +193,7 @@ One rule in every storage: an entry is a value only if it has the storage's valu
 |---|---|---|
 | File | a regular file, never a folder or a link | `.pathOccupied(URL)` |
 | UserDefaults | a `Data` object; registered defaults count, process-wide | `.keyOccupied(storedKey)` |
-| Ubiquitous | a `Data` object | `.keyOccupied(storedKey)` (step 4) |
+| Ubiquitous | a `Data` object | `.keyOccupied(storedKey)` |
 | Keychain | a generic password whose data reads as `Data`; replaces today's `.unexpectedItemData` | step 5, verified in KeychainHost |
 | SQLite, InMemory | — | exclusive locations: the database file and the bucket are the scope's alone, and their values are typed (`BLOB`, `Data`), so there is no other code's entry to keep |
 
@@ -324,21 +325,21 @@ This removes `nonisolated(unsafe) static var container`, fixes the race between 
 - **Links are followed**, unlike `FileStorage`: `SQLITE_OPEN_NOFOLLOW` rejects a link anywhere in the path, including `/var` → `/private/var` above every temporary and app-container path, so it can't be used.
 - **Protection** (`SQLiteStorage.Protection`, part of the scope, default `.inherited`) is per database, because every key shares one file. It maps to a `SQLITE_OPEN_FILEPROTECTION_*` flag, which also covers `-wal` and `-shm`, and is re-applied on every open. Verified on macOS for `.complete`, `.completeUnlessOpen` and `.completeUntilFirstUserAuthentication`; macOS reports the default class for `.none`. Still to confirm on a locked iOS device: the result code a `.complete` database fails with, which could map to a `.protectedDataUnavailable` like `FileStorage`'s.
 
-### 5.7 UbiquitousStorage (new)
+### 5.7 UbiquitousStorage (done)
 
-Backing: `UbiquitousBackingStore` with `read(forKey:)`, `write(_:forKey:)`, `remove(forKey:)`, `keys()` and `synchronize()`. The default adapter, `DefaultUbiquitousBackingStoreWrapper`, calls `NSUbiquitousKeyValueStore.default`.
+**Backing store:** `UbiquitousBackingStore`, one `NSUbiquitousKeyValueStore.default` call per member: `read(forKey:)` (`object(forKey:)`), `write(_:forKey:)`, `remove(forKey:)`, `keys()` (`dictionaryRepresentation.keys`) and `synchronize()`.
+
+**Locator:** the same scheme as UserDefaults' (§5.4): `<namespace>/<key>` or the root key as is, `%` and `/` escaped byte by byte in the namespace and in root keys, and an exact, byte-compared inverse. `storedKey(forKey:in:)` also enforces the store's limit: a stored key, prefix and escapes included, of more than 128 UTF-16 code units throws `.invalidKey(key)`, because the store raises an Objective-C exception, a crash, for longer keys.
+
+**Storage:** only `Data` is a value (§4.6): `fetch` returns `nil` for anything else, `save` throws `.keyOccupied(storedKey)` instead of replacing it, and `delete` and `clear()` never remove it. `clear()` removes the `Data` at every stored key the locator claims and maps back byte for byte. `save` checks the key, then the 1 MB value limit (`.valueTooLarge`), both before calling the store.
 
 - **Availability:** `@available(watchOS 9.0, *)`, matching `NSUbiquitousKeyValueStore`; the package supports watchOS 6. Raising the watchOS minimum to 9 would remove the annotations (see Open decisions).
-- **Store and sharing:** a process can reach exactly one store, `NSUbiquitousKeyValueStore.default`, chosen only by its signed `com.apple.developer.ubiquity-kvstore-identifier` entitlement and the Apple Account. There's no API to pick a store, App Groups have no effect on it, and on iOS the code can't read the entitlement.
-- **Scope:** so the scope has one case, `.shared(container:)`. The container is a key namespace (escaped like UserDefaults', each in its own locator), and `nil` means raw keys. The docs explain the setup:
+- **Store and sharing:** a process can reach exactly one store, `NSUbiquitousKeyValueStore.default`, chosen only by its signed `com.apple.developer.ubiquity-kvstore-identifier` entitlement and the Apple Account. There's no API to pick a store, App Groups have no effect on it, and on iOS the code can't read the entitlement. So the scope has one case, `.shared(namespace:)`. The docs explain the setup:
   - one app keeps Xcode's default identifier, `$(TeamIdentifierPrefix)$(CFBundleIdentifier)`;
   - an app and its extensions, or apps of one team, set the same value in every target's entitlements;
   - an extension that keeps its default identifier silently gets its own store.
-- **Limits the storage enforces**, all before calling the store:
-  - the stored key, prefix included, must be at most 128 UTF-16 units, or it throws `.invalidKey`. The store would raise an Objective-C exception, which crashes the app.
-  - a value must be at most 1 MB, or it throws `.valueTooLarge`.
 - **Limits it documents but can't enforce:** 1024 keys and 1 MB in total. Exceeding them fails silently and is reported only through `didChangeExternallyNotification` with `NSUbiquitousKeyValueStoreQuotaViolationChange`.
-- **`synchronize()`** is exposed as a passthrough and returns `false` when the app lacks the entitlement.
+- **Without the entitlement** (test bundles, unsigned builds) the store keeps nothing, lists nothing, never raises, and `synchronize()` returns `false`. So the default adapter has no integration tests; covering it needs a signed host app with the entitlement and an Apple Account.
 - **Not observed yet:** external changes, `didChangeExternallyNotification`, aren't published to observers. That's a candidate for the observation work in §6.3.
 
 ## 6. Coding layer
@@ -583,13 +584,18 @@ Tests/
 - fetch, save, delete and clear use exactly the locator's stored keys; `set`; every operation reports an `SQLiteError` as `.sqlite` and anything else as `.other`;
 - `scope` is the one given.
 
-**UbiquitousStorage**
-- init: a container → `<escaped>/` prefix (plain, `/`, `%`); a `nil` container → keys as is.
-- key length: exactly 128 UTF-16 units with the prefix → passes; 129 → `.invalidKey` from fetch, save and delete, without calling the store.
-- save: exactly 1 MB → stored; one byte more → `.valueTooLarge(key:size:)`, without calling the store.
-- fetch hit and miss; delete.
-- clear: with a container, only prefixed keys (other containers and foreign keys stay); with `nil`, every key.
-- `synchronize()` returns the backing's result.
+**DefaultUbiquitousLocator** (`DefaultUbiquitousLocatorTests`, no mocks)
+- namespaced keys and root keys as in `DefaultUserDefaultsLocatorTests`, a `/` with a combining mark included;
+- exactly 128 UTF-16 code units passes and one more throws `.invalidKey(key)`, for a root key, a namespaced key, escapes and emoji;
+- not claimed: the UserDefaults cases, and a stored key over the limit;
+- laws within each scope, by bytes; no two scopes share or claim each other's stored keys.
+
+**UbiquitousStorage** (`UbiquitousStorageTests`; `UbiquitousBackingStoreMock`, `UbiquitousLocatorStub`)
+- locator errors stop fetch, save and delete before the store; `scope` is the one given;
+- only `Data` is a value: a string, number, Boolean, date, array or dictionary under a key is never fetched, replaced or removed, and `save` throws `.keyOccupied`;
+- `save` writes and replaces `Data`; exactly 1 MB is stored, one byte more throws `.valueTooLarge` before the store; `delete` removes `Data`;
+- `clear()` removes only the `Data` at claimed stored keys; it skips keys the locator maps to another stored key (also by how `é` is written) or to an invalid key;
+- `set`; `synchronize()` returns the store's result.
 
 **Protocol extension:** `set(nil)` → delete; `set(value)` → save (tested once, with a `DataStorageMock`).
 

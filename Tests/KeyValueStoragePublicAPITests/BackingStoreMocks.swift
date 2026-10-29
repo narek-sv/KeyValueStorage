@@ -64,7 +64,7 @@ final class InMemoryKeychain: KeychainBackingStore {
 final class InMemoryUbiquitousStore: UbiquitousBackingStore {
     private var values = [String: Data]()
 
-    func read(forKey key: String) -> Data? {
+    func read(forKey key: String) -> Any? {
         values[key]
     }
 

@@ -39,25 +39,29 @@ public final class UbiquitousStorage: KeyValueDataStorage {
     // MARK: Main Functionality
 
     public func fetch(forKey key: Key) throws(Error) -> Data? {
-        try backingStore.read(forKey: storedKey(for: key))
+        try backingStore.read(forKey: storedKey(for: key)) as? Data
     }
 
     public func save(_ value: Data, forKey key: Key) throws(Error) {
         let storedKey = try storedKey(for: key)
         guard value.count <= Self.maximumValueSize else {
-            throw Error.valueTooLarge(key: key, size: value.count)
+            throw .valueTooLarge(key: key, size: value.count)
+        }
+
+        if let object = backingStore.read(forKey: storedKey), !(object is Data) {
+            throw .keyOccupied(storedKey)
         }
 
         backingStore.write(value, forKey: storedKey)
     }
 
     public func delete(forKey key: Key) throws(Error) {
-        try backingStore.remove(forKey: storedKey(for: key))
+        try removeValue(forStoredKey: storedKey(for: key))
     }
 
     public func clear() {
         for storedKey in backingStore.keys() where isValueKey(storedKey) {
-            backingStore.remove(forKey: storedKey)
+            removeValue(forStoredKey: storedKey)
         }
     }
 
@@ -72,11 +76,21 @@ public final class UbiquitousStorage: KeyValueDataStorage {
         try locator.storedKey(forKey: key, in: scope)
     }
 
+    /// Never a value of another type: it isn't the scope's.
+    private func removeValue(forStoredKey storedKey: String) {
+        guard backingStore.read(forKey: storedKey) is Data else {
+            return
+        }
+
+        backingStore.remove(forKey: storedKey)
+    }
+
     private func isValueKey(_ storedKey: String) -> Bool {
-        guard let key = locator.key(forStoredKey: storedKey, in: scope) else {
+        guard let key = locator.key(forStoredKey: storedKey, in: scope), let encoded = try? locator.storedKey(forKey: key, in: scope) else {
             return false
         }
 
-        return (try? locator.storedKey(forKey: key, in: scope)) == storedKey
+        // Bytes, not `==`: the store tells canonically equal keys apart
+        return encoded.utf8.elementsEqual(storedKey.utf8)
     }
 }

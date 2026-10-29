@@ -9,8 +9,9 @@
 
 @available(watchOS 9.0, *)
 public extension UbiquitousStorage {
-    /// `nil` stores the keys as is.
-    /// - Warning: With a `nil` namespace, `clear()` removes every key of the store, on all of the user's devices.
+    /// `nil` stores the keys as they are, with `%` and `/` percent-encoded.
+    /// - Warning: With a `nil` namespace, `clear()` removes every `Data` value a key could have written, other code's too,
+    ///   on all of the user's devices; never values of other types or namespaces' keys.
     enum Namespace: KeyValueDataStorageNamespace {
         /// Stored as `<name>/<key>`, with `%` and `/` in `name` percent-encoded.
         case keyPrefix(named: String)
