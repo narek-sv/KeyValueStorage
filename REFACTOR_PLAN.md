@@ -1,12 +1,13 @@
 # KeyValueStorage 4.0 — Refactor Plan
 
-## Status (2026-10-28)
+## Status (2026-10-29)
 
 - **In progress: locators (§4.3).** Naming moves out of the storages into one locator per storage. Each step also applies the error contract (§4.4) and the clash rules (§4.5), and writes the storage's mock-based unit tests.
   - **Done, in review: FileStorage**, the pilot (§5.3). Its tests pass on macOS and the iOS Simulator. The gated files have 100% coverage, except the `#available(macOS 11)` fallback.
   - **Done: lossless file names.** File and SQLite name every file and folder with one encoding of the exact bytes (§5.3); only a name over 255 bytes fails, and `InvalidFileNameReason` is gone.
   - **Done: every storage has its locator.** All naming lives in `Storages/<Name>/Dependencies/<Name>Locator.swift`; `StorageDirectory`, `StorageDirectoryLookup` and `KeyNamespace` are gone. The other five moved their rules as they were; their steps still bring the clash fixes (§4.5), the error audit and the tests.
-  - **Next:** SQLite, UserDefaults, Ubiquitous, Keychain, InMemory, on the pattern the review settles.
+  - **Done: SQLite** (§5.6): locator and storage tests, integration tests against real SQLite, the error audit (no force unwraps left), and the 3.x tests ported and deleted. Gated files at 100%.
+  - **Next:** UserDefaults, Ubiquitous, Keychain, InMemory.
 - **Done: phases 0–6, the source side.** The synchronous `KeyValueDataStorage` with `init(scope:backingStore:)`, typed throws, scopes with namespaces, every storage on its backing store, the global actors removed, and `KeychainWrapper.swift` deleted.
 - **Added: `UbiquitousStorage`** (§5.7), on the same pattern.
 - **Tests:** the public API target and the coder tests are on the 4.0 API and pass. The 3.x unit tests live in `Tests/Legacy3x/` (not a target) as the porting reference; each storage's locator step ports and deletes its file.
@@ -311,31 +312,16 @@ public final class DefaultInMemoryBackingStoreWrapper: InMemoryBackingStore, @un
 
 This removes `nonisolated(unsafe) static var container`, fixes the race between instances on different actors (D5), and lets tests inject a fresh backing instead of resetting global state.
 
-### 5.6 SQLiteStorage
+### 5.6 SQLiteStorage (done)
 
-New backing and wrapper. All SQLite handling moves out of the storage:
+**Backing store:** `SQLiteBackingStore` (`createDirectory(at:)` with intermediates, `open(at:protection:)`) opens an `SQLiteDatabase` (`read`, `write`, `remove`, `removeAll`), whose errors are `SQLiteError(code:message:)`. `DefaultSQLiteDatabase` is the connection: `FULLMUTEX`, WAL, a 1 s busy timeout, one `WITHOUT ROWID` table, four prepared statements, NUL-safe key binding and `zeroblob` for empty values. The prepared statements make an instance unsafe to share between threads (D2); two instances have separate connections. A failed open closes what it opened, and nothing traps.
 
-```swift
-public protocol SQLiteBackingStore {
-    func createDirectory(at url: URL) throws                     // withIntermediateDirectories: true
-    func open(at url: URL, protection: FileProtectionType?) throws -> any SQLiteDatabase   // nil: default class
-}
+**Locator:** `databaseURL(for:)` is the scope's folder, named as `DefaultFileLocator` names it (§5.3, `!` mark included), so file and SQLite storages of one namespace share a folder, plus the hidden `.KeyValueStorage.sqlite`. `storedKey(forKey:in:)` keeps the key's exact bytes. The locator looks up its system directories itself (§4.2).
 
-public protocol SQLiteDatabase: AnyObject {                     // closes when released
-    func read(forKey key: String) throws -> Data?
-    func write(_ data: Data, forKey key: String) throws
-    func remove(forKey key: String) throws
-    func removeAll() throws
-}
-
-public struct SQLiteError: Error, Sendable, Equatable { public let code: Int32; public let message: String }
-```
-
-- `DefaultSQLiteBackingStoreWrapper` (internal, default backing): directory resolution via `FileManager`; `open(at:)` returns a `DefaultSQLiteDatabase`. Both live in `SQLiteBackingStore.swift`, mirroring `DefaultUserDefaultsBackingStoreWrapper` and `DefaultUserDefaultsSuite`: an entry object without state that opens a handle for one location.
-- `DefaultSQLiteDatabase` (internal): today's `Connection`: `sqlite3_open_v2` with `FULLMUTEX`, WAL, a 1 s busy timeout, the table, four prepared statements, NUL-safe key binding, `zeroblob` for empty data, and `run`/`reset`.
-- `SQLiteStorage`: resolves the URL, creates the directory, opens the database, and maps `SQLiteError` → `.sqlite(code:message:)` and other errors → `.other`.
-- The prepared statements make an instance unsafe to share between threads, which matches D2. Two instances have separate connections.
-- **Protection:** `SQLiteStorage.Protection` (a separate enum, mirroring `FileStorage.Key.Protection`) is part of the scope: `.app(_, protection:)` and `.appGroup(_, _, protection:)`, defaulting to `.inherited`. It's per database, not per key, because every key shares one file. The storage maps it to `FileProtectionType?`, and `DefaultSQLiteDatabase` turns that into a `SQLITE_OPEN_FILEPROTECTION_*` flag, which covers the `-wal` and `-shm` files too. Verified on macOS (arm64): reopening with another flag changes an existing database's class, so protection is re-applied on every open, like `FileStorage` re-applies it on every save. `.complete` makes even an open database fail while the device is locked. Still to confirm on a locked iOS device: which result code such failures produce, which could map to a `.protectedDataUnavailable` error like `FileStorage`'s.
+**Storage:** resolves the URL, creates its folder, and opens the database with the scope's protection. `clear()` empties the database, which is the scope's alone. `SQLiteError` → `.sqlite(code:message:)`, anything else → `.other`.
+- Nothing that isn't the storage's is removed or replaced: a file where the folder goes → `.other` (the `createDirectory` error); a folder at the database path → `.sqlite(SQLITE_CANTOPEN)`; a corrupt file → `.sqlite(SQLITE_NOTADB)`; another app's `KeyValueStorage` view → `.sqlite(SQLITE_ERROR)`.
+- **Links are followed**, unlike `FileStorage`: `SQLITE_OPEN_NOFOLLOW` rejects a link anywhere in the path, including `/var` → `/private/var` above every temporary and app-container path, so it can't be used.
+- **Protection** (`SQLiteStorage.Protection`, part of the scope, default `.inherited`) is per database, because every key shares one file. It maps to a `SQLITE_OPEN_FILEPROTECTION_*` flag, which also covers `-wal` and `-shm`, and is re-applied on every open. Verified on macOS for `.complete`, `.completeUnlessOpen` and `.completeUntilFirstUserAuthentication`; macOS reports the default class for `.none`. Still to confirm on a locked iOS device: the result code a `.complete` database fails with, which could map to a `.protectedDataUnavailable` like `FileStorage`'s.
 
 ### 5.7 UbiquitousStorage (new)
 
@@ -576,10 +562,17 @@ Tests/
 
 **InMemoryStorage:** fetch hit and miss; save; delete; clear; two containers stay apart; default container; exact container passed to the backing.
 
-**SQLiteStorage**
-- init: 5 scope cases → database URL; resolution failures mapped; `createDirectory` throws → `.other`; `open` throws `SQLiteError` → `.sqlite`, or another error → `.other`.
-- fetch, save, delete, clear: success; `SQLiteError` → `.sqlite(code:message:)`; another error → `.other`.
-- protection: each of the 5 `Protection` cases, for `.app` and `.appGroup`, reaches `open` as the matching `FileProtectionType?` (`.inherited` → `nil`); an omitted protection is `.inherited`.
+**DefaultSQLiteLocator** (`DefaultSQLiteLocatorTests`, fixed system directories)
+- each app scope and the App Group → `<folder>[/<namespace>!]/.KeyValueStorage.sqlite`; the default scope; protection doesn't change the path;
+- missing directories → `.directoryNotFound(directory)`; a missing group container → `.groupDirectoryNotFound`; a URL that isn't a file URL → `.invalidDirectory`;
+- namespace folders equal `DefaultFileLocator`'s over every ASCII character and Unicode names; 254 encoded bytes is the longest; the namespace is checked before the lookups;
+- keys are stored as their exact scalars.
+
+**SQLiteStorage** (`SQLiteStorageTests`; `SQLiteBackingStoreMock`, `SQLiteLocatorStub`)
+- init: creates the folder of the locator's URL, then opens the URL; a locator error stops before any call; a folder that can't be created → `.other`, and nothing is opened; `open` → `.sqlite` for an `SQLiteError`, `.other` otherwise;
+- protection: each of the 5 cases, for `.app` and `.appGroup`, reaches `open` as the matching `FileProtectionType?` (`.inherited` → `nil`);
+- fetch, save, delete and clear use exactly the locator's stored keys; `set`; every operation reports an `SQLiteError` as `.sqlite` and anything else as `.other`;
+- `scope` is the one given.
 
 **UbiquitousStorage**
 - init: a container → `<escaped>/` prefix (plain, `/`, `%`); a `nil` container → keys as is.
@@ -622,11 +615,12 @@ Tests/
   - read, write, remove, create and list.
   - the real `CocoaError` codes for a missing file or directory, a directory where a file is expected, `chmod` 000 / 555 (skipped as root).
   - resolver members return real paths.
-- **`DefaultSQLiteBackingStoreWrapper`/`DefaultSQLiteDatabase`** (move today's SQLite tests here):
-  - round trips (empty, 1 MB, keys containing NUL);
-  - a corrupt database → `SQLITE_NOTADB`; a directory at the database path → `SQLITE_CANTOPEN`;
-  - a lock held by another connection → `SQLITE_BUSY` after the timeout, reads still working in WAL mode;
-  - a dropped table → `SQLITE_ERROR`, recreated on reopen; persistence across instances.
+- **SQLite** (`SQLiteIntegrationTests`, done):
+  - the locator's lookups match `FileManager`; the database, `-wal` and `-shm` are hidden in the namespace's folder; each open applies the scope's protection to the database and its log;
+  - persistence across instances; instances sharing a database see each other's changes; values round-trip exactly (empty, every byte, 1 MB); keys that differ in case, after a NUL, or in how `é` is written are separate rows;
+  - a file where the folder goes → `.other`, kept; a folder at the database path → `SQLITE_CANTOPEN`; a corrupt database → `SQLITE_NOTADB`, kept; another app's view → `SQLITE_ERROR`;
+  - a lock held by another connection → `SQLITE_BUSY` after the 1 s timeout, reads still working in WAL mode; a dropped table → `SQLITE_ERROR` until reopened.
+  - Uncovered: `sqlite3_open_v2` returning no handle, which happens only out of memory.
 - **`UserDefaults` adapter:** a unique suite name per test, removed in teardown; `standard` is the same object as `UserDefaults.standard`.
 - **`DefaultInMemoryBackingStoreWrapper`:** concurrent access from many tasks.
 - **Keychain:** `DefaultKeychainBackingStoreWrapper` in KeychainHost (entitlements): add, match, update, delete, `.duplicate`/`.notFound`, `.missingEntitlement` for a group it isn't entitled to.

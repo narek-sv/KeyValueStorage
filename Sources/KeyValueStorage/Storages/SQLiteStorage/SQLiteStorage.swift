@@ -83,20 +83,13 @@ public final class SQLiteStorage: KeyValueDataStorage {
         }
     }
 
-    private static func convert(error: Swift.Error) -> Error {
-        if let error = error as? SQLiteError {
-            return .sqlite(code: error.code, message: error.message)
-        }
-
-        return .other(error)
-    }
-
-    @discardableResult
-    private static func execute<T>(_ block: () throws -> T) throws(Error) -> T {
+    private static func execute<T>(_ body: () throws -> T) throws(Error) -> T {
         do {
-            return try block()
+            return try body()
+        } catch let error as SQLiteError {
+            throw .sqlite(code: error.code, message: error.message)
         } catch {
-            throw convert(error: error)
+            throw .other(error)
         }
     }
 }

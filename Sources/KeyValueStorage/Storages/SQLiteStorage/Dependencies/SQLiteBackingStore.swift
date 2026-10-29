@@ -92,9 +92,7 @@ final class DefaultSQLiteDatabase: SQLiteDatabase {
                 "DELETE FROM KeyValueStorage WHERE key = ?",
                 "DELETE FROM KeyValueStorage"
             ] {
-                var statement: OpaquePointer?
-                try Self.check(sqlite3_prepare_v2(database, sql, -1, &statement, nil), database)
-                statements.append(statement!)
+                try statements.append(Self.prepare(sql, in: database))
             }
         } catch {
             statements.forEach { sqlite3_finalize($0) }
@@ -216,5 +214,15 @@ final class DefaultSQLiteDatabase: SQLiteDatabase {
         guard code == SQLITE_OK else {
             throw SQLiteError(code: code, message: String(cString: sqlite3_errmsg(database)))
         }
+    }
+
+    private static func prepare(_ sql: String, in database: OpaquePointer) throws -> OpaquePointer {
+        var statement: OpaquePointer?
+        let code = sqlite3_prepare_v2(database, sql, -1, &statement, nil)
+        guard code == SQLITE_OK, let statement else {
+            throw SQLiteError(code: code, message: String(cString: sqlite3_errmsg(database)))
+        }
+
+        return statement
     }
 }
