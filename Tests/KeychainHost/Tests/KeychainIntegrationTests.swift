@@ -55,6 +55,19 @@ final class KeychainIntegrationTests: XCTestCase {
         XCTAssertEqual(try storage.fetch(forKey: "key"), Data([2]))
     }
 
+    func testKeysAreTheirExactBytes() throws {
+        // Given
+        let storage = storage(.app(namespace: namespace()))
+
+        // When
+        try storage.save(Data([1]), forKey: "\u{E9}")
+        try storage.save(Data([2]), forKey: "e\u{301}")
+
+        // Then: two items, as in every storage
+        XCTAssertEqual(try storage.fetch(forKey: "\u{E9}"), Data([1]))
+        XCTAssertEqual(try storage.fetch(forKey: "e\u{301}"), Data([2]))
+    }
+
     func testSynchronizableKeysAreItemsOfTheirOwn() throws {
         // Given
         let storage = storage(.app(namespace: namespace()))

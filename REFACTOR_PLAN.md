@@ -2,7 +2,7 @@
 
 ## Status (2026-10-29)
 
-- **In progress: locators (§4.3).** Naming moves out of the storages into one locator per storage. Each step also applies the error contract (§4.4) and the clash rules (§4.5), and writes the storage's mock-based unit tests.
+- **Done: locators (§4.3).** Naming moved out of the storages into one locator per storage. Each step also applies the error contract (§4.4) and the clash rules (§4.5), and writes the storage's mock-based unit tests.
   - **Done, in review: FileStorage**, the pilot (§5.3). Its tests pass on macOS and the iOS Simulator. The gated files have 100% coverage, except the `#available(macOS 11)` fallback.
   - **Done: lossless file names.** File and SQLite name every file and folder with one encoding of the exact bytes (§5.3); only a name over 255 bytes fails, and `InvalidFileNameReason` is gone.
   - **Done: every storage has its locator.** All naming lives in `Storages/<Name>/Dependencies/<Name>Locator.swift`; `StorageDirectory`, `StorageDirectoryLookup` and `KeyNamespace` are gone. The other five moved their rules as they were; their steps still bring the clash fixes (§4.5), the error audit and the tests.
@@ -10,7 +10,8 @@
   - **Done: UserDefaults** (§5.4): only `Data` is a value (§4.6, now the rule for every storage), root keys escaped so `clear()` is exact, byte-exact keys, and the 3.x tests ported and deleted. Gated files at 100%.
   - **Done: Ubiquitous** (§5.7): the UserDefaults scheme and the only-`Data` rule, the 128-unit key limit on the stored key, and the escaping fix. Gated files at 100%; the default adapter needs a signed host with the iCloud entitlement.
   - **Done: Keychain** (§5.2): the root uses service `""` and App Group services carry the group, so no scope reaches another's items; only `Data` items are values; KeychainHost runs again, with real-keychain tests. Gated files at 100%.
-  - **Next:** InMemory.
+  - **Done: InMemory** (§5.5): the default store keys buckets and values by bytes, so every storage keeps keys exact (§4.3); locator and storage tests. Gated files at 100%.
+  - **Locators are done for all six storages.** What's left of `Tests/Legacy3x/` belongs to the coding, observation and unified layers.
 - **Done: phases 0–6, the source side.** The synchronous `KeyValueDataStorage` with `init(scope:backingStore:)`, typed throws, scopes with namespaces, every storage on its backing store, the global actors removed, and `KeychainWrapper.swift` deleted.
 - **Added: `UbiquitousStorage`** (§5.7), on the same pattern.
 - **Tests:** the public API target and the coder tests are on the 4.0 API and pass. The 3.x unit tests live in `Tests/Legacy3x/` (not a target) as the porting reference; each storage's locator step ports and deletes its file.
@@ -146,6 +147,7 @@ A locator translates the library's names (scope, namespace, key name) into the s
 - **Stateless:** the same inputs give the same outputs, given the same system directories. The storage passes its `scope` to every call, so the two can't disagree.
 - **Injected:** every storage's `init(scope:backingStore:locator:)` takes the locator; `init(scope:)` passes the defaults.
 - **Key names, not keys:** it takes `String` names, never `Key` structs.
+- **Exact keys:** every storage keeps a key's and a namespace's exact bytes, so `"é"` and `"e\u{301}"` are two keys, though Swift's `==` takes them for one. Verified in File, SQLite, UserDefaults, Keychain and InMemory; Ubiquitous keys are `NSString` dictionary keys like UserDefaults', and can't be checked without the entitlement.
 - **Typed throws** in the storage's `Error`, only where the default can fail. Otherwise the method doesn't throw, so the Keychain, InMemory and Ubiquitous initializers stay non-throwing.
 - **Inverse law:** where a reverse method exists, it maps every stored name a valid key produces back to that key, and returns `nil` for every other name. The default's reverse method calls `self`'s forward method, so a subclass that changes the forward rule stays consistent.
 - **System limits** (D18): each protocol documents the limits a stored name must respect, and the locator enforces them.
@@ -300,24 +302,13 @@ The root encodings (§4.5) and the Keychain services are done.
 - `keys()` lists the global domain's keys too, but removing one only touches the suite's own domain, so a root `clear()` never changes the global domain.
 - **Interop:** root keys containing `%` or `/` are stored escaped (`a/b` → `a%2Fb`); other keys are unchanged. A CHANGELOG note.
 
-### 5.5 InMemoryStorage
+### 5.5 InMemoryStorage (done)
 
-New backing:
+**Backing store:** `InMemoryBackingStore` (`read`, `write`, `remove` and `removeAll`, each in a bucket). `DefaultInMemoryBackingStoreWrapper` is process-wide memory behind a lock; it keys buckets and values by their UTF-8 bytes, because Swift's `String` dictionaries take `"é"` and `"e\u{301}"` for one key.
 
-```swift
-public protocol InMemoryBackingStore {
-    func read(forKey key: String, in container: String) -> Data?
-    func write(_ data: Data, forKey key: String, in container: String)
-    func remove(forKey key: String, in container: String)
-    func removeAll(in container: String)
-}
+**Locator:** `bucket(for:)` is the namespace's name, `nil` at the root; `storedKey(forKey:in:)` keeps the key as is. Both are non-throwing (`Error == Never`).
 
-public final class DefaultInMemoryBackingStoreWrapper: InMemoryBackingStore, @unchecked Sendable {
-    public static let shared = DefaultInMemoryBackingStoreWrapper()   // default backing; NSLock-protected dictionary
-}
-```
-
-This removes `nonisolated(unsafe) static var container`, fixes the race between instances on different actors (D5), and lets tests inject a fresh backing instead of resetting global state.
+**Storage:** `clear()` empties the scope's bucket, which is the scope's alone (§4.5). Values are typed `Data`, so §4.6 has nothing to keep.
 
 ### 5.6 SQLiteStorage (done)
 
@@ -574,7 +565,9 @@ Tests/
 - `clear()` removes only the `Data` at claimed stored keys; it skips keys the locator maps to a key with another stored key, also when they differ only in how `é` is written;
 - `set`.
 
-**InMemoryStorage:** fetch hit and miss; save; delete; clear; two containers stay apart; default container; exact container passed to the backing.
+**DefaultInMemoryLocator** (`DefaultInMemoryLocatorTests`): the bucket is the namespace's name (`nil` at the root, `""` kept); keys are stored as their exact scalars.
+
+**InMemoryStorage** (`InMemoryStorageTests`; `InMemoryBackingStoreMock`, `InMemoryLocatorStub`): every operation uses exactly the locator's names; `clear()` empties only the scope's bucket; `set`; `scope` is the one given; with the default store, the root, the empty name, case variants and both spellings of `é` never reach each other's values, and keys are exact too.
 
 **DefaultSQLiteLocator** (`DefaultSQLiteLocatorTests`, fixed system directories)
 - each app scope and the App Group → `<folder>[/<namespace>!]/.KeyValueStorage.sqlite`; the default scope; protection doesn't change the path;
@@ -645,7 +638,7 @@ Tests/
   - a value of another type is never replaced or removed; a registered non-`Data` default occupies its key;
   - `clear()` is exact across the root, two namespaces, other code's data and values of other types, and never changes the global domain;
   - `NSGlobalDomain` → `.invalidSuiteName`.
-- **`DefaultInMemoryBackingStoreWrapper`:** concurrent access from many tasks.
+- **`DefaultInMemoryBackingStoreWrapper`** (`DefaultInMemoryBackingStoreWrapperTests`, unit target): concurrent access is serialized, and released values are freed after unlocking.
 - **Keychain** (`KeychainIntegrationTests` in KeychainHost, done; the 3.x tests are ported and deleted):
   - values round-trip and persist; accessibility is set on add and on update; synchronizable keys are items of their own;
   - the root never reaches namespaced items; an app scope and App Groups, one of them the default group, never reach each other's items;
