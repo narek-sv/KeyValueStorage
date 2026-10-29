@@ -14,33 +14,29 @@ public final class UserDefaultsStorage: KeyValueDataStorage {
     // MARK: Properties
 
     private let suite: any UserDefaultsSuite
-    private let keyPrefix: String?
+    private let locator: any UserDefaultsLocator
     public let scope: Scope
 
     // MARK: Initializers
 
-    public init(scope: Scope, backingStore: any UserDefaultsBackingStore) throws(Error) {
-        switch scope {
-        case .app(.standard, _):
+    public init(scope: Scope, backingStore: any UserDefaultsBackingStore, locator: any UserDefaultsLocator) throws(Error) {
+        switch locator.suite(for: scope) {
+        case .standard:
             self.suite = backingStore.standard
-        case let .app(.suite(name), _):
-            self.suite = try Self.suite(named: name, in: backingStore)
-        case let .appGroup(groupId, _):
-            self.suite = try Self.suite(named: groupId, in: backingStore)
-        }
+        case let .suite(name):
+            guard let suite = backingStore.suite(named: name) else {
+                throw .invalidSuiteName(name)
+            }
 
-        switch scope.namespace {
-        case let .keyPrefix(name)?:
-            self.keyPrefix = KeyNamespace.prefix(for: name)
-        case nil:
-            self.keyPrefix = nil
+            self.suite = suite
         }
 
         self.scope = scope
+        self.locator = locator
     }
 
     public convenience init(scope: Scope) throws(Error) {
-        try self.init(scope: scope, backingStore: DefaultUserDefaultsBackingStoreWrapper())
+        try self.init(scope: scope, backingStore: DefaultUserDefaultsBackingStoreWrapper(), locator: DefaultUserDefaultsLocator())
     }
 
     // MARK: Main Functionality
@@ -66,22 +62,22 @@ public final class UserDefaultsStorage: KeyValueDataStorage {
     }
 
     public func clear() {
-        for key in suite.keys() where keyPrefix.map({ key.hasPrefix($0) }) ?? true {
-            suite.remove(forKey: key)
+        for storedKey in suite.keys() where isValueKey(storedKey) {
+            suite.remove(forKey: storedKey)
         }
     }
 
     // MARK: Helpers
 
     private func storedKey(for key: Key) -> String {
-        keyPrefix.map { $0 + key } ?? key
+        locator.storedKey(forKey: key, in: scope)
     }
 
-    private static func suite(named name: String, in backingStore: any UserDefaultsBackingStore) throws(Error) -> any UserDefaultsSuite {
-        guard let suite = backingStore.suite(named: name) else {
-            throw Error.invalidSuiteName(name)
+    private func isValueKey(_ storedKey: String) -> Bool {
+        guard let key = locator.key(forStoredKey: storedKey, in: scope) else {
+            return false
         }
 
-        return suite
+        return locator.storedKey(forKey: key, in: scope) == storedKey
     }
 }

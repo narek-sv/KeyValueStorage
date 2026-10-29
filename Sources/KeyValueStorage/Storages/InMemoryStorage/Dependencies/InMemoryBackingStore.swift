@@ -18,8 +18,8 @@ public protocol InMemoryBackingStore {
 
 // MARK: - DefaultInMemoryBackingStoreWrapper
 
-/// The process-wide memory; subclass it to change single operations, such as how buckets are stored.
-/// - Warning: Subclasses inherit `Sendable`, so their own state must be thread-safe too.
+/// The process-wide memory.
+/// - Warning: Subclasses inherit `Sendable`: their own state must be thread-safe too.
 open class DefaultInMemoryBackingStoreWrapper: InMemoryBackingStore, @unchecked Sendable {
     private static let lock = Lock()
     nonisolated(unsafe) private static var buckets = [String?: [String: Data]]()

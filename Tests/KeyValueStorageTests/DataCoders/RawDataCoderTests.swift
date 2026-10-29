@@ -78,7 +78,7 @@ final class RawDataCoderTests: XCTestCase {
     
     func testCodingStorageUsesRawCoderByDefault() async throws {
         // Given
-        let underlyingStorage = await InMemoryStorage(scope: "rawDefault")
+        let underlyingStorage = InMemoryStorage(scope: .app(namespace: .bucket(named: "rawDefault")))
         let storage = KeyValueCodingStorage(storage: underlyingStorage)
         
         // When
@@ -87,14 +87,14 @@ final class RawDataCoderTests: XCTestCase {
         try await storage.save(42, forKey: KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "int"))
         
         // Then
-        let data = await underlyingStorage.fetch(forKey: "data")
-        let string = await underlyingStorage.fetch(forKey: "string")
-        let int = await underlyingStorage.fetch(forKey: "int")
+        let data = underlyingStorage.fetch(forKey: "data")
+        let string = underlyingStorage.fetch(forKey: "string")
+        let int = underlyingStorage.fetch(forKey: "int")
         XCTAssertEqual(data, Data([0xAA, 0xBB]))
         XCTAssertEqual(string, Data("token".utf8))
         XCTAssertEqual(int, try JSONEncoder().encode(42))
         
-        await underlyingStorage.clear()
+        underlyingStorage.clear()
     }
     
     func testReadsRawValuesSavedByOtherCode() async throws {
@@ -106,8 +106,8 @@ final class RawDataCoderTests: XCTestCase {
         let storage = UnifiedStorage()
         
         // When
-        let token = try await storage.fetch(forKey: UserDefaultsKey<Data>(key: "token", scope: suiteName))
-        let name = try await storage.fetch(forKey: UserDefaultsKey<String>(key: "name", scope: suiteName))
+        let token = try await storage.fetch(forKey: UserDefaultsKey<Data>(key: "token", scope: .app(.suite(named: suiteName))))
+        let name = try await storage.fetch(forKey: UserDefaultsKey<String>(key: "name", scope: .app(.suite(named: suiteName))))
         
         // Then
         XCTAssertEqual(token, Data([0x01, 0x02, 0x03]))

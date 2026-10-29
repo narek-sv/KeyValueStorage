@@ -97,7 +97,7 @@ final class DataCodersTests: XCTestCase {
     
     func testPropertyListCodingStorage() async throws {
         // Given
-        let storage = await KeyValueCodingStorage(storage: InMemoryStorage(scope: "propertyList"), coder: PropertyListDataCoder())
+        let storage = KeyValueCodingStorage(storage: InMemoryStorage(scope: .app(namespace: .bucket(named: "propertyList"))), coder: PropertyListDataCoder())
         let key = KeyValueCodingStorageKey<InMemoryStorage, String>(key: "key")
         
         // When

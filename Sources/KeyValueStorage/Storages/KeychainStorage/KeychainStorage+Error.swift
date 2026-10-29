@@ -10,9 +10,8 @@ import Foundation
 // MARK: - KeychainStorage + Error
 
 public extension KeychainStorage {
-    /// The errors a `KeychainStorage` throws.
     enum Error: KeyValueDataStorageError {
-        /// The keychain returned something other than `Data` for the item.
+        /// The keychain returned something other than `Data`.
         case unexpectedItemData
         /// A Security framework status, such as `errSecInteractionNotAllowed` while locked or `errSecMissingEntitlement`.
         case os(OSStatus)

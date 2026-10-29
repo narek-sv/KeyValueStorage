@@ -19,7 +19,7 @@ public protocol KeychainBackingStore {
 
 // MARK: - DefaultKeychainBackingStoreWrapper
 
-/// The live keychain; subclass it to change single operations, such as the queries it sends.
+/// The live keychain.
 open class DefaultKeychainBackingStoreWrapper: KeychainBackingStore {
     public init() { }
     

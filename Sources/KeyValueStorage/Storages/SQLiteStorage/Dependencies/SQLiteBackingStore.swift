@@ -10,7 +10,7 @@ import SQLite3
 
 // MARK: - SQLiteBackingStore
 
-public protocol SQLiteBackingStore: StorageDirectoryResolving {
+public protocol SQLiteBackingStore {
     func createDirectory(at url: URL) throws
     func open(at url: URL, protection: FileProtectionType?) throws -> any SQLiteDatabase
 }
@@ -38,23 +38,11 @@ public struct SQLiteError: Error, Sendable, Equatable {
 
 // MARK: - DefaultSQLiteBackingStoreWrapper
 
-/// The live SQLite library and file system; subclass it to change single operations, such as where a directory resolves.
+/// The live SQLite library and file system.
 open class DefaultSQLiteBackingStoreWrapper: SQLiteBackingStore {
     private var fileManager: FileManager { .default }
 
     public init() { }
-
-    open var temporaryDirectory: URL {
-        fileManager.temporaryDirectory
-    }
-
-    open func directory(for directory: FileManager.SearchPathDirectory) -> URL? {
-        fileManager.urls(for: directory, in: .userDomainMask).first
-    }
-
-    open func groupDirectory(for groupId: String) -> URL? {
-        fileManager.containerURL(forSecurityApplicationGroupIdentifier: groupId)
-    }
 
     open func createDirectory(at url: URL) throws {
         try fileManager.createDirectory(atPath: url.path, withIntermediateDirectories: true)

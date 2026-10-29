@@ -8,9 +8,8 @@
 // MARK: - UserDefaultsStorage + Error
 
 public extension UserDefaultsStorage {
-    /// The errors a `UserDefaultsStorage` throws.
     enum Error: KeyValueDataStorageError {
-        /// `UserDefaults` rejected this suite name: the app's bundle identifier, or `NSGlobalDomain`.
+        /// `UserDefaults` rejects the app's bundle identifier and `NSGlobalDomain`.
         case invalidSuiteName(String)
     }
 }

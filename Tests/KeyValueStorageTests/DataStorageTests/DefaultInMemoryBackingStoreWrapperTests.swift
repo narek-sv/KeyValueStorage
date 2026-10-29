@@ -18,6 +18,7 @@ final class DefaultInMemoryBackingStoreWrapperTests: XCTestCase {
         let containers = DefaultInMemoryBackingStoreWrapper()
         let threads = 8
         let iterations = 10_000
+        let run = run
 
         // When
         DispatchQueue.concurrentPerform(iterations: threads) { thread in

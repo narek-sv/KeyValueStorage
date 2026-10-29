@@ -43,10 +43,10 @@ private actor Caller {
 /// Runs on the caller's actor, so every call below is made from that context.
 private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #isolation) async throws {
     let id = "isolation-\(UUID().uuidString)"
-    let root = FileManager.default.temporaryDirectory.appendingPathComponent(id, isDirectory: true)
+    // The file and SQLite storages below share this folder; `exercise` clears the UserDefaults suite itself
+    let folder = try DefaultFileLocator().directory(for: .app(.temporary, namespace: .directory(named: id)))
     defer {
-        // The file and SQLite storages below use `<temporary>/<id>`; `exercise` clears the UserDefaults suite itself
-        try? FileManager.default.removeItem(at: root)
+        try? FileManager.default.removeItem(at: folder)
     }
     
     // Coders
@@ -57,20 +57,20 @@ private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #is
     
     // Every storage, directly and through the coding and observation layers. The keychain and the iCloud key-value store
     // need entitlements that test bundles can't have, so those storages use in-memory backing storages
-    try await exercise(InMemoryStorage(scope: .app(container: id)), key: "key", context: context)
-    try await exercise(UserDefaultsStorage(scope: .app(.suite(container: id))), key: "key", context: context)
-    try await exercise(FileStorage(scope: .app(.temporary(container: id))), key: .init(name: "key"), context: context)
-    try await exercise(SQLiteStorage(scope: .app(.temporary(container: id))), key: "key", context: context)
-    try await exercise(KeychainStorage(scope: .app(container: id), backingStore: InMemoryKeychain()),
+    try await exercise(InMemoryStorage(scope: .app(namespace: .bucket(named: id))), key: "key", context: context)
+    try await exercise(UserDefaultsStorage(scope: .app(.suite(named: id))), key: "key", context: context)
+    try await exercise(FileStorage(scope: .app(.temporary, namespace: .directory(named: id))), key: .init(name: "key"), context: context)
+    try await exercise(SQLiteStorage(scope: .app(.temporary, namespace: .directory(named: id))), key: "key", context: context)
+    try await exercise(KeychainStorage(scope: .app(namespace: .service(named: id)), backingStore: InMemoryKeychain(), locator: DefaultKeychainLocator()),
                        key: .init(name: "key"), context: context)
     if #available(watchOS 9.0, *) {
-        try await exercise(UbiquitousStorage(scope: .shared(container: id), backingStore: InMemoryUbiquitousStore()),
+        try await exercise(UbiquitousStorage(scope: .shared(namespace: .keyPrefix(named: id)), backingStore: InMemoryUbiquitousStore(), locator: DefaultUbiquitousLocator()),
                            key: "key", context: context)
     }
 
     // Unified storage
     let storage = UnifiedStorage(factory: ObservableUnifiedStorageFactory())
-    let key = InMemoryKey<Int>(key: "unified", scope: .app(container: id))
+    let key = InMemoryKey<Int>(key: "unified", scope: .app(namespace: .bucket(named: id)))
     let published = Values<Int?>()
     let subscription = try await storage.publisher(forKey: key)?.sink { published.append($0) }
     let stream = try await storage.stream(forKey: key, includingCurrentValue: false)
@@ -85,7 +85,7 @@ private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #is
     try await storage.set(nil, forKey: key)
     try await storage.set(2, forKey: key)
     try await storage.delete(forKey: key)
-    try await storage.clear(storage: InMemoryStorage.self, forScope: .app(container: id))
+    try await storage.clear(storage: InMemoryStorage.self, forScope: .app(namespace: .bucket(named: id)))
     let firstStreamed = await streamed.value
     
     XCTAssertEqual(fetched, 1, "UnifiedStorage from \(context)")

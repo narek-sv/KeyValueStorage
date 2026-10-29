@@ -8,7 +8,8 @@
 // MARK: - FileStorage + Key
 
 public extension FileStorage {
-    /// A value in its own file, named `name` with `%`, a leading `.` and characters that change with case percent-encoded.
+    /// Any `name`, even an empty one, encoded into a file-safe name.
+    /// - Note: `.invalidKey` if the encoded name exceeds 255 bytes, the file system's limit.
     struct Key: KeyValueDataStorageKey {
         public let name: String
         public let protection: Protection
@@ -23,7 +24,6 @@ public extension FileStorage {
 // MARK: - FileStorage.Key + ExpressibleByStringLiteral
 
 extension FileStorage.Key: ExpressibleByStringLiteral {
-    /// A key with this name and the default protection, `.inherited`.
     public init(stringLiteral name: String) {
         self.init(name: name)
     }
@@ -32,15 +32,13 @@ extension FileStorage.Key: ExpressibleByStringLiteral {
 // MARK: - FileStorage.Key + Protection
 
 public extension FileStorage.Key {
-    /// The data protection class of the key's file.
     enum Protection: Sendable {
-        /// No explicit class (the default), so the file gets its directory's class or the app's default protection.
+        /// No explicit class: the file gets its folder's class or the app's default.
         case inherited
-        /// Readable at any time.
         case none
         /// Unreadable while the device is locked.
         case complete
-        /// Writable while the device is locked, but readable only while it's unlocked.
+        /// Writable while locked; readable only while unlocked.
         case completeUnlessOpen
         /// Readable once the user unlocks the device after a restart.
         case completeUntilFirstUserAuthentication

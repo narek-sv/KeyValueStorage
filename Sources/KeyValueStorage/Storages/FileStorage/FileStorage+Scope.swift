@@ -10,34 +10,33 @@ import Foundation
 // MARK: - FileStorage + Scope
 
 public extension FileStorage {
-    /// Separates sets of files within a scope; `nil` (the default) stores the files directly in the scope's directory.
-    /// - Warning: `clear()` deletes every file in its directory that a key could have written, other code's too; it skips folders and dot files.
+    /// `nil` stores the files directly in the scope's directory.
+    /// - Warning: `clear()` deletes every file a key could have written, other code's too; never folders, links,
+    ///   or names no key produces, such as `notes.txt`.
     enum Namespace: KeyValueDataStorageNamespace {
-        /// The files in the subdirectory with this name.
+        /// Any name, even an empty one, encoded into a file-safe folder name.
+        /// - Note: `.invalidNamespace` if the encoded name exceeds 255 bytes, the file system's limit.
         case directory(named: String)
     }
     
-    /// The base directory of an app scope: a standard one, or any directory.
     /// - Warning: On macOS without App Sandbox, the standard directories are shared by all of the user's apps.
     enum AppScope: Hashable, Sendable {
-        /// Application Support, which is backed up and never emptied by the system.
+        /// Backed up; never emptied by the system.
         case applicationSupport
-        /// Caches, which isn't backed up and which the system can empty when storage runs low.
+        /// Not backed up; the system can empty it when storage runs low.
         case cache
-        /// Documents, which is backed up and can be visible to the user.
+        /// Backed up; can be visible to the user.
         case documents
-        /// The temporary directory, which the system can empty when the app isn't running.
+        /// The system can empty it when the app isn't running.
         case temporary
-        /// Any directory, such as a folder the user picked or a temporary folder in tests.
-        /// - Warning: Scopes compare URLs as given, so `/a/b`, `/a/b/` and a symlinked path are separate storages.
+        /// - Warning: URLs compare as given: `/a/b`, `/a/b/` and a symlinked path are separate scopes.
+        ///   A link isn't followed; resolve it first with `resolvingSymlinksInPath()`.
         case directory(at: URL)
     }
     
-    /// Where the files are stored, which decides who can read them.
     enum Scope: KeyValueDataStorageScope {
-        /// In one of the app's base directories.
         case app(AppScope, namespace: Namespace? = nil)
-        /// In the App Group's shared container, readable by every app and extension in the group.
+        /// Readable by every app and extension in the group.
         case appGroup(groupId: String, namespace: Namespace? = nil)
         
         public var namespace: Namespace? {

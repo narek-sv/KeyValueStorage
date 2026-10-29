@@ -10,17 +10,15 @@ import Foundation
 // MARK: - SQLiteStorage + Error
 
 public extension SQLiteStorage {
-    /// The errors an `SQLiteStorage` throws.
     enum Error: KeyValueDataStorageError {
-        /// The system has no container for this App Group ID, usually because the app isn't in the group.
+        /// Usually the app isn't in the group.
         case groupDirectoryNotFound(String)
-        /// The system returned no such base directory; the value is its name, such as `Documents`.
-        case directoryNotFound(String)
-        /// The URL of `AppScope.directory(at:)` isn't a file URL.
+        case directoryNotFound(FileManager.SearchPathDirectory)
+        /// Not a file URL.
         case invalidDirectory(URL)
-        /// An SQLite error, with its result code and message.
+        /// Its encoded folder name exceeds 255 bytes.
+        case invalidNamespace(String)
         case sqlite(code: Int32, message: String)
-        /// Any other error, such as a failure to create the database's directory.
         case other(Swift.Error)
     }
 }

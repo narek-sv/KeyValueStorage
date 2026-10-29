@@ -8,19 +8,18 @@
 // MARK: - KeychainStorage + Scope
 
 public extension KeychainStorage {
-    /// Separates sets of items by service; `nil` (the default) saves items without a service and matches items of any service.
-    /// - Warning: With a `nil` namespace, `clear()` deletes every generic password the scope can reach, including other code's.
+    /// `nil` saves items without a service.
+    /// - Warning: With a `nil` namespace, queries match every service, so `clear()` deletes every generic password
+    ///   the scope can reach, other code's too.
     enum Namespace: KeyValueDataStorageNamespace {
-        /// The items whose service (`kSecAttrService`) is this name.
         case service(named: String)
     }
 
-    /// The access group of the items, if any, which decides who can read them.
     enum Scope: KeyValueDataStorageScope {
-        /// No access group: saves use the app's default access group, and queries search all of the app's access groups.
-        /// - Warning: Fetches, deletes and `clear()` also reach the items of App Groups and Keychain Sharing groups.
+        /// - Warning: Saves use the app's default access group, but fetches, deletes and `clear()` also reach
+        ///   App Group and Keychain Sharing items.
         case app(namespace: Namespace? = nil)
-        /// A shared access group: an App Group ID, or a Keychain Sharing group with its team ID prefix.
+        /// An App Group ID, or a Keychain Sharing group with its team ID prefix.
         case appGroup(groupId: String, namespace: Namespace? = nil)
         
         public var namespace: Namespace? {

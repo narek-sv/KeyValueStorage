@@ -70,7 +70,7 @@ final class PublicAPITests: XCTestCase {
     
     func testKeychainIsConfigurable() {
         // Given: an existing Keychain Sharing group and a service that other code already saves items under
-        let scope = KeychainStorage.Scope.appGroup(groupId: "TEAMID.group.shared", container: "existing.service")
+        let scope = KeychainStorage.Scope.appGroup(groupId: "TEAMID.group.shared", namespace: .service(named: "existing.service"))
 
         // When
         let storage = KeychainStorage(scope: scope)
@@ -81,16 +81,17 @@ final class PublicAPITests: XCTestCase {
 
     func testScopeIsReadable() throws {
         // Given
-        let container = UUID().uuidString
+        let directory = UUID().uuidString
+        let folder = try DefaultFileLocator().directory(for: .app(.temporary, namespace: .directory(named: directory)))
         addTeardownBlock {
-            try? FileManager.default.removeItem(at: FileManager.default.temporaryDirectory.appendingPathComponent(container, isDirectory: true))
+            try? FileManager.default.removeItem(at: folder)
         }
 
-        let inMemoryScope = InMemoryStorage.Scope.app(container: "publicAPIScope")
-        let userDefaultsScope = UserDefaultsStorage.Scope.app(.suite(container: "publicAPIScope"))
-        let keychainScope = KeychainStorage.Scope.appGroup(groupId: "group.shared", container: "publicAPIScope")
-        let fileScope = FileStorage.Scope.app(.temporary(container: container))
-        let sqliteScope = SQLiteStorage.Scope.app(.temporary(container: container))
+        let inMemoryScope = InMemoryStorage.Scope.app(namespace: .bucket(named: "publicAPIScope"))
+        let userDefaultsScope = UserDefaultsStorage.Scope.app(.suite(named: "publicAPIScope"))
+        let keychainScope = KeychainStorage.Scope.appGroup(groupId: "group.shared", namespace: .service(named: "publicAPIScope"))
+        let fileScope = FileStorage.Scope.app(.temporary, namespace: .directory(named: directory))
+        let sqliteScope = SQLiteStorage.Scope.app(.temporary, namespace: .directory(named: directory))
         let inMemory = InMemoryStorage(scope: inMemoryScope)
         let userDefaults = try UserDefaultsStorage(scope: userDefaultsScope)
         let keychain = KeychainStorage(scope: keychainScope)
@@ -104,18 +105,18 @@ final class PublicAPITests: XCTestCase {
         XCTAssertEqual(file.scope, fileScope)
         XCTAssertEqual(sqlite.scope, sqliteScope)
         if #available(watchOS 9.0, *) {
-            let ubiquitousScope = UbiquitousStorage.Scope.shared(container: "publicAPIScope")
-            XCTAssertEqual(UbiquitousStorage(scope: ubiquitousScope, backingStore: InMemoryUbiquitousStore()).scope, ubiquitousScope)
+            let ubiquitousScope = UbiquitousStorage.Scope.shared(namespace: .keyPrefix(named: "publicAPIScope"))
+            XCTAssertEqual(UbiquitousStorage(scope: ubiquitousScope, backingStore: InMemoryUbiquitousStore(), locator: DefaultUbiquitousLocator()).scope, ubiquitousScope)
         }
     }
 
     func testStoragesAcceptBackingStores() throws {
         // Given: two default in-memory storages with the same scope, and one with a backing store of its own
-        let container = "publicAPIBacking-\(UUID().uuidString)"
-        let first = InMemoryStorage(scope: .app(container: container))
-        let second = InMemoryStorage(scope: .app(container: container))
-        let isolated = InMemoryStorage(scope: .app(container: container), backingStore: IsolatedInMemoryStore())
-        let keychain = KeychainStorage(scope: .default, backingStore: InMemoryKeychain())
+        let bucket = "publicAPIBacking-\(UUID().uuidString)"
+        let first = InMemoryStorage(scope: .app(namespace: .bucket(named: bucket)))
+        let second = InMemoryStorage(scope: .app(namespace: .bucket(named: bucket)))
+        let isolated = InMemoryStorage(scope: .app(namespace: .bucket(named: bucket)), backingStore: IsolatedInMemoryStore(), locator: DefaultInMemoryLocator())
+        let keychain = KeychainStorage(scope: .default, backingStore: InMemoryKeychain(), locator: DefaultKeychainLocator())
 
         // When
         first.save(Data([1]), forKey: "key")
@@ -130,9 +131,9 @@ final class PublicAPITests: XCTestCase {
 
     func testStoragesThatCantFailSetWithoutTry() throws {
         // Given
-        let container = "publicAPISet-\(UUID().uuidString)"
-        let inMemory = InMemoryStorage(scope: .app(container: container))
-        let userDefaults = try UserDefaultsStorage(scope: .app(.suite(container: container)))
+        let name = "publicAPISet-\(UUID().uuidString)"
+        let inMemory = InMemoryStorage(scope: .app(namespace: .bucket(named: name)))
+        let userDefaults = try UserDefaultsStorage(scope: .app(.suite(named: name)))
         defer { userDefaults.clear() }
 
         // When - Then: no `try`
@@ -145,6 +146,65 @@ final class PublicAPITests: XCTestCase {
         userDefaults.set(nil, forKey: "key")
         XCTAssertNil(inMemory.fetch(forKey: "key"))
         XCTAssertNil(userDefaults.fetch(forKey: "key"))
+    }
+
+    /// Compiles only while the storage and its locator throw `FileStorage.Error`, and clients can match every case.
+    func testFileStorageThrowsItsOwnErrors() {
+        let key = String(repeating: "a", count: 256)
+        do throws(FileStorage.Error) {
+            let storage = try FileStorage(scope: .app(.temporary, namespace: .directory(named: "publicAPI-\(UUID().uuidString)")))
+            _ = try storage.fetch(forKey: .init(name: key))
+            XCTFail("Expected .invalidKey")
+        } catch {
+            switch error {
+            case .invalidKey(key):
+                break
+            case .invalidKey, .invalidNamespace, .pathOccupied, .directoryNotFound, .groupDirectoryNotFound, .invalidDirectory,
+                 .protectedDataUnavailable, .other:
+                XCTFail("Unexpected \(error)")
+            }
+        }
+
+        do throws(FileStorage.Error) {
+            _ = try DefaultFileLocator().fileName(forKey: key, in: .default)
+            XCTFail("Expected .invalidKey")
+        } catch {
+            guard case .invalidKey(key) = error else {
+                return XCTFail("Unexpected \(error)")
+            }
+        }
+    }
+
+    func testFileStorageAcceptsALocator() throws {
+        // Given: a locator that keeps values under a legacy prefix, as an app adopting existing files might
+        final class LegacyLocator: DefaultFileLocator {
+            override func fileName(forKey key: String, in scope: FileStorage.Scope) throws(FileStorage.Error) -> String {
+                try "legacy-" + super.fileName(forKey: key, in: scope)
+            }
+
+            override func key(forFileName fileName: String, in scope: FileStorage.Scope) -> String? {
+                guard fileName.hasPrefix("legacy-") else {
+                    return nil
+                }
+
+                return super.key(forFileName: String(fileName.dropFirst("legacy-".count)), in: scope)
+            }
+        }
+
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("publicAPI-\(UUID().uuidString)", isDirectory: true)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: folder)
+        }
+
+        let storage = try FileStorage(scope: .app(.directory(at: folder)), backingStore: DefaultFileBackingStoreWrapper(), locator: LegacyLocator())
+
+        // When
+        try storage.save(Data([1]), forKey: "key")
+
+        // Then
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path), ["legacy-key"])
+        try storage.clear()
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path), [])
     }
 
     func testDefaultInitializersUseTheDefaultScope() throws {

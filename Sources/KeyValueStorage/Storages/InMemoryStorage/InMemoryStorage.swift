@@ -14,25 +14,21 @@ public final class InMemoryStorage: KeyValueDataStorage {
     // MARK: Properties
 
     private let backingStore: any InMemoryBackingStore
+    private let locator: any InMemoryLocator
     private let bucket: String?
     public let scope: Scope
 
     // MARK: Initializers
 
-    public init(scope: Scope, backingStore: any InMemoryBackingStore) {
-        switch scope {
-        case .app(nil):
-            self.bucket = nil
-        case let .app(.bucket(name)?):
-            self.bucket = name
-        }
-
+    public init(scope: Scope, backingStore: any InMemoryBackingStore, locator: any InMemoryLocator) {
+        self.bucket = locator.bucket(for: scope)
         self.scope = scope
         self.backingStore = backingStore
+        self.locator = locator
     }
 
     public convenience init(scope: Scope) {
-        self.init(scope: scope, backingStore: DefaultInMemoryBackingStoreWrapper())
+        self.init(scope: scope, backingStore: DefaultInMemoryBackingStoreWrapper(), locator: DefaultInMemoryLocator())
     }
 
     public convenience init() {
@@ -42,15 +38,15 @@ public final class InMemoryStorage: KeyValueDataStorage {
     // MARK: Main Functionality
 
     public func fetch(forKey key: Key) -> Data? {
-        backingStore.read(forKey: key, in: bucket)
+        backingStore.read(forKey: storedKey(for: key), in: bucket)
     }
 
     public func save(_ value: Data, forKey key: Key) {
-        backingStore.write(value, forKey: key, in: bucket)
+        backingStore.write(value, forKey: storedKey(for: key), in: bucket)
     }
 
     public func delete(forKey key: Key) {
-        backingStore.remove(forKey: key, in: bucket)
+        backingStore.remove(forKey: storedKey(for: key), in: bucket)
     }
 
     public func set(_ value: Data?, forKey key: Key) {
@@ -63,5 +59,11 @@ public final class InMemoryStorage: KeyValueDataStorage {
 
     public func clear() {
         backingStore.removeAll(in: bucket)
+    }
+
+    // MARK: Helpers
+
+    private func storedKey(for key: Key) -> String {
+        locator.storedKey(forKey: key, in: scope)
     }
 }

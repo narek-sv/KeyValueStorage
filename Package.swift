@@ -30,5 +30,8 @@ let package = Package(
         .testTarget(
             name: "KeyValueStoragePublicAPITests",
             dependencies: ["KeyValueStorage"]),
+        .testTarget(
+            name: "KeyValueStorageIntegrationTests",
+            dependencies: ["KeyValueStorage"]),
     ]
 )

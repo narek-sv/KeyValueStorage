@@ -14,27 +14,22 @@ public final class UbiquitousStorage: KeyValueDataStorage {
 
     // MARK: Properties
 
-    private static let maximumKeyLength = 128
     private static let maximumValueSize = 1024 * 1024
 
     private let backingStore: any UbiquitousBackingStore
-    private let keyPrefix: String?
+    private let locator: any UbiquitousLocator
     public let scope: Scope
 
     // MARK: Initializers
 
-    public init(scope: Scope, backingStore: any UbiquitousBackingStore) {
-        switch scope {
-        case let .shared(container):
-            self.keyPrefix = container.map(KeyNamespace.prefix(for:))
-        }
-
+    public init(scope: Scope, backingStore: any UbiquitousBackingStore, locator: any UbiquitousLocator) {
         self.scope = scope
         self.backingStore = backingStore
+        self.locator = locator
     }
 
     public convenience init(scope: Scope) {
-        self.init(scope: scope, backingStore: DefaultUbiquitousBackingStoreWrapper())
+        self.init(scope: scope, backingStore: DefaultUbiquitousBackingStoreWrapper(), locator: DefaultUbiquitousLocator())
     }
 
     public convenience init() {
@@ -61,8 +56,8 @@ public final class UbiquitousStorage: KeyValueDataStorage {
     }
 
     public func clear() {
-        for key in backingStore.keys() where keyPrefix.map({ key.hasPrefix($0) }) ?? true {
-            backingStore.remove(forKey: key)
+        for storedKey in backingStore.keys() where isValueKey(storedKey) {
+            backingStore.remove(forKey: storedKey)
         }
     }
 
@@ -74,11 +69,14 @@ public final class UbiquitousStorage: KeyValueDataStorage {
     // MARK: Helpers
 
     private func storedKey(for key: Key) throws(Error) -> String {
-        let storedKey = keyPrefix.map { $0 + key } ?? key
-        guard storedKey.utf16.count <= Self.maximumKeyLength else {
-            throw Error.invalidKey(key)
+        try locator.storedKey(forKey: key, in: scope)
+    }
+
+    private func isValueKey(_ storedKey: String) -> Bool {
+        guard let key = locator.key(forStoredKey: storedKey, in: scope) else {
+            return false
         }
 
-        return storedKey
+        return (try? locator.storedKey(forKey: key, in: scope)) == storedKey
     }
 }

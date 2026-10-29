@@ -8,8 +8,7 @@
 // MARK: - KeychainStorage + Key
 
 public extension KeychainStorage {
-    /// A generic password item whose account (`kSecAttrAccount`) is `name`.
-    /// - Warning: A synchronizable item can't use a `ThisDeviceOnly` accessibility, so saving it fails.
+    /// - Warning: A synchronizable item can't use a `ThisDeviceOnly` accessibility: saving it fails.
     struct Key: KeyValueDataStorageKey {
         public let name: String
         public let accessibility: Accessibility
@@ -30,8 +29,7 @@ public extension KeychainStorage {
 // MARK: - KeychainStorage.Key + ExpressibleByStringLiteral
 
 extension KeychainStorage.Key: ExpressibleByStringLiteral {
-    /// A key with this name and the defaults: `.whenUnlocked`, and not synchronized through iCloud Keychain.
-    /// - Warning: Its item can't be read while the device is locked, for example by background work.
+    /// - Warning: The default, `.whenUnlocked`, can't be read while the device is locked, such as by background work.
     public init(stringLiteral name: String) {
         self.init(name: name)
     }
@@ -40,7 +38,6 @@ extension KeychainStorage.Key: ExpressibleByStringLiteral {
 // MARK: - KeychainStorage.Key + Accessibility
 
 public extension KeychainStorage.Key {
-    /// When the key's item can be read.
     enum Accessibility: Sendable {
         /// Once the user unlocks the device after a restart.
         case afterFirstUnlock
@@ -48,9 +45,9 @@ public extension KeychainStorage.Key {
         case afterFirstUnlockThisDeviceOnly
         /// While unlocked with a passcode set; doesn't migrate, and is deleted if the passcode is removed.
         case whenPasscodeSetThisDeviceOnly
-        /// While the device is unlocked (the default).
+        /// While unlocked (the default).
         case whenUnlocked
-        /// While the device is unlocked; doesn't migrate to a new device.
+        /// While unlocked; doesn't migrate to a new device.
         case whenUnlockedThisDeviceOnly
     }
 }

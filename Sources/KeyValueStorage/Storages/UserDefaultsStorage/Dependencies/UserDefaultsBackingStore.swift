@@ -26,7 +26,7 @@ public protocol UserDefaultsSuite: AnyObject {
 
 // MARK: - DefaultUserDefaultsBackingStoreWrapper
 
-/// The live `UserDefaults`; subclass it to change single operations, such as which suite a name opens.
+/// The live `UserDefaults`.
 open class DefaultUserDefaultsBackingStoreWrapper: UserDefaultsBackingStore {
     public init() { }
 

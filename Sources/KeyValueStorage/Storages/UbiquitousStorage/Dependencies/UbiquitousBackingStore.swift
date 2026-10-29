@@ -19,7 +19,7 @@ public protocol UbiquitousBackingStore {
 
 // MARK: - DefaultUbiquitousBackingStoreWrapper
 
-/// The live iCloud key-value store; subclass it to change single operations, such as when it synchronizes.
+/// The live iCloud key-value store.
 @available(watchOS 9.0, *)
 open class DefaultUbiquitousBackingStoreWrapper: UbiquitousBackingStore {
     private var store: NSUbiquitousKeyValueStore { .default }

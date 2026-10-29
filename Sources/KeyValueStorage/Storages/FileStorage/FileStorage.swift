@@ -9,113 +9,119 @@ import Foundation
 
 // MARK: - FileStorage
 
+/// Values in files, one per key; every save replaces the file atomically.
+/// - Note: Only a regular file at a key's path is a value. Anything else there, or anything but a folder where the scope's
+///   folder goes, is never read or removed, and `save` throws `.pathOccupied`. Links are never followed.
+/// - Warning: A folder that another process puts at a key's path between `delete`'s check and its removal is removed.
 public final class FileStorage: KeyValueDataStorage {
 
     // MARK: Properties
 
     private let backingStore: any FileBackingStore
+    private let locator: any FileLocator
     private let root: URL
 
     public let scope: Scope
 
     // MARK: Initializers
 
-    public init(scope: Scope, backingStore: any FileBackingStore) throws(Error) {
-        self.root = try Self.root(for: scope, resolver: backingStore)
+    public init(scope: Scope, backingStore: any FileBackingStore, locator: any FileLocator) throws(Error) {
+        self.root = try locator.directory(for: scope)
         self.scope = scope
         self.backingStore = backingStore
+        self.locator = locator
     }
 
     public convenience init(scope: Scope) throws(Error) {
-        try self.init(scope: scope, backingStore: DefaultFileBackingStoreWrapper())
+        try self.init(scope: scope, backingStore: DefaultFileBackingStoreWrapper(), locator: DefaultFileLocator())
     }
 
     // MARK: Main Functionality
 
     public func fetch(forKey key: Key) throws(Error) -> Data? {
+        let url = try url(for: key)
+        guard try hasValue(at: url) else {
+            return nil
+        }
+
+        return try execute { try backingStore.read(at: url) }
+    }
+
+    public func save(_ value: Data, forKey key: Key) throws(Error) {
+        let url = try url(for: key)
+        switch try itemType(at: root) {
+        case .typeDirectory?:   break
+        case nil:               try execute { try backingStore.createDirectory(at: root) }
+        default:                throw .pathOccupied(root)
+        }
+
+        switch try itemType(at: url) {
+        case .typeRegular?, nil:    break
+        default:                    throw .pathOccupied(url)
+        }
+
+        try execute { try backingStore.write(value, at: url, options: Self.writingOptions(for: key.protection)) }
+    }
+
+    public func delete(forKey key: Key) throws(Error) {
+        try removeValue(at: url(for: key))
+    }
+
+    public func clear() throws(Error) {
+        guard try itemType(at: root) == .typeDirectory else {
+            return
+        }
+
+        // The folder also holds namespaces, SQLite's files and other code's files
+        let names = try execute { try backingStore.itemNames(at: root) }
+        for name in names where isValueName(name) {
+            try removeValue(at: root.appendingPathComponent(name, isDirectory: false))
+        }
+    }
+
+    // MARK: Helpers
+
+    /// The folder comes first, so a file in its place is never looked into.
+    private func hasValue(at url: URL) throws(Error) -> Bool {
+        guard try itemType(at: root) == .typeDirectory else {
+            return false
+        }
+
+        return try itemType(at: url) == .typeRegular
+    }
+
+    /// Never a folder: `remove` deletes a folder with everything inside.
+    private func removeValue(at url: URL) throws(Error) {
+        guard try hasValue(at: url) else {
+            return
+        }
+
+        try execute { try backingStore.remove(at: url) }
+    }
+
+    private func isValueName(_ name: String) -> Bool {
+        guard let key = locator.key(forFileName: name, in: scope) else {
+            return false
+        }
+
+        return (try? locator.fileName(forKey: key, in: scope)) == name
+    }
+
+    private func url(for key: Key) throws(Error) -> URL {
+        try root.appendingPathComponent(locator.fileName(forKey: key.name, in: scope), isDirectory: false)
+    }
+
+    /// `nil` only if nothing is there, so an unreadable path never passes for an empty one.
+    private func itemType(at url: URL) throws(Error) -> FileAttributeType? {
         try execute {
             do {
-                return try backingStore.read(at: url(for: key))
+                return try backingStore.itemType(at: url)
             } catch CocoaError.fileReadNoSuchFile {
                 return nil
             }
         }
     }
 
-    public func save(_ value: Data, forKey key: Key) throws(Error) {
-        try execute {
-            let url = try url(for: key)
-            let options = Self.writingOptions(for: key.protection)
-
-            do {
-                try backingStore.write(value, at: url, options: options)
-            } catch CocoaError.fileNoSuchFile {
-                try backingStore.createDirectory(at: root)
-                try backingStore.write(value, at: url, options: options)
-            }
-        }
-    }
-
-    public func delete(forKey key: Key) throws(Error) {
-        try execute {
-            try deleteFileIfExists(at: url(for: key))
-        }
-    }
-    
-    public func clear() throws(Error) {
-        try execute {
-            let fileNames: [String]
-            do {
-                fileNames = try backingStore.fileNames(at: root)
-            } catch CocoaError.fileReadNoSuchFile {
-                return
-            }
-
-            for fileName in fileNames where Self.isValueFileName(fileName) {
-                try deleteFileIfExists(at: root.appendingPathComponent(fileName))
-            }
-        }
-    }
-    
-    // MARK: Helpers
-
-    private static func root(for scope: Scope, resolver: any StorageDirectoryResolving) throws(Error) -> URL {
-        let directory: StorageDirectory
-        switch scope {
-        case .app(.applicationSupport, _):  directory = .applicationSupport
-        case .app(.cache, _):               directory = .cache
-        case .app(.documents, _):           directory = .documents
-        case .app(.temporary, _):           directory = .temporary
-        case let .app(.directory(url), _):  directory = .directory(at: url)
-        case let .appGroup(groupId, _):     directory = .appGroup(groupId: groupId)
-        }
-
-        let namespace: String?
-        switch scope.namespace {
-        case let .directory(name)?: namespace = name
-        case nil:                   namespace = nil
-        }
-
-        do throws(StorageDirectory.Failure) {
-            return try directory.url(namespace: namespace, resolver: resolver)
-        } catch {
-            switch error {
-            case let .directoryNotFound(name):  throw .directoryNotFound(name)
-            case let .groupNotFound(groupId):   throw .groupDirectoryNotFound(groupId)
-            case let .invalidDirectory(url):    throw .invalidDirectory(url)
-            }
-        }
-    }
-
-    private func deleteFileIfExists(at url: URL) throws {
-        do {
-            try backingStore.remove(at: url)
-        } catch CocoaError.fileNoSuchFile {
-        } catch {
-            throw error
-        }
-    }
-    
     private static func writingOptions(for protection: Key.Protection) -> Data.WritingOptions {
         guard #available(macOS 11, *) else {
             return .atomic
@@ -130,59 +136,6 @@ public final class FileStorage: KeyValueDataStorage {
         }
     }
 
-    private func url(for key: Key) throws -> URL {
-        let name = key.name
-        let fileName = Self.fileName(for: name)
-        let isValid = !name.isEmpty
-            && name != "."
-            && name != ".."
-            && !name.contains("/")
-            && !name.contains("\0")
-            && fileName.utf8.count <= 255
-
-        guard isValid else {
-            throw Error.invalidKey(name)
-        }
-
-        return root.appendingPathComponent(fileName, isDirectory: false)
-    }
-
-    /// Whether some key's file has this name, so `clear()` leaves other files alone, such as SQLite's dot files.
-    private static func isValueFileName(_ fileName: String) -> Bool {
-        guard let name = fileName.removingPercentEncoding else {
-            return false
-        }
-
-        return Self.fileName(for: name) == fileName.precomposedStringWithCanonicalMapping
-    }
-
-    private static func fileName(for name: String) -> String {
-        var fileName = ""
-        for character in name.precomposedStringWithCanonicalMapping {
-            let string = String(character)
-            // A leading `.` too, so values are never dot files, which SQLite storages and the system use
-            if character == "%" || (fileName.isEmpty && character == ".") || string.folding(options: .caseInsensitive, locale: nil) != string {
-                fileName += string.utf8.map { String(format: "%%%02X", $0) }.joined()
-            } else {
-                fileName += string
-            }
-        }
-        
-        return fileName
-    }
-    
-    private func convert(error: Swift.Error) -> Error {
-        if let error = error as? FileStorage.Error {
-            return error
-        }
-
-        if Self.isProtectedDataUnavailable(error) {
-            return .protectedDataUnavailable
-        }
-
-        return .other(error)
-    }
-
     private static func isProtectedDataUnavailable(_ error: Swift.Error) -> Bool {
         let error = error as NSError
         guard error.domain == NSCocoaErrorDomain,
@@ -193,13 +146,12 @@ public final class FileStorage: KeyValueDataStorage {
 
         return underlying.domain == NSPOSIXErrorDomain && underlying.code == Int(EPERM)
     }
-    
-    @discardableResult
-    private func execute<T>(_ block: () throws -> T) throws(Error) -> T {
+
+    private func execute<T>(_ body: () throws -> T) throws(Error) -> T {
         do {
-            return try block()
+            return try body()
         } catch {
-            throw convert(error: error)
+            throw Self.isProtectedDataUnavailable(error) ? .protectedDataUnavailable : .other(error)
         }
     }
 }

@@ -10,19 +10,20 @@ import Foundation
 // MARK: - FileStorage + Error
 
 public extension FileStorage {
-    /// The errors a `FileStorage` throws.
     enum Error: KeyValueDataStorageError {
-        /// The system has no container for this App Group ID, usually because the app isn't in the group.
+        /// Usually the app isn't in the group.
         case groupDirectoryNotFound(String)
-        /// The system returned no such base directory; the value is its name, such as `Documents`.
-        case directoryNotFound(String)
-        /// The URL of `AppScope.directory(at:)` isn't a file URL.
+        case directoryNotFound(FileManager.SearchPathDirectory)
+        /// Not a file URL.
         case invalidDirectory(URL)
-        /// The key is empty, `.` or `..`, contains `/` or NUL, or its encoded file name exceeds 255 bytes.
+        /// Its encoded folder name exceeds 255 bytes.
+        case invalidNamespace(String)
+        /// Its encoded file name exceeds 255 bytes.
         case invalidKey(String)
-        /// Reading or writing failed with `EPERM`: the file is protected while locked, or the sandbox denied access.
+        /// Something that isn't the scope's is at the key's file or the scope's folder; it's never removed.
+        case pathOccupied(URL)
+        /// `EPERM`: the file is protected while the device is locked, or the sandbox denied access.
         case protectedDataUnavailable
-        /// Any other file system error.
         case other(Swift.Error)
     }
 }

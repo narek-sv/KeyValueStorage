@@ -14,29 +14,24 @@ public final class KeychainStorage: KeyValueDataStorage {
     // MARK: Properties
 
     private let backingStore: any KeychainBackingStore
-    private let serviceName: String?
+    private let locator: any KeychainLocator
+    private let service: String?
     private let accessGroup: String?
 
     public let scope: Scope
 
     // MARK: Initializers
 
-    public init(scope: Scope, backingStore: any KeychainBackingStore) {
-        switch scope {
-        case let .app(appContainer):
-            self.serviceName = appContainer
-            self.accessGroup = nil
-        case let .appGroup(groupId, groupContainer):
-            self.serviceName = groupContainer
-            self.accessGroup = groupId
-        }
-
+    public init(scope: Scope, backingStore: any KeychainBackingStore, locator: any KeychainLocator) {
+        self.service = locator.service(for: scope)
+        self.accessGroup = locator.accessGroup(for: scope)
         self.scope = scope
         self.backingStore = backingStore
+        self.locator = locator
     }
 
     public convenience init(scope: Scope) {
-        self.init(scope: scope, backingStore: DefaultKeychainBackingStoreWrapper())
+        self.init(scope: scope, backingStore: DefaultKeychainBackingStoreWrapper(), locator: DefaultKeychainLocator())
     }
 
     public convenience init() {
@@ -113,7 +108,7 @@ public final class KeychainStorage: KeyValueDataStorage {
         valueData: Data? = nil
     ) -> KeychainQuery {
         query(
-            account: key.name,
+            account: locator.account(forKey: key.name, in: scope),
             synchronizable: key.isSynchronizable ? .yes : .no,
             accessibility: accessibility,
             returnData: returnData,
@@ -132,7 +127,7 @@ public final class KeychainStorage: KeyValueDataStorage {
     ) -> KeychainQuery {
         KeychainQuery(
             itemClass: .genericPassword,
-            service: serviceName,
+            service: service,
             account: account,
             accessGroup: accessGroup,
             synchronizable: synchronizable,
