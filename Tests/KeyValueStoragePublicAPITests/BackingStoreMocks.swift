@@ -6,57 +6,66 @@
 //
 
 import Foundation
+import Security
 import KeyValueStorage // intentionally not @testable: the backing storage protocols must be implementable by clients
 
 /// Keeps items in memory, because the real keychain needs entitlements that test bundles can't have.
 /// Items are identified like in the keychain: by service, account, access group and whether they're synchronizable.
 final class InMemoryKeychain: KeychainBackingStore {
-    private var items = [String: Data]()
+    private struct Item {
+        let service: String?
+        let accessGroup: String?
+        let account: String?
+        let synchronizable: Bool
+        var data: Data?
+    }
+
+    private var items = [Item]()
 
     func add(_ attributes: KeychainQuery) -> KeychainOperationStatus {
-        let id = identity(of: attributes)
-        guard items[id] == nil else {
+        guard !items.contains(where: { matches($0, attributes) }) else {
             return .duplicate
         }
 
-        items[id] = attributes.valueData
+        items.append(Item(service: attributes.service, accessGroup: attributes.accessGroup, account: attributes.account,
+                          synchronizable: attributes.synchronizable == .yes, data: attributes.valueData))
         return .success
     }
 
     func read(_ query: KeychainQuery) -> (KeychainOperationStatus, AnyObject?) {
-        guard let data = items[identity(of: query)] else {
+        let matching = items.filter { matches($0, query) }
+        guard let first = matching.first else {
             return (.notFound, nil)
         }
 
-        return (.success, data as NSData)
+        guard query.matchLimit == .all else {
+            return (.success, first.data as NSData?)
+        }
+
+        // What `clear()` lists: each item's account, synchronizability and data
+        return (.success, matching.map { item -> [String: Any] in
+            var attributes: [String: Any] = [kSecAttrAccount as String: item.account ?? "", kSecAttrSynchronizable as String: item.synchronizable]
+            attributes[kSecValueData as String] = item.data
+            return attributes
+        } as NSArray)
     }
 
     func update(_ query: KeychainQuery, with attributes: KeychainQuery) -> KeychainOperationStatus {
-        let id = identity(of: query)
-        guard items[id] != nil else {
-            return .notFound
-        }
-
-        items[id] = attributes.valueData
-        return .success
+        let indices = items.indices.filter { matches(items[$0], query) }
+        indices.forEach { items[$0].data = attributes.valueData }
+        return indices.isEmpty ? .notFound : .success
     }
 
     func remove(_ query: KeychainQuery) -> KeychainOperationStatus {
-        // A query without an account matches every item of the service and access group, like `clear()` sends
-        let matching = query.account == nil
-            ? items.keys.filter { $0.hasPrefix(scope(of: query)) }
-            : items.keys.filter { $0 == identity(of: query) }
-
-        matching.forEach { items[$0] = nil }
-        return matching.isEmpty ? .notFound : .success
+        let count = items.count
+        items.removeAll { matches($0, query) }
+        return items.count == count ? .notFound : .success
     }
 
-    private func scope(of query: KeychainQuery) -> String {
-        "\(query.service ?? "")|\(query.accessGroup ?? "")|"
-    }
-
-    private func identity(of query: KeychainQuery) -> String {
-        scope(of: query) + "\(query.account ?? "")|\(query.synchronizable == .yes)"
+    private func matches(_ item: Item, _ query: KeychainQuery) -> Bool {
+        item.service == query.service && item.accessGroup == query.accessGroup
+            && (query.account == nil || item.account == query.account)
+            && (query.synchronizable == .any || item.synchronizable == (query.synchronizable == .yes))
     }
 }
 

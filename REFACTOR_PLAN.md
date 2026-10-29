@@ -9,7 +9,8 @@
   - **Done: SQLite** (§5.6): locator and storage tests, integration tests against real SQLite, the error audit (no force unwraps left), and the 3.x tests ported and deleted. Gated files at 100%.
   - **Done: UserDefaults** (§5.4): only `Data` is a value (§4.6, now the rule for every storage), root keys escaped so `clear()` is exact, byte-exact keys, and the 3.x tests ported and deleted. Gated files at 100%.
   - **Done: Ubiquitous** (§5.7): the UserDefaults scheme and the only-`Data` rule, the 128-unit key limit on the stored key, and the escaping fix. Gated files at 100%; the default adapter needs a signed host with the iCloud entitlement.
-  - **Next:** Keychain, InMemory.
+  - **Done: Keychain** (§5.2): the root uses service `""` and App Group services carry the group, so no scope reaches another's items; only `Data` items are values; KeychainHost runs again, with real-keychain tests. Gated files at 100%.
+  - **Next:** InMemory.
 - **Done: phases 0–6, the source side.** The synchronous `KeyValueDataStorage` with `init(scope:backingStore:)`, typed throws, scopes with namespaces, every storage on its backing store, the global actors removed, and `KeychainWrapper.swift` deleted.
 - **Added: `UbiquitousStorage`** (§5.7), on the same pattern.
 - **Tests:** the public API target and the coder tests are on the 4.0 API and pass. The 3.x unit tests live in `Tests/Legacy3x/` (not a target) as the porting reference; each storage's locator step ports and deletes its file.
@@ -181,7 +182,7 @@ What stays in the storages: system calls and their retries (File's `createDirect
 - **Root vs namespace:**
   - File and SQLite keep namespaces in folders. **Files are values and folders are namespaces:** a key's value is only ever a file, its name never contains `.`, and a folder is never read, replaced or removed as a value. Namespace folders end with `!`, which no key's file name does (a `!` is always followed by a letter), so a root key and a namespace with the same name coexist. `.pathOccupied` comes only from other code's items, and nothing is ever removed to make room.
   - UserDefaults and Ubiquitous percent-encode `%` and `/` in root keys, so a root stored key never contains `/` and can't equal a namespaced one (`<encoded namespace>/<key>`).
-  - Keychain's root uses service `""`, and `.app` scopes use the app's default access group (verified in KeychainHost), so neither reaches another scope's items.
+  - Keychain's root uses service `""`, so it no longer matches every service. An app scope's queries search every access group the app has, so App Group services are `<group>/<namespace>` (escaped): an app scope's service never contains `/`, and no two scopes share a service. Verified in KeychainHost, also when the app's default access group is the App Group.
 - **Not fixable without marking stored names:** in a space shared with other code's entries (a folder the user picked, `UserDefaults.standard`), the root `clear()` also removes entries that a key could have produced, such as `notes` or `AppleLanguages`. A namespace never does. Each scope's docs say so.
 - **Laws** run against every default locator: round trip; no collisions within a namespace (File: also case-insensitively and canonically, as on APFS, with keys compared by their exact scalars); no collisions across namespaces, including the root; and no claiming of names that another scope or no key produces.
 
@@ -194,7 +195,7 @@ One rule in every storage: an entry is a value only if it has the storage's valu
 | File | a regular file, never a folder or a link | `.pathOccupied(URL)` |
 | UserDefaults | a `Data` object; registered defaults count, process-wide | `.keyOccupied(storedKey)` |
 | Ubiquitous | a `Data` object | `.keyOccupied(storedKey)` |
-| Keychain | a generic password whose data reads as `Data`; replaces today's `.unexpectedItemData` | step 5, verified in KeychainHost |
+| Keychain | a generic password whose data reads as `Data` (an item can have none) | `.keyOccupied(account)` |
 | SQLite, InMemory | — | exclusive locations: the database file and the bucket are the scope's alone, and their values are typed (`BLOB`, `Data`), so there is no other code's entry to keep |
 
 ## 5. Storages
@@ -234,27 +235,31 @@ The setup members are `createDirectory(at:)` (always creates intermediate direct
 | UserDefaults | `.app(.suite(named: s), namespace: n)` | suite `s` |
 | UserDefaults | `.appGroup(g, namespace: n)` | suite `g` |
 | UserDefaults, Ubiquitous | `.keyPrefix(named: n)` | keys stored as `"<n with % → %25, / → %2F>/<key>"`; at the root (`nil`), keys stored with `%` → `%25` and `/` → `%2F` (§4.5) |
-| Keychain | `.app(namespace: n)` | `kSecAttrService = n` (root: `""`, §4.5), the app's default access group |
-| Keychain | `.appGroup(g, namespace: n)` | `kSecAttrService = n` (root: `""`), `kSecAttrAccessGroup = g` |
+| Keychain | `.app(namespace: n)` | `kSecAttrService = n` (root `""`, empty `%`; `%` and `/` escaped), no access group: saves go to the app's default one, queries search them all |
+| Keychain | `.appGroup(g, namespace: n)` | `kSecAttrService = <g>/<n>` (root `<g>/`), `kSecAttrAccessGroup = g` |
 | InMemory | `.app(namespace: n)` | bucket `n` (`nil` is a bucket of its own) |
 | Ubiquitous | `.shared(namespace: n)` | `NSUbiquitousKeyValueStore.default` (the store of the target's kvstore entitlement) |
 
 Defaults: every `default` scope uses the namespace `"KeyValueStorage"`: File and SQLite `.app(.applicationSupport, namespace: .directory(named:))`, UserDefaults `.app(.suite(named: "KeyValueStorage"), namespace: .keyPrefix(named:))`, Keychain `.app(namespace: .service(named:))`, InMemory `.app(namespace: .bucket(named:))`, Ubiquitous `.shared(namespace: .keyPrefix(named:))`.
 
-The root encoding (§4.5), the Keychain root service `""` and the `.app` access group land with their locator steps.
+The root encodings (§4.5) and the Keychain services are done.
 
-### 5.2 KeychainStorage (backing already exists; start here)
+### 5.2 KeychainStorage (done)
 
-Backing (exists): `KeychainBackingStore` with `read`, `add`, `update` and `remove`, each taking a `KeychainQuery` and returning a `KeychainOperationStatus`; the default is `DefaultKeychainBackingStoreWrapper`.
+**Backing store:** `KeychainBackingStore`, one Security call per member: `read` (`SecItemCopyMatching`), `add`, `update` and `remove` (`SecItemDelete`, every item the query matches), each taking a `KeychainQuery`. `KeychainQuery` gained `returnAttributes`.
 
-Changes:
-- `final class KeychainStorage: KeyValueDataStorage`, `init(scope:backingStorage:)`, and `convenience init(scope:)` passing `DefaultKeychainBackingStoreWrapper()`.
-- Remove `nonisolated` on the type, `@unchecked Sendable`, `required convenience init()`, and the `set` implementation.
-- Drop `: Sendable` from `KeychainBackingStore` (D15). Make `KeychainOperationStatus` `Sendable`.
-- **Delete `Helpers/KeychainWrapper.swift`** (no longer referenced).
-- Extract the repeated query construction into a private `baseQuery(for key:)` / `serviceQuery()` helper.
+**Locator:** `service(for:)` is the namespace, `""` at the root and `%` for an empty name; an App Group's is `<group>/<namespace>`, with `%` and `/` escaped byte by byte in both. `accessGroup(for:)` is `nil` for an app scope, so saves go to the app's default group, and the App Group's ID otherwise. `account(forKey:in:)` keeps the key's exact bytes.
 
-Logic owned by the storage (all mock-tested): query fields per scope, synchronizable mapping, accessibility on add and update, status → result/error mapping.
+**Storage:** only an item whose data is `Data` is a value (§4.6); an item can exist without data. `fetch` returns `nil` for it, `save` throws `.keyOccupied(account)` instead of updating it (replacing `.unexpectedItemData`), and `delete` and `clear()` never remove it. `save` reads first, then adds or updates. `clear()` lists the scope's items with their data and removes each `Data` item by account and synchronizability, because a query can't match on data; an item it can't identify is left alone. Any other status → `.os(status)`. If another process changes an item between the check and the call, the call's status is thrown.
+- **Interop:** App Group items move to service `<group>/<namespace>`; an app scope's service changes only for a namespace with `%` or `/`; the root's queries now name service `""`, which items saved without a service also have. Reading items written before needs a custom locator. A CHANGELOG note.
+
+**Measured in KeychainHost (iOS Simulator):**
+- service `""` matches items saved with `""` or without a service, and no other service; a query without a service matches every service;
+- the default access group is the first `keychain-access-groups` entry; a query without a group finds App Group items, and naming a group keeps others out;
+- a group the app isn't entitled to → `errSecMissingEntitlement`;
+- an item added without data reads as success with a `nil` result;
+- a synchronizable and a non-synchronizable item with the same service and account are separate items;
+- `kSecReturnData` with `kSecMatchLimitAll` lists every item, with data where it has some.
 
 ### 5.3 FileStorage (done: the locator pilot)
 
@@ -489,19 +494,18 @@ Tests/
 
 **Scope → folder** (default File and SQLite locators, with fixed system directories): each case builds the right path, with and without a namespace. Application Support, Caches and Documents each return `nil` → `.directoryNotFound(directory)`. A `nil` group container → `.groupDirectoryNotFound(id)`. A URL that isn't a file URL → `.invalidDirectory`. The temporary directory never fails. Namespaces are encoded like keys, a name over 255 bytes throws before the lookups, and no two namespaces or the root share a folder, compared case-insensitively.
 
-**KeychainStorage**
-- init: `.app(nil)`, `.app(c)`, `.appGroup(g, nil)`, `.appGroup(g, c)` → service and access group in every query.
-- fetch:
-  - `.success` with `Data` → the data; `.success` with a non-`Data` result → `nil`; `.notFound` → `nil`.
-  - each other status (`.duplicate`, `.interactionNotAllowed`, `.missingEntitlement`, `.otherError`) → `.os(status)`.
-  - synchronizable true/false; query has `returnData` and `.one`.
-- save:
-  - add `.success` → done, no update.
-  - add `.duplicate` → update `.success` → done; add `.duplicate` → update failure → `.os`.
-  - add other status → `.os`, no update.
-  - accessibility present in the add attributes and in the update attributes; the update query has no value or accessibility.
-- delete: `.success`, `.notFound` → ok; other → `.os`.
-- clear: `.success`, `.notFound` → ok; other → `.os`; the query has `.any` synchronizable and no account.
+**DefaultKeychainLocator** (`DefaultKeychainLocatorTests`, no mocks)
+- services for the root, a namespace, the empty name, escapes (also with a combining mark), App Groups with and without a namespace;
+- no two scopes, app or App Group, share a service, over names that mimic each other's escapes and separators;
+- access groups; accounts are the keys' exact bytes.
+
+**KeychainStorage** (`KeychainStorageTests`; `KeychainBackingStoreMock`, an in-memory keychain with the real query rules, and `KeychainLocatorStub`)
+- queries use exactly the locator's names; `scope` is the one given;
+- the exact queries: the item read with `returnData` and `.one`, then added with accessibility and data, or updated with a query without them; synchronizable keys are items of their own;
+- only `Data` is a value: an item without data is never fetched, replaced or removed, and `save` throws `.keyOccupied`;
+- delete; `clear()` removes only the scope's `Data` items, synchronizable or not, and nothing it can't identify; without items it only lists;
+- every failing read, add, update and remove → `.os(status)`, and nothing changes;
+- `set`; the root, an app namespace and App Groups (one of them the default access group) never reach each other's items.
 
 **DefaultFileLocator** (`DefaultFileLocatorTests`, no mocks)
 - **File names:**
@@ -642,7 +646,11 @@ Tests/
   - `clear()` is exact across the root, two namespaces, other code's data and values of other types, and never changes the global domain;
   - `NSGlobalDomain` → `.invalidSuiteName`.
 - **`DefaultInMemoryBackingStoreWrapper`:** concurrent access from many tasks.
-- **Keychain:** `DefaultKeychainBackingStoreWrapper` in KeychainHost (entitlements): add, match, update, delete, `.duplicate`/`.notFound`, `.missingEntitlement` for a group it isn't entitled to.
+- **Keychain** (`KeychainIntegrationTests` in KeychainHost, done; the 3.x tests are ported and deleted):
+  - values round-trip and persist; accessibility is set on add and on update; synchronizable keys are items of their own;
+  - the root never reaches namespaced items; an app scope and App Groups, one of them the default group, never reach each other's items;
+  - a group the app isn't entitled to → `.os(errSecMissingEntitlement)`;
+  - another app's item without data is never replaced or removed; items without a service share the root, as documented.
 - **End-to-end:** one save/fetch/clear per storage through `UnifiedStorage` with real backings in temporary scopes.
 
 ### 11.4 CI

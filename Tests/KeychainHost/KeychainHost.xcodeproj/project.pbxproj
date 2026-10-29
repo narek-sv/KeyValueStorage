@@ -8,8 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		A10000000000000000000020 /* KeychainHostApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000012 /* KeychainHostApp.swift */; };
-		A10000000000000000000021 /* KeychainStorageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000014 /* KeychainStorageTests.swift */; };
-		A10000000000000000000022 /* KeychainHelperMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000015 /* KeychainHelperMock.swift */; };
+		A10000000000000000000021 /* KeychainIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000014 /* KeychainIntegrationTests.swift */; };
 		A10000000000000000000023 /* KeyValueStorage in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000061 /* KeyValueStorage */; };
 /* End PBXBuildFile section */
 
@@ -28,8 +27,7 @@
 		A10000000000000000000011 /* KeychainHostTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KeychainHostTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10000000000000000000012 /* KeychainHostApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHostApp.swift; sourceTree = "<group>"; };
 		A10000000000000000000013 /* KeychainHost.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = KeychainHost.entitlements; sourceTree = "<group>"; };
-		A10000000000000000000014 /* KeychainStorageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataStorageTests/KeychainStorageTests.swift; sourceTree = "<group>"; };
-		A10000000000000000000015 /* KeychainHelperMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mocks/KeychainHelperMock.swift; sourceTree = "<group>"; };
+		A10000000000000000000014 /* KeychainIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainIntegrationTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -55,7 +53,7 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000004 /* App */,
-				A10000000000000000000005 /* KeyValueStorageTests */,
+				A10000000000000000000005 /* Tests */,
 				A10000000000000000000003 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -78,14 +76,12 @@
 			path = App;
 			sourceTree = "<group>";
 		};
-		A10000000000000000000005 /* KeyValueStorageTests */ = {
+		A10000000000000000000005 /* Tests */ = {
 			isa = PBXGroup;
 			children = (
-				A10000000000000000000014 /* KeychainStorageTests.swift */,
-				A10000000000000000000015 /* KeychainHelperMock.swift */,
+				A10000000000000000000014 /* KeychainIntegrationTests.swift */,
 			);
-			name = KeyValueStorageTests;
-			path = ../KeyValueStorageTests;
+			path = Tests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -196,8 +192,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A10000000000000000000021 /* KeychainStorageTests.swift in Sources */,
-				A10000000000000000000022 /* KeychainHelperMock.swift in Sources */,
+				A10000000000000000000021 /* KeychainIntegrationTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

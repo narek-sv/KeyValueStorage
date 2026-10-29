@@ -11,9 +11,13 @@ import Security
 // MARK: - KeychainBackingStore
 
 public protocol KeychainBackingStore {
+    /// `SecItemCopyMatching`.
     func read(_ query: KeychainQuery) -> (KeychainOperationStatus, AnyObject?)
+    /// `SecItemAdd`.
     func add(_ attributes: KeychainQuery) -> KeychainOperationStatus
+    /// `SecItemUpdate`.
     func update(_ query: KeychainQuery, with attributes: KeychainQuery) -> KeychainOperationStatus
+    /// `SecItemDelete`, which removes every item the query matches.
     func remove(_ query: KeychainQuery) -> KeychainOperationStatus
 }
 
@@ -53,6 +57,7 @@ public struct KeychainQuery: Sendable, Equatable {
     public let synchronizable: Synchronizable?
     public let accessibility: KeychainStorage.Key.Accessibility?
     public let useDataProtectionKeychain: Bool?
+    public let returnAttributes: Bool?
     public let returnData: Bool?
     public let matchLimit: MatchLimit?
     public let valueData: Data?
@@ -65,6 +70,7 @@ public struct KeychainQuery: Sendable, Equatable {
         synchronizable: Synchronizable? = nil,
         accessibility: KeychainStorage.Key.Accessibility? = nil,
         useDataProtectionKeychain: Bool? = nil,
+        returnAttributes: Bool? = nil,
         returnData: Bool? = nil,
         matchLimit: MatchLimit? = nil,
         valueData: Data? = nil
@@ -76,6 +82,7 @@ public struct KeychainQuery: Sendable, Equatable {
         self.synchronizable = synchronizable
         self.accessibility = accessibility
         self.useDataProtectionKeychain = useDataProtectionKeychain
+        self.returnAttributes = returnAttributes
         self.returnData = returnData
         self.matchLimit = matchLimit
         self.valueData = valueData
@@ -90,6 +97,7 @@ public struct KeychainQuery: Sendable, Equatable {
         dictionary[kSecAttrSynchronizable as String] = synchronizable?.value
         dictionary[kSecAttrAccessible as String] = accessibility?.value
         dictionary[kSecUseDataProtectionKeychain as String] = useDataProtectionKeychain
+        dictionary[kSecReturnAttributes as String] = returnAttributes
         dictionary[kSecReturnData as String] = returnData
         dictionary[kSecMatchLimit as String] = matchLimit?.value
         dictionary[kSecValueData as String] = valueData
