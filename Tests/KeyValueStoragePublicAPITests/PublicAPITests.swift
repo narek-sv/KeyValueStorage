@@ -129,21 +129,21 @@ final class PublicAPITests: XCTestCase {
         first.clear()
     }
 
-    func testStoragesThatCantFailSetWithoutTry() throws {
+    func testOperationsThatCantFailNeedNoTry() throws {
         // Given
         let name = "publicAPISet-\(UUID().uuidString)"
         let inMemory = InMemoryStorage(scope: .app(namespace: .bucket(named: name)))
         let userDefaults = try UserDefaultsStorage(scope: .app(.suite(named: name)))
         defer { userDefaults.clear() }
 
-        // When - Then: no `try`
+        // When - Then: no `try`, except for UserDefaults' saves, which throw `.keyOccupied`
         inMemory.set(Data([1]), forKey: "key")
-        userDefaults.set(Data([2]), forKey: "key")
+        try userDefaults.set(Data([2]), forKey: "key")
         XCTAssertEqual(inMemory.fetch(forKey: "key"), Data([1]))
         XCTAssertEqual(userDefaults.fetch(forKey: "key"), Data([2]))
 
         inMemory.set(nil, forKey: "key")
-        userDefaults.set(nil, forKey: "key")
+        userDefaults.delete(forKey: "key")
         XCTAssertNil(inMemory.fetch(forKey: "key"))
         XCTAssertNil(userDefaults.fetch(forKey: "key"))
     }

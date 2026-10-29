@@ -7,7 +7,8 @@
   - **Done: lossless file names.** File and SQLite name every file and folder with one encoding of the exact bytes (§5.3); only a name over 255 bytes fails, and `InvalidFileNameReason` is gone.
   - **Done: every storage has its locator.** All naming lives in `Storages/<Name>/Dependencies/<Name>Locator.swift`; `StorageDirectory`, `StorageDirectoryLookup` and `KeyNamespace` are gone. The other five moved their rules as they were; their steps still bring the clash fixes (§4.5), the error audit and the tests.
   - **Done: SQLite** (§5.6): locator and storage tests, integration tests against real SQLite, the error audit (no force unwraps left), and the 3.x tests ported and deleted. Gated files at 100%.
-  - **Next:** UserDefaults, Ubiquitous, Keychain, InMemory.
+  - **Done: UserDefaults** (§5.4): only `Data` is a value (§4.6, now the rule for every storage), root keys escaped so `clear()` is exact, byte-exact keys, and the 3.x tests ported and deleted. Gated files at 100%.
+  - **Next:** Ubiquitous, Keychain, InMemory.
 - **Done: phases 0–6, the source side.** The synchronous `KeyValueDataStorage` with `init(scope:backingStore:)`, typed throws, scopes with namespaces, every storage on its backing store, the global actors removed, and `KeychainWrapper.swift` deleted.
 - **Added: `UbiquitousStorage`** (§5.7), on the same pattern.
 - **Tests:** the public API target and the coder tests are on the 4.0 API and pass. The 3.x unit tests live in `Tests/Legacy3x/` (not a target) as the porting reference; each storage's locator step ports and deletes its file.
@@ -183,6 +184,18 @@ What stays in the storages: system calls and their retries (File's `createDirect
 - **Not fixable without marking stored names:** in a space shared with other code's entries (a folder the user picked, `UserDefaults.standard`), the root `clear()` also removes entries that a key could have produced, such as `notes` or `AppleLanguages`. A namespace never does. Each scope's docs say so.
 - **Laws** run against every default locator: round trip; no collisions within a namespace (File: also case-insensitively and canonically, as on APFS, with keys compared by their exact scalars); no collisions across namespaces, including the root; and no claiming of names that another scope or no key produces.
 
+### 4.6 Only the storage's own values
+
+One rule in every storage: an entry is a value only if it has the storage's value type. Anything else at a key's place is other code's. `fetch` returns `nil`, `delete` and `clear()` never remove it, and `save` throws the storage's "occupied" error instead of replacing it.
+
+| Storage | A value is | Otherwise |
+|---|---|---|
+| File | a regular file, never a folder or a link | `.pathOccupied(URL)` |
+| UserDefaults | a `Data` object; registered defaults count, process-wide | `.keyOccupied(storedKey)` |
+| Ubiquitous | a `Data` object | `.keyOccupied(storedKey)` (step 4) |
+| Keychain | a generic password whose data reads as `Data`; replaces today's `.unexpectedItemData` | step 5, verified in KeychainHost |
+| SQLite, InMemory | — | exclusive locations: the database file and the bucket are the scope's alone, and their values are typed (`BLOB`, `Data`), so there is no other code's entry to keep |
+
 ## 5. Storages
 
 Common shape for every storage, matching `FileStorage` today:
@@ -270,28 +283,16 @@ Logic owned by the storage (all mock-tested): query fields per scope, synchroniz
 
 `writingOptions(for:)` has a `#available(macOS 11, *)` fallback that can't run on any CI host. It's the only uncovered region (open decision 1).
 
-### 5.4 UserDefaultsStorage
+### 5.4 UserDefaultsStorage (done)
 
-New backing:
+**Backing store:** `UserDefaultsBackingStore` (`standard`, `suite(named:)`) opens a `UserDefaultsSuite`, one call per member: `read(forKey:)` (`object(forKey:)`: any property-list value, registered defaults included), `write(_:forKey:)`, `remove(forKey:)` and `keys()` (`dictionaryRepresentation().keys`, the global domain's included).
 
-```swift
-public protocol UserDefaultsBackingStore {
-    var appIdentifier: String { get }
-    var standard: any UserDefaultsSuite { get }                     // UserDefaults.standard
-    func suite(named name: String) -> (any UserDefaultsSuite)?      // UserDefaults(suiteName:)
-}
+**Locator:** `suite(for:)` is an app scope's suite, or the App Group's suite named after the group. `storedKey(forKey:in:)` is `<namespace>/<key>`, or the root key as is, with `%` → `%25` and `/` → `%2F` in the namespace and in root keys, so a root key never contains `/` and never equals a namespace's. It escapes byte by byte: Foundation's `replacingOccurrences` skips a `/` that carries a combining mark. `key(forStoredKey:in:)` is the exact inverse, compared by bytes.
 
-public protocol UserDefaultsSuite: AnyObject {
-    func read(forKey key: String) -> Data?          // UserDefaults.data(forKey:)
-    func write(_ data: Data, forKey key: String)    // UserDefaults.set(_:forKey:)
-    func remove(forKey key: String)                 // UserDefaults.removeObject(forKey:)
-    func keys() -> [String]                         // UserDefaults.dictionaryRepresentation().keys
-}
-
-final class DefaultUserDefaultsSuite: UserDefaultsSuite { /* wraps a UserDefaults */ }
-```
-
-`standard` and `suite(named:)` are separate so the adapter has no branch. The storage keeps suite naming, the App Group key namespace and prefix-scoped `clear()`.
+**Storage:** only `Data` is a value (§4.6). `fetch` returns `nil` for anything else; `save` throws `.keyOccupied(storedKey)` instead of replacing it; `delete` and `clear()` never remove it. `clear()` removes the `Data` at every stored key the locator claims and maps back byte for byte. Keys are exact bytes: the suite keeps `"é"` and `"e\u{301}"` apart.
+- Registered defaults are process-wide, so a registered non-`Data` default under a stored key makes `save` throw in every suite.
+- `keys()` lists the global domain's keys too, but removing one only touches the suite's own domain, so a root `clear()` never changes the global domain.
+- **Interop:** root keys containing `%` or `/` are stored escaped (`a/b` → `a%2Fb`); other keys are unchanged. A CHANGELOG note.
 
 ### 5.5 InMemoryStorage
 
@@ -554,11 +555,19 @@ Tests/
 - **Links:** a link to a file or a folder at a key's path is never a value and never touched, and `save` reports it; a link in the scope's folder's place is never followed.
 - **Permissions:** a read-only folder reports `EACCES` and changes nothing; a folder that can't be looked into reports `EACCES` and is never taken for empty; an unreadable file reports `EACCES` and can still be deleted.
 
-**UserDefaultsStorage**
-- init: `.standard` → `standard`, no prefix; `.suite(c)` → `suite(named: "<appId>.<c>")`, and `nil` → `.invalidSuiteName`; `.appGroup(g, c)` → `suite(named: g)` + prefix, and `nil` → error.
-- prefix encoding: plain, `/`, `%`, both, empty container; containers `a` + key `b/c` and `a/b` + key `c` never collide.
-- fetch, save, delete: with and without prefix (exact key passed to the suite).
-- clear: no prefix removes every key; with a prefix, only prefixed keys (others and foreign values stay); empty suite.
+**DefaultUserDefaultsLocator** (`DefaultUserDefaultsLocatorTests`, no mocks)
+- each scope's suite; an App Group's keys are prefixed like an app scope's;
+- namespaced keys: `ns/key`, `/` and `%` in the namespace escaped (also with a combining mark), an empty namespace, a key with `/` and `%` kept as is;
+- root keys escape only `%` and `/`;
+- not claimed: a root `a/b`, `%41`, `%2f`, a lone or trailing `%`; for a namespace, its name alone, another namespace's keys, an escaped `/` or another case;
+- laws within each scope, with bytes as the comparison; no two scopes, the root included, share or claim each other's stored keys.
+
+**UserDefaultsStorage** (`UserDefaultsStorageTests`; `UserDefaultsBackingStoreMock`, `UserDefaultsLocatorStub`)
+- init: the locator's suite, `standard` or named; a name `UserDefaults` rejects → `.invalidSuiteName`; `scope` is the one given;
+- only `Data` is a value: a string, number, Boolean, date, array or dictionary under a key is never fetched, replaced or removed, and `save` throws `.keyOccupied`;
+- `save` writes and replaces `Data`; `delete` removes it, and reads nothing else;
+- `clear()` removes only the `Data` at claimed stored keys; it skips keys the locator maps to a key with another stored key, also when they differ only in how `é` is written;
+- `set`.
 
 **InMemoryStorage:** fetch hit and miss; save; delete; clear; two containers stay apart; default container; exact container passed to the backing.
 
@@ -621,7 +630,11 @@ Tests/
   - a file where the folder goes → `.other`, kept; a folder at the database path → `SQLITE_CANTOPEN`; a corrupt database → `SQLITE_NOTADB`, kept; another app's view → `SQLITE_ERROR`;
   - a lock held by another connection → `SQLITE_BUSY` after the 1 s timeout, reads still working in WAL mode; a dropped table → `SQLITE_ERROR` until reopened.
   - Uncovered: `sqlite3_open_v2` returning no handle, which happens only out of memory.
-- **`UserDefaults` adapter:** a unique suite name per test, removed in teardown; `standard` is the same object as `UserDefaults.standard`.
+- **UserDefaults** (`UserDefaultsIntegrationTests`, done; a suite of each test's own, removed in teardown):
+  - values persist across instances; stored keys are the locator's exact bytes (`a%2Fb`, `ns/a/b`, both spellings of `é`, the empty key); `.standard` is `UserDefaults.standard`;
+  - a value of another type is never replaced or removed; a registered non-`Data` default occupies its key;
+  - `clear()` is exact across the root, two namespaces, other code's data and values of other types, and never changes the global domain;
+  - `NSGlobalDomain` → `.invalidSuiteName`.
 - **`DefaultInMemoryBackingStoreWrapper`:** concurrent access from many tasks.
 - **Keychain:** `DefaultKeychainBackingStoreWrapper` in KeychainHost (entitlements): add, match, update, delete, `.duplicate`/`.notFound`, `.missingEntitlement` for a group it isn't entitled to.
 - **End-to-end:** one save/fetch/clear per storage through `UnifiedStorage` with real backings in temporary scopes.

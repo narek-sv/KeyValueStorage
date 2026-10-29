@@ -42,28 +42,25 @@ public final class UserDefaultsStorage: KeyValueDataStorage {
     // MARK: Main Functionality
 
     public func fetch(forKey key: Key) -> Data? {
-        suite.read(forKey: storedKey(for: key))
+        suite.read(forKey: storedKey(for: key)) as? Data
     }
 
-    public func save(_ value: Data, forKey key: Key) {
-        suite.write(value, forKey: storedKey(for: key))
+    public func save(_ value: Data, forKey key: Key) throws(Error) {
+        let storedKey = storedKey(for: key)
+        if let object = suite.read(forKey: storedKey), !(object is Data) {
+            throw .keyOccupied(storedKey)
+        }
+
+        suite.write(value, forKey: storedKey)
     }
 
     public func delete(forKey key: Key) {
-        suite.remove(forKey: storedKey(for: key))
-    }
-
-    public func set(_ value: Data?, forKey key: Key) {
-        if let value {
-            save(value, forKey: key)
-        } else {
-            delete(forKey: key)
-        }
+        removeValue(forStoredKey: storedKey(for: key))
     }
 
     public func clear() {
         for storedKey in suite.keys() where isValueKey(storedKey) {
-            suite.remove(forKey: storedKey)
+            removeValue(forStoredKey: storedKey)
         }
     }
 
@@ -73,11 +70,21 @@ public final class UserDefaultsStorage: KeyValueDataStorage {
         locator.storedKey(forKey: key, in: scope)
     }
 
+    /// Never a value of another type: it isn't the scope's.
+    private func removeValue(forStoredKey storedKey: String) {
+        guard suite.read(forKey: storedKey) is Data else {
+            return
+        }
+
+        suite.remove(forKey: storedKey)
+    }
+
     private func isValueKey(_ storedKey: String) -> Bool {
         guard let key = locator.key(forStoredKey: storedKey, in: scope) else {
             return false
         }
 
-        return locator.storedKey(forKey: key, in: scope) == storedKey
+        // Bytes, not `==`: the suite tells canonically equal keys apart
+        return locator.storedKey(forKey: key, in: scope).utf8.elementsEqual(storedKey.utf8)
     }
 }

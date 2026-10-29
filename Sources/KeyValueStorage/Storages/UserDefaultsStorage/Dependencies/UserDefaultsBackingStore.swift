@@ -10,17 +10,23 @@ import Foundation
 // MARK: - UserDefaultsBackingStore
 
 public protocol UserDefaultsBackingStore {
+    /// `UserDefaults.standard`.
     var standard: any UserDefaultsSuite { get }
 
+    /// `UserDefaults(suiteName:)`.
     func suite(named name: String) -> (any UserDefaultsSuite)?
 }
 
 // MARK: - UserDefaultsSuite
 
 public protocol UserDefaultsSuite: AnyObject {
-    func read(forKey key: String) -> Data?
+    /// `UserDefaults.object(forKey:)`, which also returns registered defaults.
+    func read(forKey key: String) -> Any?
+    /// `UserDefaults.set(_:forKey:)`.
     func write(_ data: Data, forKey key: String)
+    /// `UserDefaults.removeObject(forKey:)`.
     func remove(forKey key: String)
+    /// `UserDefaults.dictionaryRepresentation().keys`, which also lists the global domain's keys.
     func keys() -> [String]
 }
 
@@ -48,8 +54,8 @@ final class DefaultUserDefaultsSuite: UserDefaultsSuite {
         self.userDefaults = userDefaults
     }
 
-    func read(forKey key: String) -> Data? {
-        userDefaults.data(forKey: key)
+    func read(forKey key: String) -> Any? {
+        userDefaults.object(forKey: key)
     }
 
     func write(_ data: Data, forKey key: String) {

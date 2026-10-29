@@ -21,8 +21,8 @@ public protocol UserDefaultsLocator {
 
 // MARK: - DefaultUserDefaultsLocator
 
-/// Stores a namespace's keys as `<namespace>/<key>`, with `%` and `/` in the namespace percent-encoded.
-/// - Warning: Without a namespace, keys are stored as is, and the scope claims every key of the suite.
+/// Stores a namespace's keys as `<namespace>/<key>` and root keys as they are, with `%` and `/` percent-encoded
+/// in the namespace and in root keys, so a root key never contains `/` and never equals a namespace's.
 /// - Note: A subclass that changes stored keys overrides both key methods.
 open class DefaultUserDefaultsLocator: UserDefaultsLocator {
     public init() { }
@@ -35,25 +35,66 @@ open class DefaultUserDefaultsLocator: UserDefaultsLocator {
     }
 
     open func storedKey(forKey key: String, in scope: UserDefaultsStorage.Scope) -> String {
-        Self.prefix(of: scope).map { $0 + key } ?? key
+        Self.storedKey(forKey: key, in: scope)
     }
 
     open func key(forStoredKey storedKey: String, in scope: UserDefaultsStorage.Scope) -> String? {
-        guard let prefix = Self.prefix(of: scope) else {
-            return storedKey
+        let key: String?
+        switch scope.namespace {
+        case let .keyPrefix(name)?:
+            let prefix = Self.escaped(name) + "/"
+            // Bytes, not characters: a key can start with a combining mark, which joins the `/` before it
+            key = storedKey.utf8.starts(with: prefix.utf8) ? String(decoding: storedKey.utf8.dropFirst(prefix.utf8.count), as: UTF8.self) : nil
+        case nil:
+            key = Self.unescaped(storedKey)
         }
 
-        return storedKey.hasPrefix(prefix) ? String(storedKey.dropFirst(prefix.count)) : nil
+        // Decoding alone also accepts stored keys the encoding never writes, such as `a/b` for a root key
+        guard let key, Self.storedKey(forKey: key, in: scope).utf8.elementsEqual(storedKey.utf8) else {
+            return nil
+        }
+
+        return key
     }
 
     // MARK: Helpers
 
-    private static func prefix(of scope: UserDefaultsStorage.Scope) -> String? {
+    private static func storedKey(forKey key: String, in scope: UserDefaultsStorage.Scope) -> String {
         switch scope.namespace {
-        case let .keyPrefix(name)?:
-            return name.replacingOccurrences(of: "%", with: "%25").replacingOccurrences(of: "/", with: "%2F") + "/"
-        case nil:
-            return nil
+        case let .keyPrefix(name)?: return escaped(name) + "/" + key
+        case nil:                   return escaped(key)
         }
+    }
+
+    // Bytes, because Foundation's `replacingOccurrences` skips a `/` that carries a combining mark
+    private static func escaped(_ name: String) -> String {
+        var escaped = [UInt8]()
+        for byte in name.utf8 {
+            switch byte {
+            case UInt8(ascii: "%"): escaped += Array("%25".utf8)
+            case UInt8(ascii: "/"): escaped += Array("%2F".utf8)
+            default:                escaped.append(byte)
+            }
+        }
+
+        return String(decoding: escaped, as: UTF8.self)
+    }
+
+    private static func unescaped(_ name: String) -> String {
+        var bytes = [UInt8]()
+        var rest = Substring(name).utf8
+        while let byte = rest.popFirst() {
+            if byte == UInt8(ascii: "%"), rest.starts(with: "25".utf8) {
+                bytes.append(UInt8(ascii: "%"))
+                rest.removeFirst(2)
+            } else if byte == UInt8(ascii: "%"), rest.starts(with: "2F".utf8) {
+                bytes.append(UInt8(ascii: "/"))
+                rest.removeFirst(2)
+            } else {
+                bytes.append(byte)
+            }
+        }
+
+        return String(decoding: bytes, as: UTF8.self)
     }
 }
