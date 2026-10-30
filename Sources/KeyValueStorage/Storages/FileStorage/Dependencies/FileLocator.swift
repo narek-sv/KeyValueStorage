@@ -59,14 +59,9 @@ open class DefaultFileLocator: FileLocator {
         fileManager.containerURL(forSecurityApplicationGroupIdentifier: groupId)
     }
 
-    /// `Bundle.main.bundleIdentifier`.
-    open var bundleIdentifier: String? {
-        Bundle.main.bundleIdentifier
-    }
-
-    /// `ProcessInfo.processInfo.processName`, the app's identifier where there's no bundle ID.
-    open var processName: String {
-        ProcessInfo.processInfo.processName
+    /// `OwnIdentity.identifier`.
+    open var ownIdentifier: String {
+        OwnIdentity.identifier
     }
 
     // MARK: Names
@@ -76,7 +71,7 @@ open class DefaultFileLocator: FileLocator {
         case let .own(retention, protection, namespace):
             // Before the lookups, so the namespace's error doesn't depend on the system
             let namespaceFolder = try Self.folderName(for: namespace)
-            let app = try baseDirectory(for: retention).appendingPathComponent(Self.encoded(bundleIdentifier ?? processName), isDirectory: true)
+            let app = try baseDirectory(for: retention).appendingPathComponent(Self.encoded(ownIdentifier), isDirectory: true)
             return Self.directory(in: app, namespaceFolder: namespaceFolder, protection: protection)
         case let .appGroup(groupId, protection, namespace):
             let namespaceFolder = try Self.folderName(for: namespace)

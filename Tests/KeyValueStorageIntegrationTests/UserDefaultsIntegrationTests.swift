@@ -129,8 +129,7 @@ final class UserDefaultsIntegrationTests: XCTestCase {
     func testTheLocatorsLookupsReturnTheSystems() {
         let locator = DefaultUserDefaultsLocator()
 
-        XCTAssertEqual(locator.bundleIdentifier, Bundle.main.bundleIdentifier)
-        XCTAssertEqual(locator.processName, ProcessInfo.processInfo.processName)
+        XCTAssertEqual(locator.ownIdentifier, OwnIdentity.identifier)
     }
 
     // MARK: Helpers

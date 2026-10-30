@@ -8,9 +8,6 @@
 // MARK: - KeychainStorage + Scope
 
 public extension KeychainStorage {
-    /// Any string, even an empty one.
-    typealias Namespace = ExactString
-
     /// Which apps see an iCloud scope's items.
     enum Owner: Hashable, Sendable {
         /// The running app or extension.

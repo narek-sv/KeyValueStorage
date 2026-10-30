@@ -37,20 +37,15 @@ open class DefaultUserDefaultsLocator: UserDefaultsLocator {
 
     // MARK: App Identifier
 
-    /// `Bundle.main.bundleIdentifier`.
-    open var bundleIdentifier: String? {
-        Bundle.main.bundleIdentifier
-    }
-
-    /// `ProcessInfo.processInfo.processName`, the app's identifier where there's no bundle ID.
-    open var processName: String {
-        ProcessInfo.processInfo.processName
+    /// `OwnIdentity.identifier`.
+    open var ownIdentifier: String {
+        OwnIdentity.identifier
     }
 
     // MARK: Names
 
     open func suiteName(for scope: UserDefaultsStorage.Scope) throws(UserDefaultsStorage.Error) -> String {
-        let ownSuiteName = Self.encoded(bundleIdentifier ?? processName) + ".KeyValueStorage"
+        let ownSuiteName = Self.encoded(ownIdentifier) + ".KeyValueStorage"
         switch scope {
         case .own:
             return ownSuiteName

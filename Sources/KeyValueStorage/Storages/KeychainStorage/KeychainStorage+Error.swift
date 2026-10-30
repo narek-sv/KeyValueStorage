@@ -10,7 +10,7 @@ import Foundation
 // MARK: - KeychainStorage + Error
 
 public extension KeychainStorage {
-    enum Error: KeyValueDataStorageError {
+    enum Error: Swift.Error, Sendable {
         /// A Security framework status, such as `errSecInteractionNotAllowed` while locked or `errSecMissingEntitlement`.
         case os(OSStatus)
     }

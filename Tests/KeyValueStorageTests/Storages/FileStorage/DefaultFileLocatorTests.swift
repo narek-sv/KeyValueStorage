@@ -41,9 +41,9 @@ final class DefaultFileLocatorTests: XCTestCase {
         XCTAssertEqual(try directory(.default).path, "/support/com%2etest%2e!app/!key!value!storage!/i")
     }
 
-    func testTheAppsFolderIsItsBundleIDOrProcessNameEncodedLikeKeys() throws {
+    func testTheAppsFolderIsItsIdentifierEncodedLikeKeys() throws {
         // Bundle IDs that differ only in case get two folders, also on a volume that ignores case
-        let folders = try ["com.test.App", "com.test.app", "", nil].map { identifier in
+        let folders = try ["com.test.App", "com.test.app", "", "my tool"].map { identifier in
             locator.identifier = identifier
             return try directory(.own(namespace: "name")).deletingLastPathComponent().deletingLastPathComponent().lastPathComponent
         }

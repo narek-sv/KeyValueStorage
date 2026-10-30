@@ -126,7 +126,7 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
 
 public extension KeyValueCodingStorage {
     /// The errors a `KeyValueCodingStorage` throws.
-    enum Error: KeyValueDataStorageError {
+    enum Error: Swift.Error, Sendable {
         /// The underlying storage failed.
         case storage(Storage.Error)
         /// The coder couldn't encode or decode the value.

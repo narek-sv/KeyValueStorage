@@ -8,9 +8,6 @@
 // MARK: - InMemoryStorage + Scope
 
 public extension InMemoryStorage {
-    /// Any string, even an empty one.
-    typealias Namespace = ExactString
-
     /// Values live until the process exits.
     enum Scope: KeyValueDataStorageScope {
         /// This process's own memory.

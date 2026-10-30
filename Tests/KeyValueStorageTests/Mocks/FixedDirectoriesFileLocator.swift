@@ -16,7 +16,7 @@ final class FixedDirectoriesFileLocator: DefaultFileLocator {
         .cachesDirectory: URL(fileURLWithPath: "/caches", isDirectory: true)
     ]
     var groupDirectories = ["group.test": URL(fileURLWithPath: "/group", isDirectory: true)]
-    var identifier: String? = "com.test.App"
+    var identifier = "com.test.App"
 
     override var temporaryDirectory: URL {
         temporary
@@ -30,11 +30,7 @@ final class FixedDirectoriesFileLocator: DefaultFileLocator {
         groupDirectories[groupId]
     }
 
-    override var bundleIdentifier: String? {
+    override var ownIdentifier: String {
         identifier
-    }
-
-    override var processName: String {
-        "my tool"
     }
 }

@@ -8,9 +8,6 @@
 // MARK: - UserDefaultsStorage + Scope
 
 public extension UserDefaultsStorage {
-    /// Any string, even an empty one.
-    typealias Namespace = ExactString
-
     /// - Note: Launch arguments and registered defaults under a stored key's name read as that key's value, in every suite.
     enum Scope: KeyValueDataStorageScope {
         /// The running app's or extension's own.

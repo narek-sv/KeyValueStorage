@@ -10,7 +10,7 @@ import Foundation
 // MARK: - FileStorage + Error
 
 public extension FileStorage {
-    enum Error: KeyValueDataStorageError {
+    enum Error: Swift.Error, Sendable {
         /// Usually the app isn't in the group; also an empty id.
         case groupDirectoryNotFound(String)
         case directoryNotFound(FileManager.SearchPathDirectory)

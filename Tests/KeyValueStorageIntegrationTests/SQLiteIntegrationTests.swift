@@ -41,8 +41,7 @@ final class SQLiteIntegrationTests: XCTestCase {
         // Outside a sandbox, macOS returns a container for any group ID
         let groupId = "group.not.entitled.\(UUID().uuidString)"
         XCTAssertEqual(locator.groupDirectory(for: groupId), fileManager.containerURL(forSecurityApplicationGroupIdentifier: groupId))
-        XCTAssertEqual(locator.bundleIdentifier, Bundle.main.bundleIdentifier)
-        XCTAssertEqual(locator.processName, ProcessInfo.processInfo.processName)
+        XCTAssertEqual(locator.ownIdentifier, OwnIdentity.identifier)
     }
 
     func testTheDatabaseIsHiddenInTheNamespacesFolder() throws {

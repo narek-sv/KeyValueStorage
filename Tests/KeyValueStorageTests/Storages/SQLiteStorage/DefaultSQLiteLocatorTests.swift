@@ -37,8 +37,8 @@ final class DefaultSQLiteLocatorTests: XCTestCase {
         XCTAssertEqual(try databasePath(.default), "/support/com%2etest%2e!app/!key!value!storage!/i/.KeyValueStorage.sqlite")
     }
 
-    func testTheAppsFolderIsItsBundleIDOrProcessName() throws {
-        locator.identifier = nil
+    func testTheAppsFolderIsItsIdentifier() throws {
+        locator.identifier = "my tool"
         XCTAssertEqual(try databasePath(.own(namespace: "name")), "/support/my%20tool/name!/i/.KeyValueStorage.sqlite")
     }
 

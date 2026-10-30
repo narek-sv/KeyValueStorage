@@ -9,9 +9,6 @@
 
 @available(watchOS 9.0, *)
 public extension UbiquitousStorage {
-    /// Any string, even an empty one.
-    typealias Namespace = ExactString
-
     /// Which apps see the values.
     enum Owner: Hashable, Sendable {
         /// The running app or extension.

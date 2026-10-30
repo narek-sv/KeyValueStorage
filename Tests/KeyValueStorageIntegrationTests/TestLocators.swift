@@ -28,7 +28,7 @@ final class TestFileLocator: DefaultFileLocator {
         base.appendingPathComponent(groupId, isDirectory: true)
     }
 
-    override var bundleIdentifier: String? {
+    override var ownIdentifier: String {
         "app"
     }
 }
@@ -53,7 +53,7 @@ final class TestSQLiteLocator: DefaultSQLiteLocator {
         base.appendingPathComponent(groupId, isDirectory: true)
     }
 
-    override var bundleIdentifier: String? {
+    override var ownIdentifier: String {
         "app"
     }
 }
@@ -66,7 +66,7 @@ final class TestUserDefaultsLocator: DefaultUserDefaultsLocator {
         identifier = bundleIdentifier
     }
 
-    override var bundleIdentifier: String? {
+    override var ownIdentifier: String {
         identifier
     }
 }

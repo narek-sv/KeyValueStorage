@@ -10,9 +10,6 @@ import Foundation
 // MARK: - SQLiteStorage + Scope
 
 public extension SQLiteStorage {
-    /// Any string, even an empty one; `.invalidNamespace` if its encoded folder name exceeds 255 bytes.
-    typealias Namespace = ExactString
-
     enum Retention: Hashable, Sendable {
         /// Kept until deleted.
         case persistent

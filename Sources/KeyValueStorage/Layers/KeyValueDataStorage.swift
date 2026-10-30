@@ -11,9 +11,9 @@ import Foundation
 
 /// - Warning: Synchronous and unsynchronized: use an instance from one thread or actor.
 public protocol KeyValueDataStorage {
-    associatedtype Key: KeyValueDataStorageKey
+    associatedtype Key: Hashable & Sendable
     associatedtype Scope: KeyValueDataStorageScope
-    associatedtype Error: KeyValueDataStorageError
+    associatedtype Error: Swift.Error & Sendable
     
     var scope: Scope { get }
     
@@ -53,10 +53,6 @@ public extension KeyValueDataStorageScope {
     }
 }
 
-// MARK: - Associated Type Requirements
-
-public typealias KeyValueDataStorageKey = Hashable & Sendable
-public typealias KeyValueDataStorageError = Error & Sendable
 /// - Warning: `.own` belongs to the bundle ID: builds that share one share values, and unit tests hosted in an app use the app's,
 ///   so a test's `clear()` empties the app's data on that device. Give tests a namespace of their own.
 public protocol KeyValueDataStorageScope: Hashable & Sendable {

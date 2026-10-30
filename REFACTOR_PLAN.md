@@ -60,7 +60,7 @@ Read this first. It replaces the scope, key and place rules that §4 and §5 des
 **Shared types** (`Helpers/ExactString.swift`, `Layers/KeyValueDataStorage.swift`):
 - `ExactString`: a string compared and hashed by its exact UTF-8 bytes (`String`'s `==` takes `"é"` and `"e\u{301}"` for one); `ExpressibleByStringInterpolation` and `CustomStringConvertible`. Every storage has `typealias Namespace = ExactString` and `typealias Key = ExactString`, so the layers (`UnifiedStorage`'s cache, observation) compare names the way the storages store them. One type for both is fine: it carries no meaning of its own.
 - `KeyValueDataStorageScope` requires only `Hashable & Sendable` and `static var default`. `defaultNamespace` (`"KeyValueStorage"`) replaces `defaultName`. Scopes have no `namespace` property: locators read it from the cases.
-- The protocol keeps `associatedtype Key: KeyValueDataStorageKey` (`Hashable & Sendable`) generic, so custom storages can bring their own key types. `KeyValueDataStorageNamespace` goes.
+- The protocol keeps `associatedtype Key: Hashable & Sendable` generic, so custom storages can bring their own key types. `KeyValueDataStorageNamespace` goes.
 
 **Scopes.** The place comes first and the namespace last. Every namespace is required, never optional or defaulted, so there's no root.
 
@@ -187,9 +187,9 @@ try storage.save(token, forKey: KeychainKey<String>(key: .init(name: "token")))
 
 ```swift
 public protocol KeyValueDataStorage {
-    associatedtype Key: KeyValueDataStorageKey             // Hashable & Sendable
+    associatedtype Key: Hashable & Sendable
     associatedtype Scope: KeyValueDataStorageScope         // Hashable & Sendable, Namespace, static var default
-    associatedtype Error: KeyValueDataStorageError         // Error & Sendable
+    associatedtype Error: Swift.Error & Sendable
 
     var scope: Scope { get }
 
@@ -1126,7 +1126,7 @@ public extension UbiquitousStorage {
 //   take no retention. Every `.appGroup` rejects an empty id; Keychain's init can't throw, so there the system does.
 // - UserDefaults and Ubiquitous store keys as `<namespace>!/<key>`: the `!` marks the library's entries where other code also
 //   writes (App Group suites, the Ubiquitous store). Keychain services need no mark: they start with the bundle ID or the group.
-// - One `ExactString` for namespaces and keys in the six storages. The protocol keeps `associatedtype Key: KeyValueDataStorageKey`
+// - One `ExactString` for namespaces and keys in the six storages. The protocol keeps `associatedtype Key: Hashable & Sendable`
 //   (`Hashable & Sendable`) generic, so custom storages can bring their own key types; `KeyValueDataStorageNamespace` goes.
 // - Each storage's `Namespace` and `Key` are typealiases, so no top-level name clashes with SwiftUI's `Namespace`.
 // - `KeyValueDataStorageScope.defaultName` becomes `defaultNamespace`.

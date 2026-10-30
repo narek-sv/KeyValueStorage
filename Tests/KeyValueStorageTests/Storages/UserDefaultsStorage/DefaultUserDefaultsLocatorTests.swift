@@ -19,9 +19,9 @@ final class DefaultUserDefaultsLocatorTests: XCTestCase {
         XCTAssertEqual(try locator.suiteName(for: .appGroup(id: "group.test", namespace: "ns")), "group.test")
     }
 
-    func testTheAppsSuiteIsItsBundleIDOrProcessNameEncoded() throws {
+    func testTheAppsSuiteIsItsIdentifierEncoded() throws {
         // Bundle IDs that differ only in case get two suite files, also on a volume that ignores case
-        let names = try ["com.test.App", "com.test.app", "", nil].map { identifier in
+        let names = try ["com.test.App", "com.test.app", "", "my tool"].map { identifier in
             locator.identifier = identifier
             return try locator.suiteName(for: .own(namespace: "ns"))
         }
@@ -110,13 +110,9 @@ final class DefaultUserDefaultsLocatorTests: XCTestCase {
 
 /// The default locator with the app's identifier fixed.
 private final class FixedIdentifierUserDefaultsLocator: DefaultUserDefaultsLocator {
-    var identifier: String? = "com.test.App"
+    var identifier = "com.test.App"
 
-    override var bundleIdentifier: String? {
+    override var ownIdentifier: String {
         identifier
-    }
-
-    override var processName: String {
-        "my tool"
     }
 }

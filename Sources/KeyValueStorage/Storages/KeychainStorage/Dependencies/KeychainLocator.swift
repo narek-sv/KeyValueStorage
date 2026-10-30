@@ -32,14 +32,9 @@ open class DefaultKeychainLocator: KeychainLocator {
 
     // MARK: App Identifier
 
-    /// `Bundle.main.bundleIdentifier`.
-    open var bundleIdentifier: String? {
-        Bundle.main.bundleIdentifier
-    }
-
-    /// `ProcessInfo.processInfo.processName`, the app's identifier where there's no bundle ID.
-    open var processName: String {
-        ProcessInfo.processInfo.processName
+    /// `OwnIdentity.identifier`.
+    open var ownIdentifier: String {
+        OwnIdentity.identifier
     }
 
     // MARK: Names
@@ -73,7 +68,7 @@ open class DefaultKeychainLocator: KeychainLocator {
     // MARK: Helpers
 
     private func ownService(_ namespace: KeychainStorage.Namespace, _ protection: String) -> String {
-        Self.escaped(bundleIdentifier ?? processName) + ":" + Self.escaped(namespace.string) + ":" + protection
+        Self.escaped(ownIdentifier) + ":" + Self.escaped(namespace.string) + ":" + protection
     }
 
     private static func groupService(_ groupId: String, _ namespace: KeychainStorage.Namespace, _ protection: String) -> String {

@@ -32,8 +32,8 @@ final class DefaultKeychainLocatorTests: XCTestCase {
         }
     }
 
-    func testTheAppsIdentifierIsItsBundleIDOrProcessNameEscaped() {
-        let services = ["com.test.App", "a:b/c%", "", nil].map { identifier in
+    func testTheAppsIdentifierIsItsIdentifierEscaped() {
+        let services = ["com.test.App", "a:b/c%", "", "my tool"].map { identifier in
             locator.identifier = identifier
             return locator.service(for: .own(namespace: "ns"))
         }
@@ -94,8 +94,7 @@ final class DefaultKeychainLocatorTests: XCTestCase {
     func testTheLookupsReturnTheSystems() {
         let locator = DefaultKeychainLocator()
 
-        XCTAssertEqual(locator.bundleIdentifier, Bundle.main.bundleIdentifier)
-        XCTAssertEqual(locator.processName, ProcessInfo.processInfo.processName)
+        XCTAssertEqual(locator.ownIdentifier, OwnIdentity.identifier)
     }
 
     // MARK: Access Groups And Accounts
@@ -122,13 +121,9 @@ final class DefaultKeychainLocatorTests: XCTestCase {
 
 /// The default locator with the app's identifier fixed.
 private final class FixedIdentifierKeychainLocator: DefaultKeychainLocator {
-    var identifier: String? = "com.test.App"
+    var identifier = "com.test.App"
 
-    override var bundleIdentifier: String? {
+    override var ownIdentifier: String {
         identifier
-    }
-
-    override var processName: String {
-        "my tool"
     }
 }
