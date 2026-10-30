@@ -38,22 +38,22 @@ This file is the source of truth for the 4.0 refactor, written so that anyone, h
   - **Done: Keychain** (§5.2): the root uses service `""` and App Group services carry the group, so no scope reaches another's items; only `Data` items are values; KeychainHost runs again, with real-keychain tests. Gated files at 100%.
   - **Done: InMemory** (§5.5): the default store keys buckets and values by bytes, so every storage keeps keys exact (§4.3); locator and storage tests. Gated files at 100%.
   - **Deferred: locked-device errors** (§13, item 7), which need a real iPhone and a device signing setup for KeychainHost.
-  - **Decided: the sealed scopes** (§S, D21), which settle the clash audit (§4.5). To implement, with the planned items below.
+  - **Done: the sealed scopes** (§S, D21), which settle the clash audit (§4.5).
   - **Done: Keychain without reads before its calls** (§5.2, 2026-10-30), so `delete` no longer fails while locked; an item without data is a value like any other.
   - **Done: Keychain `.own` services that carry the app's identifier** (§5.2, with the sealed scopes), so two apps' `.own` scopes never meet.
-  - **Planned: app-scope paths carry the app's identifier** (§4, D9).
-  - **Planned: UserDefaults' app scope gets a suite of its own, and UserDefaults and Ubiquitous keys carry the library's mark** (§5.4, §5.7).
+  - **Done: `.own` paths carry the app's identifier** (§S, D9).
+  - **Done: UserDefaults' `.own` scope has a suite of its own, and UserDefaults and Ubiquitous keys carry the library's mark** (§5.4, §5.7).
   - **Locators are done for all six storages.** What's left of `Tests/Legacy3x/` belongs to the coding, observation and unified layers.
 - **Done: phases 0–6, the source side.** The synchronous `KeyValueDataStorage` with `init(scope:backingStore:)`, typed throws, scopes with namespaces, every storage on its backing store, the global actors removed, and `KeychainWrapper.swift` deleted.
 - **Added: `UbiquitousStorage`** (§5.7), on the same pattern.
 - **Tests:** the public API target and the coder tests are on the 4.0 API and pass. The 3.x unit tests live in `Tests/Legacy3x/` (not a target) as the porting reference; each storage's locator step ports and deletes its file.
-- **Done: the sealed scopes for FileStorage, the pilot, SQLite, UserDefaults, Ubiquitous, Keychain and InMemory** (§S, §5.3, §5.6, §5.4, §5.7, §5.2, §5.5, 2026-10-30). Shared: `ExactString`, and a scope protocol that only requires `default`. File and SQLite storages of one scope share its folder. `defaultName` and `KeyValueDataStorageNamespace` are still to remove.
-- **Next: finish the sealed scopes** (§S, phase 6b): remove `defaultName` and `KeyValueDataStorageNamespace`. Each step brings that storage's planned items (§5.2–5.7), its part of the error refactor (§4.4) and its test revisit (§11.3).
+- **Done: the sealed scopes in all six storages** (§S, §5.2–5.7, 2026-10-30): File, the pilot, then SQLite, UserDefaults, Ubiquitous, Keychain and InMemory. Shared: `ExactString`, and a scope protocol that only requires `default`; `defaultName` and `KeyValueDataStorageNamespace` are gone. File and SQLite storages of one scope share its folder.
+- **Next: the rest of phase 6b.** The error refactor (§4.4): `.invalidDirectory` is gone and keys and namespaces in errors are `ExactString`, but one name per meaning across storages is still to decide, and `.keyOccupied` (UserDefaults, Ubiquitous) still carries the stored key, not the key passed. Then the test revisit and the tests for unmeasured behavior (§11.3).
 - **Then: phases 7–9**, the coding, isolation and facade layers. The observation and unified layers still emit isolated-conformance warnings on Swift 6.2+ compilers, because the storage protocol is no longer `Sendable`.
 
-## S. Sealed scopes and keys (decided 2026-10-30; next, and it changes every storage)
+## S. Sealed scopes and keys (decided and done 2026-10-30)
 
-Read this first. It replaces the scope, key and place rules that §4 and §5 describe for today's code: where they differ, this section wins. Phase 6b implements it (§12), and Appendix A holds the agreed enums and docs.
+Read this first. It replaces the scope, key and place rules that §4 and §5 describe for the code before it: where they differ, this section wins. Phase 6b implemented it (§12), and Appendix A holds the agreed enums and docs.
 
 **Rule:** the user says what they mean, and the library picks the place and owns every name inside it. A scope says who sees the values, on which devices, how long the system keeps them and how they're protected. It never names a system location. Interop with other code's files, items or keys goes through a custom locator, which then owns the guarantees (§13, item 8; D21).
 
@@ -214,11 +214,9 @@ public extension KeyValueDataStorage {
 ```
 
 - No `IsolatedKeyValueDataStorage` typealias, no `async` in requirements or initializers, no `Sendable` on the protocol.
-- `KeyValueDataStorageScope.defaultName = "KeyValueStorage"`: every `default` scope's suite, directory, service, key prefix or bucket.
-- Every scope has an optional `namespace` that separates sets of values within it: a folder (File, SQLite), a key prefix (UserDefaults, Ubiquitous), a service (Keychain) or a bucket (InMemory). `nil` is the scope's root.
-  - **Planned:** every scope names a namespace, there's no root, and `defaultNamespace` replaces `defaultName` (§S).
-- No app identifier in paths or suite names: the namespace separates apps' values where the system doesn't.
-  - **Planned, reversing this for app scopes** (2026-10-30, D9): File and SQLite paths and Keychain services (§5.2) carry the app's identifier, because two apps that pick the same namespace would otherwise share values. UserDefaults' app scope moves to a suite of its own, `<encoded bundle ID>.KeyValueStorage` (§5.4). Paths and the suite name carry the identifier encoded (§S).
+- `KeyValueDataStorageScope.defaultNamespace = "KeyValueStorage"`: every `default` scope's namespace.
+- Every scope names a namespace, a required `ExactString` that separates sets of values within the place: a folder (File, SQLite), a key prefix (UserDefaults, Ubiquitous), part of the service (Keychain) or a bucket (InMemory). There's no root (§S, done 2026-10-30).
+- Every `.own` place carries the app's identifier (D9, done 2026-10-30): File and SQLite paths and Keychain services (§5.2), and UserDefaults' suite of its own, `<encoded bundle ID>.KeyValueStorage` (§5.4), because two apps that pick the same namespace would otherwise share values. Paths and the suite name carry it encoded (§S).
 - Neither backing stores nor locators are part of the protocol. Each storage's `init(scope:backingStore:locator:)` takes existentials (`any FileBackingStore`, `any FileLocator`, …), so the storages stay non-generic.
 
 ### 4.2 System directories (File and SQLite)
@@ -339,25 +337,7 @@ The setup members are `createDirectory(at:)` (always creates intermediate direct
 
 ### 5.1 Scope → location (the default locators)
 
-**Planned:** §S's places replace this table.
-
-| Storage | Scope | Resolves to |
-|---|---|---|
-| File | `.app(.applicationSupport/.cache/.documents/.temporary/.directory(at: u), namespace: n)` | `<base or u>[/<n>]/<encoded key>` |
-| File | `.appGroup(g, namespace: n)` | `<group container g>[/<n>]/<encoded key>` |
-| SQLite | same as File, plus `protection:` (default `.inherited`) | `<folder>[/<n>]/.KeyValueStorage.sqlite` (+ `-wal`, `-shm`), opened in the scope's protection class |
-| UserDefaults | `.app(.standard, namespace: n)` | `UserDefaults.standard` |
-| UserDefaults | `.app(.suite(named: s), namespace: n)` | suite `s` |
-| UserDefaults | `.appGroup(g, namespace: n)` | suite `g` |
-| UserDefaults, Ubiquitous | `.keyPrefix(named: n)` | keys stored as `"<n with % → %25, / → %2F>/<key>"`; at the root (`nil`), keys stored with `%` → `%25` and `/` → `%2F` (§4.5) |
-| Keychain | `.app(namespace: n)` | `kSecAttrService = n` (root `""`, empty `%`; `%` and `/` escaped), no access group: saves go to the app's default one, queries search them all |
-| Keychain | `.appGroup(g, namespace: n)` | `kSecAttrService = <g>/<n>` (root `<g>/`), `kSecAttrAccessGroup = g` |
-| InMemory | `.app(namespace: n)` | bucket `n` (`nil` is a bucket of its own) |
-| Ubiquitous | `.shared(namespace: n)` | `NSUbiquitousKeyValueStore.default` (the store of the target's kvstore entitlement) |
-
-Defaults: every `default` scope uses the namespace `"KeyValueStorage"`: File and SQLite `.app(.applicationSupport, namespace: .directory(named:))`, UserDefaults `.app(.suite(named: "KeyValueStorage"), namespace: .keyPrefix(named:))`, Keychain `.app(namespace: .service(named:))`, InMemory `.app(namespace: .bucket(named:))`, Ubiquitous `.shared(namespace: .keyPrefix(named:))`.
-
-The root encodings (§4.5) and the Keychain services are done.
+§S's places table is the mapping (done 2026-10-30); each storage's section in §5.2–5.7 gives its names. Every `default` scope is `.own` (Ubiquitous: `.iCloud(.own, …)`) with the namespace `defaultNamespace`, `"KeyValueStorage"`.
 
 ### 5.2 KeychainStorage (done)
 
