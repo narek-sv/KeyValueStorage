@@ -8,5 +8,6 @@
 // MARK: - InMemoryStorage + Key
 
 public extension InMemoryStorage {
-    typealias Key = String
+    /// Any string, even an empty one.
+    typealias Key = ExactString
 }

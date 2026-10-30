@@ -15,7 +15,7 @@ public final class InMemoryStorage: KeyValueDataStorage {
 
     private let backingStore: any InMemoryBackingStore
     private let locator: any InMemoryLocator
-    private let bucket: String?
+    private let bucket: String
     public let scope: Scope
 
     // MARK: Initializers

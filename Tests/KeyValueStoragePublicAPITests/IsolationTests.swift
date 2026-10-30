@@ -57,7 +57,7 @@ private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #is
     
     // Every storage, directly and through the coding and observation layers. The keychain and the iCloud key-value store
     // need entitlements that test bundles can't have, so those storages use in-memory backing storages
-    try await exercise(InMemoryStorage(scope: .app(namespace: .bucket(named: id))), key: "key", context: context)
+    try await exercise(InMemoryStorage(scope: .own(namespace: .init(id))), key: "key", context: context)
     try await exercise(UserDefaultsStorage(scope: .own(namespace: .init(id))), key: "key", context: context)
     try await exercise(FileStorage(scope: .own(.temporary, namespace: .init(id))), key: "key", context: context)
     try await exercise(SQLiteStorage(scope: .own(.temporary, namespace: .init(id))), key: "key", context: context)
@@ -70,7 +70,7 @@ private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #is
 
     // Unified storage
     let storage = UnifiedStorage(factory: ObservableUnifiedStorageFactory())
-    let key = InMemoryKey<Int>(key: "unified", scope: .app(namespace: .bucket(named: id)))
+    let key = InMemoryKey<Int>(key: "unified", scope: .own(namespace: .init(id)))
     let published = Values<Int?>()
     let subscription = try await storage.publisher(forKey: key)?.sink { published.append($0) }
     let stream = try await storage.stream(forKey: key, includingCurrentValue: false)
@@ -85,7 +85,7 @@ private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #is
     try await storage.set(nil, forKey: key)
     try await storage.set(2, forKey: key)
     try await storage.delete(forKey: key)
-    try await storage.clear(storage: InMemoryStorage.self, forScope: .app(namespace: .bucket(named: id)))
+    try await storage.clear(storage: InMemoryStorage.self, forScope: .own(namespace: .init(id)))
     let firstStreamed = await streamed.value
     
     XCTAssertEqual(fetched, 1, "UnifiedStorage from \(context)")

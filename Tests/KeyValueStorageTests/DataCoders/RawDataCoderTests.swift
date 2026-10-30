@@ -78,7 +78,7 @@ final class RawDataCoderTests: XCTestCase {
     
     func testCodingStorageUsesRawCoderByDefault() async throws {
         // Given
-        let underlyingStorage = InMemoryStorage(scope: .app(namespace: .bucket(named: "rawDefault")))
+        let underlyingStorage = InMemoryStorage(scope: .own(namespace: "rawDefault"))
         let storage = KeyValueCodingStorage(storage: underlyingStorage)
         
         // When

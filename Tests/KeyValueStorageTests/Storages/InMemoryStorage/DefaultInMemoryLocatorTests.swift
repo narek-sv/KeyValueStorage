@@ -12,15 +12,17 @@ import Foundation
 final class DefaultInMemoryLocatorTests: XCTestCase {
     private let locator = DefaultInMemoryLocator()
 
-    func testTheBucketIsTheNamespacesName() {
-        XCTAssertNil(locator.bucket(for: .app()))
-        XCTAssertEqual(locator.bucket(for: .app(namespace: .bucket(named: ""))), "")
+    func testTheBucketIsTheNamespacesExactBytes() {
+        for namespace in ["", "name", "Name", "a/b", "\u{E9}", "e\u{301}", "🙂"] {
+            XCTAssertTrue(locator.bucket(for: .own(namespace: .init(namespace))).utf8.elementsEqual(namespace.utf8), namespace.debugDescription)
+        }
+
         XCTAssertEqual(locator.bucket(for: .default), "KeyValueStorage")
     }
 
     func testKeysAreStoredAsTheyAre() {
         for key in ["", "key", "Key", "a/b", "\u{E9}", "e\u{301}", "🙂"] {
-            XCTAssertTrue(locator.storedKey(forKey: key, in: .default).utf8.elementsEqual(key.utf8), key.debugDescription)
+            XCTAssertTrue(locator.storedKey(forKey: .init(key), in: .default).utf8.elementsEqual(key.utf8), key.debugDescription)
         }
     }
 }

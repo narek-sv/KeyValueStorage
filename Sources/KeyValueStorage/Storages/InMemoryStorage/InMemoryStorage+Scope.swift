@@ -8,24 +8,16 @@
 // MARK: - InMemoryStorage + Scope
 
 public extension InMemoryStorage {
-    /// `nil` uses one unnamed bucket.
-    enum Namespace: KeyValueDataStorageNamespace {
-        case bucket(named: String)
-    }
-    
+    /// Any string, even an empty one.
+    typealias Namespace = ExactString
+
     /// Values live until the process exits.
     enum Scope: KeyValueDataStorageScope {
-        /// Shared by every storage with the same namespace.
-        case app(namespace: Namespace? = nil)
-        
-        public var namespace: Namespace? {
-            switch self {
-            case let .app(namespace):   return namespace
-            }
-        }
-        
+        /// This process's own memory.
+        case own(namespace: Namespace)
+
         public static var `default`: Self {
-            .app(namespace: .bucket(named: Self.defaultName))
+            .own(namespace: defaultNamespace)
         }
     }
 }

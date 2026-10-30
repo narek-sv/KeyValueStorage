@@ -47,8 +47,8 @@ This file is the source of truth for the 4.0 refactor, written so that anyone, h
 - **Done: phases 0–6, the source side.** The synchronous `KeyValueDataStorage` with `init(scope:backingStore:)`, typed throws, scopes with namespaces, every storage on its backing store, the global actors removed, and `KeychainWrapper.swift` deleted.
 - **Added: `UbiquitousStorage`** (§5.7), on the same pattern.
 - **Tests:** the public API target and the coder tests are on the 4.0 API and pass. The 3.x unit tests live in `Tests/Legacy3x/` (not a target) as the porting reference; each storage's locator step ports and deletes its file.
-- **Done: the sealed scopes for FileStorage, the pilot, SQLite, UserDefaults, Ubiquitous and Keychain** (§S, §5.3, §5.6, §5.4, §5.7, §5.2, 2026-10-30). Shared: `ExactString`, and a scope protocol that only requires `default`. File and SQLite storages of one scope share its folder. Until InMemory moves, `defaultName` and `KeyValueDataStorageNamespace` stay for it.
-- **Next: the sealed scopes** (§S, Appendix A, phase 6b) for InMemory, then removing `defaultName` and `KeyValueDataStorageNamespace`. Each step brings that storage's planned items (§5.2–5.7), its part of the error refactor (§4.4) and its test revisit (§11.3).
+- **Done: the sealed scopes for FileStorage, the pilot, SQLite, UserDefaults, Ubiquitous, Keychain and InMemory** (§S, §5.3, §5.6, §5.4, §5.7, §5.2, §5.5, 2026-10-30). Shared: `ExactString`, and a scope protocol that only requires `default`. File and SQLite storages of one scope share its folder. `defaultName` and `KeyValueDataStorageNamespace` are still to remove.
+- **Next: finish the sealed scopes** (§S, phase 6b): remove `defaultName` and `KeyValueDataStorageNamespace`. Each step brings that storage's planned items (§5.2–5.7), its part of the error refactor (§4.4) and its test revisit (§11.3).
 - **Then: phases 7–9**, the coding, isolation and facade layers. The observation and unified layers still emit isolated-conformance warnings on Swift 6.2+ compilers, because the storage protocol is no longer `Sendable`.
 
 ## S. Sealed scopes and keys (decided 2026-10-30; next, and it changes every storage)
@@ -432,11 +432,12 @@ The root encodings (§4.5) and the Keychain services are done.
 
 ### 5.5 InMemoryStorage (done)
 
-**Backing store:** `InMemoryBackingStore` (`read`, `write`, `remove` and `removeAll`, each in a bucket). `DefaultInMemoryBackingStoreWrapper` is process-wide memory behind a lock; it keys buckets and values by their UTF-8 bytes, because Swift's `String` dictionaries take `"é"` and `"e\u{301}"` for one key.
+**Backing store:** `InMemoryBackingStore` (`read`, `write`, `remove` and `removeAll`, each in a bucket, which is a `String`: there's no unnamed bucket). `DefaultInMemoryBackingStoreWrapper` is process-wide memory behind a lock; it keys buckets and values by their UTF-8 bytes, because Swift's `String` dictionaries take `"é"` and `"e\u{301}"` for one key.
 
-**Locator:** `bucket(for:)` is the namespace's name, `nil` at the root; `storedKey(forKey:in:)` keeps the key as is. Both are non-throwing (`Error == Never`).
+**Locator** (sealed scopes, 2026-10-30): `bucket(for:)` is the namespace's exact bytes; `storedKey(forKey:in:)` keeps the key's. Both are non-throwing (`Error == Never`).
 
 **Storage:** `clear()` empties the scope's bucket, which is the scope's alone (§4.5). Values are typed `Data`, so §4.6 has nothing to keep.
+- **Sealed scopes (done 2026-10-30):** `.own(namespace:)`; `Key` and `Namespace` are `ExactString`. The root's unnamed bucket is gone.
 
 ### 5.6 SQLiteStorage (done)
 
@@ -448,7 +449,7 @@ The root encodings (§4.5) and the Keychain services are done.
 - Nothing that isn't the storage's is removed or replaced: a file where the folder goes → `.other` (the `createDirectory` error); a folder at the database path → `.sqlite(SQLITE_CANTOPEN)`; a corrupt file → `.sqlite(SQLITE_NOTADB)`; another app's `KeyValueStorage` view → `.sqlite(SQLITE_ERROR)`.
 - **Links are followed**, unlike `FileStorage`: `SQLITE_OPEN_NOFOLLOW` rejects a link anywhere in the path, including `/var` → `/private/var` above every temporary and app-container path, so it can't be used.
 - **Protection** (`SQLiteStorage.Protection`, part of the scope, default `.inherited`) is part of the place (§S): each level is a database of its own, in the level's folder. It maps to a `SQLITE_OPEN_FILEPROTECTION_*` flag, which also covers `-wal` and `-shm`. Verified on macOS for `.whileLocked`, `.whileLockedUnlessOpen` and `.untilFirstUnlock`; macOS reports the default class for `.none`.
-- **Sealed scopes (2026-10-30):** `.own(retention, protection:, namespace:)` and `.appGroup(id:, protection:, namespace:)`, as File's; `Key` and `Namespace` are `ExactString`; `.invalidDirectory` is gone, `.invalidNamespace` carries the `ExactString` passed, and an empty group id → `.groupDirectoryNotFound("")`. The database's name is a constant, no longer built from `defaultName`. Still to confirm on a locked iOS device (§13, item 7): the result code a `.complete` database fails with, which could map to a `.protectedDataUnavailable` like `FileStorage`'s.
+- **Sealed scopes (2026-10-30):** `.own(retention, protection:, namespace:)` and `.appGroup(id:, protection:, namespace:)`, as File's; `Key` and `Namespace` are `ExactString`; `.invalidDirectory` is gone, `.invalidNamespace` carries the `ExactString` passed, and an empty group id → `.groupDirectoryNotFound("")`. The database's name is a constant, no longer built from `defaultName`. Still to confirm on a locked iOS device (§13, item 7): the result code a `.complete` database fails with, which could map to a `.protectedDataUnavailable` like `FileStorage`'s. Seen once on macOS (2026-10-30): the Mac went to sleep mid-run and `testEachProtectionIsADatabaseOfItsOwnInItsClass` failed with `SQLITE_CANTOPEN`, then passed once it was awake. So macOS seems to enforce `.complete` too, and that test needs an unlocked Mac.
 
 ### 5.7 UbiquitousStorage (done)
 
@@ -697,9 +698,9 @@ Tests/
 - `clear()` removes only the `Data` at claimed stored keys; it skips keys the locator maps to a key with another stored key, also when they differ only in how `é` is written;
 - `set`.
 
-**DefaultInMemoryLocator** (`DefaultInMemoryLocatorTests`): the bucket is the namespace's name (`nil` at the root, `""` kept); keys are stored as their exact scalars.
+**DefaultInMemoryLocator** (`DefaultInMemoryLocatorTests`): the bucket is the namespace's exact bytes, `""` included; keys are stored as their exact bytes.
 
-**InMemoryStorage** (`InMemoryStorageTests`; `InMemoryBackingStoreMock`, `InMemoryLocatorStub`): every operation uses exactly the locator's names; `clear()` empties only the scope's bucket; `set`; `scope` is the one given; with the default store, the root, the empty name, case variants and both spellings of `é` never reach each other's values, and keys are exact too.
+**InMemoryStorage** (`InMemoryStorageTests`; `InMemoryBackingStoreMock`, `InMemoryLocatorStub`): every operation uses exactly the locator's names; `clear()` empties only the scope's bucket; `set`; `scope` is the one given; with the default store, the empty name, case variants and both spellings of `é` never reach each other's values, and keys are exact too.
 
 **DefaultSQLiteLocator** (`DefaultSQLiteLocatorTests`, fixed system directories)
 - `.own` in each retention's base and the app's folder, the App Group in its container, each protection level a database of its own, the default scope, the process name without a bundle ID;

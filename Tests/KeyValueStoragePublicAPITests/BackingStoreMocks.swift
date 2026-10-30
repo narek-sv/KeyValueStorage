@@ -86,21 +86,21 @@ final class InMemoryUbiquitousStore: UbiquitousBackingStore {
 
 /// Buckets of its own, unlike the default in-memory backing store, which the whole process shares.
 final class IsolatedInMemoryStore: InMemoryBackingStore {
-    private var buckets = [String?: [String: Data]]()
+    private var buckets = [String: [String: Data]]()
 
-    func read(forKey key: String, in bucket: String?) -> Data? {
+    func read(forKey key: String, in bucket: String) -> Data? {
         buckets[bucket]?[key]
     }
 
-    func write(_ data: Data, forKey key: String, in bucket: String?) {
+    func write(_ data: Data, forKey key: String, in bucket: String) {
         buckets[bucket, default: [:]][key] = data
     }
 
-    func remove(forKey key: String, in bucket: String?) {
+    func remove(forKey key: String, in bucket: String) {
         buckets[bucket]?[key] = nil
     }
 
-    func removeAll(in bucket: String?) {
+    func removeAll(in bucket: String) {
         buckets[bucket] = nil
     }
 }

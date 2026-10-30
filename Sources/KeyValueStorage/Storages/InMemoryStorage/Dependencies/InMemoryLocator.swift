@@ -11,25 +11,24 @@ import Foundation
 
 /// - Note: `clear()` empties the scope's whole bucket, so a custom locator gives each scope its own.
 public protocol InMemoryLocator {
-    /// `nil` for the unnamed bucket.
-    func bucket(for scope: InMemoryStorage.Scope) -> String?
+    func bucket(for scope: InMemoryStorage.Scope) -> String
 
-    func storedKey(forKey key: String, in scope: InMemoryStorage.Scope) -> String
+    func storedKey(forKey key: InMemoryStorage.Key, in scope: InMemoryStorage.Scope) -> String
 }
 
 // MARK: - DefaultInMemoryLocator
 
+/// The bucket is the namespace, and the stored key the key, both as they are.
 open class DefaultInMemoryLocator: InMemoryLocator {
     public init() { }
 
-    open func bucket(for scope: InMemoryStorage.Scope) -> String? {
-        switch scope.namespace {
-        case let .bucket(name)?:    return name
-        case nil:                   return nil
+    open func bucket(for scope: InMemoryStorage.Scope) -> String {
+        switch scope {
+        case let .own(namespace):   return namespace.string
         }
     }
 
-    open func storedKey(forKey key: String, in scope: InMemoryStorage.Scope) -> String {
-        key
+    open func storedKey(forKey key: InMemoryStorage.Key, in scope: InMemoryStorage.Scope) -> String {
+        key.string
     }
 }

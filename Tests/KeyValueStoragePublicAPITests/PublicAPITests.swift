@@ -88,7 +88,7 @@ final class PublicAPITests: XCTestCase {
             try? FileManager.default.removeItem(at: folder)
         }
 
-        let inMemoryScope = InMemoryStorage.Scope.app(namespace: .bucket(named: "publicAPIScope"))
+        let inMemoryScope = InMemoryStorage.Scope.own(namespace: "publicAPIScope")
         let userDefaultsScope = UserDefaultsStorage.Scope.own(namespace: "publicAPIScope")
         let keychainScope = KeychainStorage.Scope.appGroup(id: "group.shared", namespace: "publicAPIScope")
         let fileScope = FileStorage.Scope.own(.temporary, namespace: .init(directory))
@@ -114,9 +114,9 @@ final class PublicAPITests: XCTestCase {
     func testStoragesAcceptBackingStores() throws {
         // Given: two default in-memory storages with the same scope, and one with a backing store of its own
         let bucket = "publicAPIBacking-\(UUID().uuidString)"
-        let first = InMemoryStorage(scope: .app(namespace: .bucket(named: bucket)))
-        let second = InMemoryStorage(scope: .app(namespace: .bucket(named: bucket)))
-        let isolated = InMemoryStorage(scope: .app(namespace: .bucket(named: bucket)), backingStore: IsolatedInMemoryStore(), locator: DefaultInMemoryLocator())
+        let first = InMemoryStorage(scope: .own(namespace: .init(bucket)))
+        let second = InMemoryStorage(scope: .own(namespace: .init(bucket)))
+        let isolated = InMemoryStorage(scope: .own(namespace: .init(bucket)), backingStore: IsolatedInMemoryStore(), locator: DefaultInMemoryLocator())
         let keychain = KeychainStorage(scope: .default, backingStore: InMemoryKeychain(), locator: DefaultKeychainLocator())
 
         // When
@@ -133,7 +133,7 @@ final class PublicAPITests: XCTestCase {
     func testOperationsThatCantFailNeedNoTry() throws {
         // Given
         let name = "publicAPISet-\(UUID().uuidString)"
-        let inMemory = InMemoryStorage(scope: .app(namespace: .bucket(named: name)))
+        let inMemory = InMemoryStorage(scope: .own(namespace: .init(name)))
         let userDefaults = try UserDefaultsStorage(scope: .own(namespace: .init(name)))
         defer { userDefaults.clear() }
 

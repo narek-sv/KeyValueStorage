@@ -12,7 +12,7 @@ import Foundation
 final class InMemoryStorageTests: XCTestCase {
     private let backingStore = InMemoryBackingStoreMock()
     private let locator = InMemoryLocatorStub()
-    private let scope = InMemoryStorage.Scope.app(namespace: .bucket(named: "name"))
+    private let scope = InMemoryStorage.Scope.own(namespace: "name")
     private let data = Data([0xAA, 0xBB])
 
     // MARK: Locator
@@ -70,17 +70,16 @@ final class InMemoryStorageTests: XCTestCase {
     }
 
     func testScopesNeverReachEachOthersValues() {
-        // Given: the root, the empty name, and names that differ only in case or in how `é` is written,
+        // Given: the empty name, and names that differ only in case or in how `é` is written,
         // in the process-wide store, so the names are this test's own
         let run = UUID().uuidString
-        let names: [String?] = [nil, "", "a", "A", "\u{E9}", "e\u{301}"]
+        let names = ["", "a", "A", "\u{E9}", "e\u{301}"]
         let storages = names.map { name in
-            InMemoryStorage(scope: .app(namespace: name.map { .bucket(named: run + $0) }), backingStore: DefaultInMemoryBackingStoreWrapper(),
-                            locator: DefaultInMemoryLocator())
+            InMemoryStorage(scope: .own(namespace: "\(run)\(name)"), backingStore: DefaultInMemoryBackingStoreWrapper(), locator: DefaultInMemoryLocator())
         }
-        let root = storages[0]
-        let key = run + "\u{E9}"
-        let otherKey = run + "e\u{301}"
+        let first = storages[0]
+        let key: InMemoryStorage.Key = "\(run)\u{E9}"
+        let otherKey: InMemoryStorage.Key = "\(run)e\u{301}"
         defer { storages.forEach { $0.clear() } }
 
         // When
@@ -88,21 +87,21 @@ final class InMemoryStorageTests: XCTestCase {
             storage.save(Data([UInt8(index)]), forKey: key)
         }
 
-        root.save(Data([9]), forKey: otherKey)
+        first.save(Data([9]), forKey: otherKey)
 
         // Then: keys, too, are their exact bytes
         for (index, storage) in storages.enumerated() {
             XCTAssertEqual(storage.fetch(forKey: key), Data([UInt8(index)]), "\(names[index].debugDescription)")
         }
 
-        XCTAssertEqual(root.fetch(forKey: otherKey), Data([9]))
+        XCTAssertEqual(first.fetch(forKey: otherKey), Data([9]))
 
         // When
-        storages[2].clear()
+        storages[1].clear()
 
         // Then
-        XCTAssertNil(storages[2].fetch(forKey: key))
-        XCTAssertEqual(storages[3].fetch(forKey: key), Data([3]))
+        XCTAssertNil(storages[1].fetch(forKey: key))
+        XCTAssertEqual(storages[2].fetch(forKey: key), Data([2]))
     }
 
     // MARK: Helpers
