@@ -269,21 +269,26 @@ final class FileStorageTests: XCTestCase {
     }
 
     func testClearSkipsFilesWhoseKeyHasAnotherName() throws {
-        // Given: a locator whose two name methods disagree
+        // Given: a locator whose two name methods disagree, by a key or only by how `é` is written
         let locator = FileLocatorStub()
-        locator.keys = ["stale-key": "key", "located-other": "other"]
+        locator.keys = ["stale-key": "key", "located-other": "other", "located-e\u{301}": "\u{E9}"]
         let folder = locator.directory
         backingStore.items = [
             folder.path: .directory,
             folder.appendingPathComponent("stale-key").path: .file(data),
-            folder.appendingPathComponent("located-other").path: .file(data)
+            folder.appendingPathComponent("located-other").path: .file(data),
+            folder.appendingPathComponent("located-e\u{301}").path: .file(data)
         ]
 
         // When
         try FileStorage(scope: scope, backingStore: backingStore, locator: locator).clear()
 
         // Then
-        XCTAssertEqual(backingStore.items, [folder.path: .directory, folder.appendingPathComponent("stale-key").path: .file(data)])
+        XCTAssertEqual(backingStore.items, [
+            folder.path: .directory,
+            folder.appendingPathComponent("stale-key").path: .file(data),
+            folder.appendingPathComponent("located-e\u{301}").path: .file(data)
+        ])
     }
 
     func testClearWithoutAFolderDoesNothing() throws {

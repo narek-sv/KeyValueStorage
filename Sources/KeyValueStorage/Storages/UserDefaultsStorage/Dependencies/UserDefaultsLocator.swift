@@ -28,6 +28,10 @@ public protocol UserDefaultsLocator {
 open class DefaultUserDefaultsLocator: UserDefaultsLocator {
     /// Every suite reads the global domain, so a suite of it would reach every scope.
     private static let globalDomainNames: Set = ["NSGlobalDomain", ".GlobalPreferences", "kCFPreferencesAnyApplication", "Apple Global Domain"]
+    /// Ends the namespace, and marks the library's entries in a suite other code also writes to.
+    /// The escaped namespace has no `/`, so the first `/` always ends it.
+    private static let namespaceMark = "!/"
+    /// `/`, which ends the namespace, and `%` so escapes stay unambiguous.
     private static let reservedBytes: Set = [UInt8(ascii: "%"), UInt8(ascii: "/")]
 
     public init() { }
@@ -42,13 +46,11 @@ open class DefaultUserDefaultsLocator: UserDefaultsLocator {
     // MARK: Names
 
     open func suiteName(for scope: UserDefaultsStorage.Scope) throws(UserDefaultsStorage.Error) -> String {
-        // Portable, so identifiers that differ only in case get two suite files
-        let ownSuiteName = ownIdentifier.portableName + ".KeyValueStorage"
         switch scope {
         case .own:
             return ownSuiteName
         case let .appGroup(groupId, _):
-            guard !groupId.isEmpty, !Self.globalDomainNames.contains(groupId), groupId != ownSuiteName else {
+            guard isValidGroupSuiteName(groupId) else {
                 throw .invalidSuiteName(groupId)
             }
 
@@ -66,11 +68,20 @@ open class DefaultUserDefaultsLocator: UserDefaultsLocator {
 
     // MARK: Helpers
 
-    /// The namespace has no `/` once escaped, so the first `/` always ends it.
+    /// Portable, so identifiers that differ only in case get two suite files.
+    private var ownSuiteName: String {
+        ownIdentifier.portableName + ".KeyValueStorage"
+    }
+
+    /// Not empty, not the global domain, which every suite reads, and not the app's own suite.
+    private func isValidGroupSuiteName(_ groupId: String) -> Bool {
+        !groupId.isEmpty && !Self.globalDomainNames.contains(groupId) && groupId != ownSuiteName
+    }
+
     private static func prefix(for scope: UserDefaultsStorage.Scope) -> String {
         switch scope {
         case let .own(namespace), let .appGroup(_, namespace):
-            return namespace.string.percentEscaping(reservedBytes) + "!/"
+            return namespace.string.percentEscaping(reservedBytes) + namespaceMark
         }
     }
 }

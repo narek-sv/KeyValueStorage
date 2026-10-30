@@ -101,12 +101,14 @@ public final class FileStorage: KeyValueDataStorage {
         try execute { try backingStore.remove(at: url) }
     }
 
+    /// Only names this storage writes, byte for byte: a locator's reverse mapping can accept more.
     private func isValueName(_ name: String) -> Bool {
-        guard let key = locator.key(forFileName: name, in: scope) else {
+        guard let key = locator.key(forFileName: name, in: scope),
+              let encoded = try? locator.fileName(forKey: key, in: scope) else {
             return false
         }
 
-        return (try? locator.fileName(forKey: key, in: scope)) == name
+        return Key(encoded) == Key(name)
     }
 
     private func url(for key: Key) throws(Error) -> URL {

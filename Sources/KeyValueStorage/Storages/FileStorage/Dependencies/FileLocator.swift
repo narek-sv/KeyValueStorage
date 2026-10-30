@@ -33,6 +33,8 @@ public protocol FileLocator {
 /// - Note: A subclass that changes names overrides both name methods.
 open class DefaultFileLocator: FileLocator {
     private static let maximumNameLength = 255
+    /// Ends namespace folders: a portable name never does, so they never clash with items named like keys.
+    private static let namespaceMark = "!"
 
     private var fileManager: FileManager { .default }
 
@@ -66,11 +68,11 @@ open class DefaultFileLocator: FileLocator {
         switch scope {
         case let .own(retention, protection, namespace):
             // Before the lookups, so the namespace's error doesn't depend on the system
-            let namespaceFolder = try Self.folderName(for: namespace)
-            let app = try baseDirectory(for: retention).appendingPathComponent(ownIdentifier.portableName, isDirectory: true)
+            let namespaceFolder = try Self.namespaceFolderName(for: namespace)
+            let app = try baseDirectory(for: retention).appendingPathComponent(appFolderName, isDirectory: true)
             return Self.directory(in: app, namespaceFolder: namespaceFolder, protection: protection)
         case let .appGroup(groupId, protection, namespace):
-            let namespaceFolder = try Self.folderName(for: namespace)
+            let namespaceFolder = try Self.namespaceFolderName(for: namespace)
             guard !groupId.isEmpty, let container = groupDirectory(for: groupId) else {
                 throw .groupDirectoryNotFound(groupId)
             }
@@ -94,6 +96,10 @@ open class DefaultFileLocator: FileLocator {
 
     // MARK: Helpers
 
+    private var appFolderName: String {
+        ownIdentifier.portableName
+    }
+
     private func baseDirectory(for retention: FileStorage.Retention) throws(FileStorage.Error) -> URL {
         switch retention {
         case .persistent:   return try baseDirectory(.applicationSupportDirectory)
@@ -111,11 +117,11 @@ open class DefaultFileLocator: FileLocator {
     }
 
     private static func directory(in base: URL, namespaceFolder: String, protection: FileStorage.Protection) -> URL {
-        base.appendingPathComponent(namespaceFolder, isDirectory: true).appendingPathComponent(folderName(for: protection), isDirectory: true)
+        base.appendingPathComponent(namespaceFolder, isDirectory: true).appendingPathComponent(protectionFolderName(for: protection), isDirectory: true)
     }
 
-    private static func folderName(for namespace: FileStorage.Namespace) throws(FileStorage.Error) -> String {
-        let folderName = namespace.string.portableName + "!"
+    private static func namespaceFolderName(for namespace: FileStorage.Namespace) throws(FileStorage.Error) -> String {
+        let folderName = namespace.string.portableName + namespaceMark
         guard folderName.utf8.count <= maximumNameLength else {
             throw .invalidNamespace(namespace)
         }
@@ -124,7 +130,7 @@ open class DefaultFileLocator: FileLocator {
     }
 
     // One letter: every byte here counts toward the system's 1024-byte limit on a whole path
-    private static func folderName(for protection: FileStorage.Protection) -> String {
+    private static func protectionFolderName(for protection: FileStorage.Protection) -> String {
         switch protection {
         case .inherited:                return "i"
         case .none:                     return "n"

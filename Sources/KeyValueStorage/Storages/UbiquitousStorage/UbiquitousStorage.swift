@@ -85,6 +85,7 @@ public final class UbiquitousStorage: KeyValueDataStorage {
         backingStore.remove(forKey: storedKey)
     }
 
+    /// Only names this storage writes, byte for byte: a locator's reverse mapping can accept more.
     private func isValueKey(_ storedKey: String) -> Bool {
         guard let key = locator.key(forStoredKey: storedKey, in: scope),
               let encoded = try? locator.storedKey(forKey: key, in: scope) else {

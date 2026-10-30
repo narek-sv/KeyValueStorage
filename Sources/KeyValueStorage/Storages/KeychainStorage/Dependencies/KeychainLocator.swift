@@ -28,6 +28,11 @@ public protocol KeychainLocator {
 /// scopes share a service, which matters because `.own` queries reach every access group the app has, and apps can share one.
 /// `.iCloud` uses its owner's services, for synced items, which the other scopes' queries never match.
 open class DefaultKeychainLocator: KeychainLocator {
+    /// Separate the parts of `.own` services, so they never match an App Group's.
+    private static let ownSeparator = ":"
+    /// Separate the parts of `.appGroup` services.
+    private static let groupSeparator = "/"
+    /// Both separators, and `%` so escapes stay unambiguous.
     private static let reservedBytes: Set = [UInt8(ascii: "%"), UInt8(ascii: "/"), UInt8(ascii: ":")]
 
     public init() { }
@@ -70,11 +75,15 @@ open class DefaultKeychainLocator: KeychainLocator {
     // MARK: Helpers
 
     private func ownService(_ namespace: KeychainStorage.Namespace, _ protection: String) -> String {
-        ownIdentifier.percentEscaping(Self.reservedBytes) + ":" + namespace.string.percentEscaping(Self.reservedBytes) + ":" + protection
+        [Self.escaped(ownIdentifier), Self.escaped(namespace.string), protection].joined(separator: Self.ownSeparator)
     }
 
     private static func groupService(_ groupId: String, _ namespace: KeychainStorage.Namespace, _ protection: String) -> String {
-        groupId.percentEscaping(reservedBytes) + "/" + namespace.string.percentEscaping(reservedBytes) + "/" + protection
+        [escaped(groupId), escaped(namespace.string), protection].joined(separator: groupSeparator)
+    }
+
+    private static func escaped(_ name: String) -> String {
+        name.percentEscaping(reservedBytes)
     }
 
     private static func name(for protection: KeychainStorage.Protection) -> String {

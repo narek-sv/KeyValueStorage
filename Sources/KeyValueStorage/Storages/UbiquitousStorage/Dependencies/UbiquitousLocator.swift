@@ -29,6 +29,10 @@ public protocol UbiquitousLocator {
 @available(watchOS 9.0, *)
 open class DefaultUbiquitousLocator: UbiquitousLocator {
     private static let maximumKeyLength = 128
+    /// Ends the namespace, and marks the library's entries in a store other code also writes to.
+    /// The escaped namespace has no `/`, so the first `/` always ends it.
+    private static let namespaceMark = "!/"
+    /// `/`, which ends the namespace, and `%` so escapes stay unambiguous.
     private static let reservedBytes: Set = [UInt8(ascii: "%"), UInt8(ascii: "/")]
 
     public init() { }
@@ -48,11 +52,10 @@ open class DefaultUbiquitousLocator: UbiquitousLocator {
 
     // MARK: Helpers
 
-    /// The namespace has no `/` once escaped, so the first `/` always ends it.
     private static func prefix(for scope: UbiquitousStorage.Scope) -> String {
         switch scope {
         case let .iCloud(_, namespace):
-            return namespace.string.percentEscaping(reservedBytes) + "!/"
+            return namespace.string.percentEscaping(reservedBytes) + namespaceMark
         }
     }
 }

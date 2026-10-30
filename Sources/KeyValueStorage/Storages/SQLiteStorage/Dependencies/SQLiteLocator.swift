@@ -24,6 +24,8 @@ public protocol SQLiteLocator {
 open class DefaultSQLiteLocator: SQLiteLocator {
     private static let databaseName = ".KeyValueStorage.sqlite"
     private static let maximumNameLength = 255
+    /// Ends namespace folders, as in `DefaultFileLocator`.
+    private static let namespaceMark = "!"
 
     private var fileManager: FileManager { .default }
 
@@ -58,11 +60,11 @@ open class DefaultSQLiteLocator: SQLiteLocator {
         switch scope {
         case let .own(retention, protection, namespace):
             // Before the lookups, so the namespace's error doesn't depend on the system
-            let namespaceFolder = try Self.folderName(for: namespace)
-            let app = try baseDirectory(for: retention).appendingPathComponent(ownIdentifier.portableName, isDirectory: true)
+            let namespaceFolder = try Self.namespaceFolderName(for: namespace)
+            let app = try baseDirectory(for: retention).appendingPathComponent(appFolderName, isDirectory: true)
             folder = Self.directory(in: app, namespaceFolder: namespaceFolder, protection: protection)
         case let .appGroup(groupId, protection, namespace):
-            let namespaceFolder = try Self.folderName(for: namespace)
+            let namespaceFolder = try Self.namespaceFolderName(for: namespace)
             guard !groupId.isEmpty, let container = groupDirectory(for: groupId) else {
                 throw .groupDirectoryNotFound(groupId)
             }
@@ -78,6 +80,10 @@ open class DefaultSQLiteLocator: SQLiteLocator {
     }
 
     // MARK: Helpers
+
+    private var appFolderName: String {
+        ownIdentifier.portableName
+    }
 
     private func baseDirectory(for retention: SQLiteStorage.Retention) throws(SQLiteStorage.Error) -> URL {
         switch retention {
@@ -96,11 +102,11 @@ open class DefaultSQLiteLocator: SQLiteLocator {
     }
 
     private static func directory(in base: URL, namespaceFolder: String, protection: SQLiteStorage.Protection) -> URL {
-        base.appendingPathComponent(namespaceFolder, isDirectory: true).appendingPathComponent(folderName(for: protection), isDirectory: true)
+        base.appendingPathComponent(namespaceFolder, isDirectory: true).appendingPathComponent(protectionFolderName(for: protection), isDirectory: true)
     }
 
-    private static func folderName(for namespace: SQLiteStorage.Namespace) throws(SQLiteStorage.Error) -> String {
-        let folderName = namespace.string.portableName + "!"
+    private static func namespaceFolderName(for namespace: SQLiteStorage.Namespace) throws(SQLiteStorage.Error) -> String {
+        let folderName = namespace.string.portableName + namespaceMark
         guard folderName.utf8.count <= maximumNameLength else {
             throw .invalidNamespace(namespace)
         }
@@ -109,7 +115,7 @@ open class DefaultSQLiteLocator: SQLiteLocator {
     }
 
     // One letter, as in `DefaultFileLocator`: every byte here counts toward the system's 1024-byte limit on a whole path
-    private static func folderName(for protection: SQLiteStorage.Protection) -> String {
+    private static func protectionFolderName(for protection: SQLiteStorage.Protection) -> String {
         switch protection {
         case .inherited:                return "i"
         case .none:                     return "n"
