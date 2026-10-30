@@ -47,7 +47,7 @@ This file is the source of truth for the 4.0 refactor, written so that anyone, h
 - **Done: phases 0–6, the source side.** The synchronous `KeyValueDataStorage` with `init(scope:backingStore:)`, typed throws, scopes with namespaces, every storage on its backing store, the global actors removed, and `KeychainWrapper.swift` deleted.
 - **Added: `UbiquitousStorage`** (§5.7), on the same pattern.
 - **Tests:** the public API target and the coder tests are on the 4.0 API and pass. The 3.x unit tests live in `Tests/Legacy3x/` (not a target) as the porting reference; each storage's locator step ports and deletes its file.
-- **Done, in review: the sealed scopes' pilot, FileStorage** (§S, §5.3, 2026-10-30). Shared: `ExactString`, and a scope protocol that only requires `default`. Until the other five move, `defaultName` and `KeyValueDataStorageNamespace` stay for them, and File and SQLite no longer share a namespace's folder.
+- **Done: the sealed scopes for FileStorage, the pilot, and SQLite** (§S, §5.3, §5.6, 2026-10-30). Shared: `ExactString`, and a scope protocol that only requires `default`. File and SQLite storages of one scope share its folder. Until the other four move, `defaultName` and `KeyValueDataStorageNamespace` stay for them.
 - **Next: the sealed scopes** (§S, Appendix A, phase 6b) for SQLite, UserDefaults, Ubiquitous, Keychain and InMemory, after the pilot's review. Each step brings that storage's planned items (§5.2–5.7), its part of the error refactor (§4.4) and its test revisit (§11.3).
 - **Then: phases 7–9**, the coding, isolation and facade layers. The observation and unified layers still emit isolated-conformance warnings on Swift 6.2+ compilers, because the storage protocol is no longer `Sendable`.
 
@@ -229,13 +229,13 @@ Finding where a scope's values go is naming, so the default File and SQLite loca
 open func systemDirectory(_ directory: FileManager.SearchPathDirectory) -> URL?   // urls(for:in: .userDomainMask).first
 open var temporaryDirectory: URL                                                   // FileManager.temporaryDirectory
 open func groupDirectory(for groupId: String) -> URL?                              // containerURL(forSecurityApplicationGroupIdentifier:)
-open var bundleIdentifier: String?                                                 // Bundle.main.bundleIdentifier (File, sealed scopes)
-open var processName: String                                                       // ProcessInfo.processInfo.processName (File, sealed scopes)
+open var bundleIdentifier: String?                                                 // Bundle.main.bundleIdentifier
+open var processName: String                                                       // ProcessInfo.processInfo.processName
 ```
 
 - Each is one `FileManager` call, with no logic, like a backing store's members (E0). A subclass changes where a directory is; the unit tests use one with fixed paths (`FixedDirectoriesFileLocator`).
-- Each default locator turns its own scope into its folder in one switch, and throws its storage's errors (`.directoryNotFound`, `.groupDirectoryNotFound`, `.invalidNamespace`, and SQLite's `.invalidDirectory` until its step). File and SQLite have separate scope and error types, so they repeat the switch rather than share a helper.
-- The namespace's folder is named with the file name encoding (§5.3) plus a trailing `!`. File and SQLite storages of one namespace share a folder again once SQLite takes the sealed scopes; until then a test checks they name it the same way. It's encoded first, so its one error, a name over 255 bytes (`.invalidNamespace`), doesn't depend on the system.
+- Each default locator turns its own scope into its folder in one switch, and throws its storage's errors (`.directoryNotFound`, `.groupDirectoryNotFound`, `.invalidNamespace`). File and SQLite have separate scope and error types, so they repeat the switch rather than share a helper.
+- The namespace's folder is named with the file name encoding (§5.3) plus a trailing `!`. File and SQLite storages of one scope share its folder; a test checks it for every namespace, retention, protection and group. It's encoded first, so its one error, a name over 255 bytes (`.invalidNamespace`), doesn't depend on the system.
 
 ### 4.3 Locators
 
@@ -442,12 +442,13 @@ The root encodings (§4.5) and the Keychain services are done.
 
 **Backing store:** `SQLiteBackingStore` (`createDirectory(at:)` with intermediates, `open(at:protection:)`) opens an `SQLiteDatabase` (`read`, `write`, `remove`, `removeAll`), whose errors are `SQLiteError(code:message:)`. `DefaultSQLiteDatabase` is the connection: `FULLMUTEX`, WAL, a 1 s busy timeout, one `WITHOUT ROWID` table, four prepared statements, NUL-safe key binding and `zeroblob` for empty values. The prepared statements make an instance unsafe to share between threads (D2); two instances have separate connections. A failed open closes what it opened, and nothing traps.
 
-**Locator:** `databaseURL(for:)` is the scope's folder, named as `DefaultFileLocator` names it (§5.3, `!` mark included), so file and SQLite storages of one namespace share a folder, plus the hidden `.KeyValueStorage.sqlite`. `storedKey(forKey:in:)` keeps the key's exact bytes. The locator looks up its system directories itself (§4.2).
+**Locator:** `databaseURL(for:)` is the scope's folder, named as `DefaultFileLocator` names it (§5.3: the app's folder, the namespace's with its `!`, and the protection level's letter), so file and SQLite storages of one scope share it, plus the hidden `.KeyValueStorage.sqlite`. `storedKey(forKey:in:)` keeps the key's exact bytes. The locator looks up its system directories itself (§4.2).
 
 **Storage:** resolves the URL, creates its folder, and opens the database with the scope's protection. `clear()` empties the database, which is the scope's alone. `SQLiteError` → `.sqlite(code:message:)`, anything else → `.other`.
 - Nothing that isn't the storage's is removed or replaced: a file where the folder goes → `.other` (the `createDirectory` error); a folder at the database path → `.sqlite(SQLITE_CANTOPEN)`; a corrupt file → `.sqlite(SQLITE_NOTADB)`; another app's `KeyValueStorage` view → `.sqlite(SQLITE_ERROR)`.
 - **Links are followed**, unlike `FileStorage`: `SQLITE_OPEN_NOFOLLOW` rejects a link anywhere in the path, including `/var` → `/private/var` above every temporary and app-container path, so it can't be used.
-- **Protection** (`SQLiteStorage.Protection`, part of the scope, default `.inherited`) is per database, because every key shares one file. It maps to a `SQLITE_OPEN_FILEPROTECTION_*` flag, which also covers `-wal` and `-shm`, and is re-applied on every open. Verified on macOS for `.complete`, `.completeUnlessOpen` and `.completeUntilFirstUserAuthentication`; macOS reports the default class for `.none`. Still to confirm on a locked iOS device (§13, item 7): the result code a `.complete` database fails with, which could map to a `.protectedDataUnavailable` like `FileStorage`'s.
+- **Protection** (`SQLiteStorage.Protection`, part of the scope, default `.inherited`) is part of the place (§S): each level is a database of its own, in the level's folder. It maps to a `SQLITE_OPEN_FILEPROTECTION_*` flag, which also covers `-wal` and `-shm`. Verified on macOS for `.whileLocked`, `.whileLockedUnlessOpen` and `.untilFirstUnlock`; macOS reports the default class for `.none`.
+- **Sealed scopes (2026-10-30):** `.own(retention, protection:, namespace:)` and `.appGroup(id:, protection:, namespace:)`, as File's; `Key` and `Namespace` are `ExactString`; `.invalidDirectory` is gone, `.invalidNamespace` carries the `ExactString` passed, and an empty group id → `.groupDirectoryNotFound("")`. The database's name is a constant, no longer built from `defaultName`. Still to confirm on a locked iOS device (§13, item 7): the result code a `.complete` database fails with, which could map to a `.protectedDataUnavailable` like `FileStorage`'s.
 
 ### 5.7 UbiquitousStorage (done)
 
@@ -702,14 +703,14 @@ Tests/
 **InMemoryStorage** (`InMemoryStorageTests`; `InMemoryBackingStoreMock`, `InMemoryLocatorStub`): every operation uses exactly the locator's names; `clear()` empties only the scope's bucket; `set`; `scope` is the one given; with the default store, the root, the empty name, case variants and both spellings of `é` never reach each other's values, and keys are exact too.
 
 **DefaultSQLiteLocator** (`DefaultSQLiteLocatorTests`, fixed system directories)
-- each app scope and the App Group → `<folder>[/<namespace>!]/.KeyValueStorage.sqlite`; the default scope; protection doesn't change the path;
-- missing directories → `.directoryNotFound(directory)`; a missing group container → `.groupDirectoryNotFound`; a URL that isn't a file URL → `.invalidDirectory`;
-- namespace folders equal `DefaultFileLocator`'s over every ASCII character and Unicode names; 254 encoded bytes is the longest; the namespace is checked before the lookups;
+- `.own` in each retention's base and the app's folder, the App Group in its container, each protection level a database of its own, the default scope, the process name without a bundle ID;
+- missing directories → `.directoryNotFound(directory)`; a missing group container or an empty id → `.groupDirectoryNotFound`;
+- every scope's database is in `DefaultFileLocator`'s folder for the same scope, over every ASCII character and Unicode names, each retention, protection and group; 254 encoded bytes is the longest; the namespace is checked before the lookups;
 - keys are stored as their exact scalars.
 
 **SQLiteStorage** (`SQLiteStorageTests`; `SQLiteBackingStoreMock`, `SQLiteLocatorStub`)
 - init: creates the folder of the locator's URL, then opens the URL; a locator error stops before any call; a folder that can't be created → `.other`, and nothing is opened; `open` → `.sqlite` for an `SQLiteError`, `.other` otherwise;
-- protection: each of the 5 cases, for `.app` and `.appGroup`, reaches `open` as the matching `FileProtectionType?` (`.inherited` → `nil`);
+- protection: each of the 5 cases, for `.own` and `.appGroup`, reaches `open` as the matching `FileProtectionType?` (`.inherited` → `nil`);
 - fetch, save, delete and clear use exactly the locator's stored keys; `set`; every operation reports an `SQLiteError` as `.sqlite` and anything else as `.other`;
 - `scope` is the one given.
 
@@ -760,7 +761,7 @@ Tests/
   - the real `CocoaError` codes for a missing file or directory, a directory where a file is expected, `chmod` 000 / 555 (skipped as root).
   - resolver members return real paths.
 - **SQLite** (`SQLiteIntegrationTests`, done):
-  - the locator's lookups match `FileManager`; the database, `-wal` and `-shm` are hidden in the namespace's folder; each open applies the scope's protection to the database and its log;
+  - the locator's lookups match `FileManager`; the database, `-wal` and `-shm` are hidden in the namespace's folder; each protection level is a database of its own, and it and its log are in the level's class;
   - persistence across instances; instances sharing a database see each other's changes; values round-trip exactly (empty, every byte, 1 MB); keys that differ in case, after a NUL, or in how `é` is written are separate rows;
   - a file where the folder goes → `.other`, kept; a folder at the database path → `SQLITE_CANTOPEN`; a corrupt database → `SQLITE_NOTADB`, kept; another app's view → `SQLITE_ERROR`;
   - a lock held by another connection → `SQLITE_BUSY` after the 1 s timeout, reads still working in WAL mode; a dropped table → `SQLITE_ERROR` until reopened.

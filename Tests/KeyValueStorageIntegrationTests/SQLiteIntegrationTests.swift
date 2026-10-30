@@ -13,20 +13,19 @@ import KeyValueStorage // not @testable: real SQLite through the public API
 /// The default backing store and locator against real SQLite, in a temporary folder of each test's own.
 final class SQLiteIntegrationTests: XCTestCase {
     private let fileManager = FileManager.default
+    private let scope = SQLiteStorage.Scope.own(namespace: "test")
     private var base: URL!
-
-    private var scope: SQLiteStorage.Scope {
-        .app(.directory(at: base))
-    }
-
-    private var database: URL {
-        base.appendingPathComponent(".KeyValueStorage.sqlite", isDirectory: false)
-    }
+    private var locator: TestSQLiteLocator!
+    /// `scope`'s database, in a folder made ahead.
+    private var database: URL!
 
     override func setUpWithError() throws {
         let base = fileManager.temporaryDirectory.appendingPathComponent("SQLiteIntegrationTests-\(UUID().uuidString)", isDirectory: true)
         try fileManager.createDirectory(at: base, withIntermediateDirectories: true)
         self.base = base
+        locator = TestSQLiteLocator(base: base)
+        database = try locator.databaseURL(for: scope)
+        try fileManager.createDirectory(at: database.deletingLastPathComponent(), withIntermediateDirectories: true)
         addTeardownBlock {
             try? FileManager.default.removeItem(at: base)
         }
@@ -42,35 +41,41 @@ final class SQLiteIntegrationTests: XCTestCase {
         // Outside a sandbox, macOS returns a container for any group ID
         let groupId = "group.not.entitled.\(UUID().uuidString)"
         XCTAssertEqual(locator.groupDirectory(for: groupId), fileManager.containerURL(forSecurityApplicationGroupIdentifier: groupId))
+        XCTAssertEqual(locator.bundleIdentifier, Bundle.main.bundleIdentifier)
+        XCTAssertEqual(locator.processName, ProcessInfo.processInfo.processName)
     }
 
     func testTheDatabaseIsHiddenInTheNamespacesFolder() throws {
         // Given
-        let storage = try SQLiteStorage(scope: .app(.directory(at: base), namespace: .directory(named: "name")))
+        let storage = try storage(.own(namespace: "name"))
 
         // When
         try storage.save(Data([1]), forKey: "key")
 
         // Then
-        let files = try fileManager.contentsOfDirectory(atPath: base.appendingPathComponent("name!").path).sorted()
+        let folder = try locator.databaseURL(for: .own(namespace: "name")).deletingLastPathComponent()
+        XCTAssertEqual(folder.path, base.appendingPathComponent("support/app/name!/i").path)
+        let files = try fileManager.contentsOfDirectory(atPath: folder.path).sorted()
         XCTAssertEqual(files, [".KeyValueStorage.sqlite", ".KeyValueStorage.sqlite-shm", ".KeyValueStorage.sqlite-wal"])
     }
 
-    func testEachOpenAppliesTheScopesProtection() throws {
+    func testEachProtectionIsADatabaseOfItsOwnInItsClass() throws {
         // `.none` opens, but can't be checked: macOS reports the default class for it
-        _ = try SQLiteStorage(scope: .app(.directory(at: base), protection: .none))
+        _ = try storage(.own(protection: .none, namespace: "test"))
         let protections: [(SQLiteStorage.Protection, FileProtectionType)] = [
-            (.complete, .complete),
-            (.completeUnlessOpen, .completeUnlessOpen),
-            (.completeUntilFirstUserAuthentication, .completeUntilFirstUserAuthentication)
+            (.whileLocked, .complete),
+            (.whileLockedUnlessOpen, .completeUnlessOpen),
+            (.untilFirstUnlock, .completeUntilFirstUserAuthentication)
         ]
 
         for (protection, expected) in protections {
             // When
-            let storage = try SQLiteStorage(scope: .app(.directory(at: base), protection: protection))
-            try storage.save(Data([1]), forKey: "key")
+            let scope = SQLiteStorage.Scope.own(protection: protection, namespace: "test")
+            try storage(scope).save(Data([1]), forKey: "key")
 
-            // Then: the database and its log
+            // Then: the scope's own database and its log
+            let database = try locator.databaseURL(for: scope)
+            XCTAssertNotEqual(database, self.database)
             let classes = try [database.path, database.path + "-wal"].map {
                 try fileManager.attributesOfItem(atPath: $0)[.protectionKey] as? FileProtectionType
             }
@@ -84,20 +89,20 @@ final class SQLiteIntegrationTests: XCTestCase {
 
     func testValuesPersistAcrossInstances() throws {
         // Given
-        var storage: SQLiteStorage? = try SQLiteStorage(scope: scope)
+        var storage: SQLiteStorage? = try self.storage()
         try storage?.save(Data([1]), forKey: "key")
 
         // When
         storage = nil
 
         // Then
-        XCTAssertEqual(try SQLiteStorage(scope: scope).fetch(forKey: "key"), Data([1]))
+        XCTAssertEqual(try self.storage().fetch(forKey: "key"), Data([1]))
     }
 
     func testInstancesSharingADatabaseSeeEachOthersChanges() throws {
         // Given
-        let first = try SQLiteStorage(scope: scope)
-        let second = try SQLiteStorage(scope: scope)
+        let first = try storage()
+        let second = try storage()
 
         // When
         try first.save(Data([1]), forKey: "key")
@@ -117,7 +122,7 @@ final class SQLiteIntegrationTests: XCTestCase {
 
     func testValuesRoundTripExactly() throws {
         // Given
-        let storage = try SQLiteStorage(scope: scope)
+        let storage = try storage()
         let values = [Data(), Data((0...255).map { UInt8($0) }), Data((0..<1_048_576).map { UInt8(truncatingIfNeeded: $0 &* 31) })]
 
         for value in values {
@@ -131,8 +136,8 @@ final class SQLiteIntegrationTests: XCTestCase {
 
     func testEveryKeyIsARowOfItsOwn() throws {
         // Given: keys that differ only in case, after a NUL, or in how `é` is written
-        let storage = try SQLiteStorage(scope: scope)
-        let keys = ["", ".", "..", "../escaped", "a/b", "a\0b", "a\0c", "Key", "key", "\u{E9}", "e\u{301}", "ключ 🔑", String(repeating: "ж", count: 10_000)]
+        let storage = try storage()
+        let keys: [SQLiteStorage.Key] = ["", ".", "..", "../escaped", "a/b", "a\0b", "a\0c", "Key", "key", "\u{E9}", "e\u{301}", "ключ 🔑", .init(String(repeating: "ж", count: 10_000))]
 
         // When
         for (index, key) in keys.enumerated() {
@@ -141,7 +146,7 @@ final class SQLiteIntegrationTests: XCTestCase {
 
         // Then
         for (index, key) in keys.enumerated() {
-            XCTAssertEqual(try storage.fetch(forKey: key), Data([UInt8(index)]), key.debugDescription)
+            XCTAssertEqual(try storage.fetch(forKey: key), Data([UInt8(index)]), key.string.debugDescription)
         }
     }
 
@@ -149,11 +154,12 @@ final class SQLiteIntegrationTests: XCTestCase {
 
     func testAFileWhereTheFolderGoesIsReportedAndKept() throws {
         // Given
-        let file = base.appendingPathComponent("blocked!", isDirectory: false)
+        let file = try locator.databaseURL(for: .own(namespace: "blocked")).deletingLastPathComponent()
+        try fileManager.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data([1]).write(to: file)
 
         // When
-        let error = storageError { _ = try SQLiteStorage(scope: .app(.directory(at: base), namespace: .directory(named: "blocked"))) }
+        let error = storageError { _ = try storage(.own(namespace: "blocked")) }
 
         // Then
         guard case .other? = error else {
@@ -168,7 +174,7 @@ final class SQLiteIntegrationTests: XCTestCase {
         try fileManager.createDirectory(at: database, withIntermediateDirectories: true)
 
         // When - Then
-        assertSQLiteError(storageError { _ = try SQLiteStorage(scope: scope) }, SQLITE_CANTOPEN)
+        assertSQLiteError(storageError { _ = try storage() }, SQLITE_CANTOPEN)
     }
 
     func testACorruptDatabaseIsReportedAndKept() throws {
@@ -177,7 +183,7 @@ final class SQLiteIntegrationTests: XCTestCase {
         try corrupt.write(to: database)
 
         // When - Then
-        assertSQLiteError(storageError { _ = try SQLiteStorage(scope: scope) }, SQLITE_NOTADB)
+        assertSQLiteError(storageError { _ = try storage() }, SQLITE_NOTADB)
         XCTAssertEqual(try Data(contentsOf: database), corrupt)
     }
 
@@ -189,12 +195,12 @@ final class SQLiteIntegrationTests: XCTestCase {
         sqlite3_close_v2(connection)
 
         // When - Then
-        assertSQLiteError(storageError { _ = try SQLiteStorage(scope: scope) }, SQLITE_ERROR)
+        assertSQLiteError(storageError { _ = try storage() }, SQLITE_ERROR)
     }
 
     func testABusyDatabaseFailsAfterTheTimeoutWhileReadsGoOn() throws {
         // Given: another connection, like another process's, holds the write lock
-        let storage = try SQLiteStorage(scope: scope)
+        let storage = try storage()
         try storage.save(Data([1]), forKey: "key")
         let other = try openConnection()
         defer { sqlite3_close_v2(other) }
@@ -219,7 +225,7 @@ final class SQLiteIntegrationTests: XCTestCase {
 
     func testADroppedTableFailsUntilTheDatabaseIsReopened() throws {
         // Given
-        let storage = try SQLiteStorage(scope: scope)
+        let storage = try storage()
         try storage.save(Data([1]), forKey: "key")
         let other = try openConnection()
         defer { sqlite3_close_v2(other) }
@@ -232,7 +238,7 @@ final class SQLiteIntegrationTests: XCTestCase {
         assertSQLiteError(storageError { try storage.clear() }, SQLITE_ERROR)
 
         // When
-        let reopened = try SQLiteStorage(scope: scope)
+        let reopened = try self.storage()
         try reopened.save(Data([2]), forKey: "key")
 
         // Then: opening creates the table again
@@ -240,6 +246,10 @@ final class SQLiteIntegrationTests: XCTestCase {
     }
 
     // MARK: Helpers
+
+    private func storage(_ scope: SQLiteStorage.Scope? = nil) throws(SQLiteStorage.Error) -> SQLiteStorage {
+        try SQLiteStorage(scope: scope ?? self.scope, backingStore: DefaultSQLiteBackingStoreWrapper(), locator: locator)
+    }
 
     /// A second connection to the database, like another process would open.
     private func openConnection() throws -> OpaquePointer {

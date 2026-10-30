@@ -43,13 +43,10 @@ private actor Caller {
 /// Runs on the caller's actor, so every call below is made from that context.
 private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #isolation) async throws {
     let id = "isolation-\(UUID().uuidString)"
-    // The file and SQLite storages' folders; `exercise` clears the UserDefaults suite itself
-    let folders = try [
-        DefaultFileLocator().directory(for: .own(.temporary, namespace: .init(id))).deletingLastPathComponent(),
-        DefaultSQLiteLocator().databaseURL(for: .app(.temporary, namespace: .directory(named: id))).deletingLastPathComponent()
-    ]
+    // The file and SQLite storages below share this namespace's folder; `exercise` clears the UserDefaults suite itself
+    let folder = try DefaultFileLocator().directory(for: .own(.temporary, namespace: .init(id))).deletingLastPathComponent()
     defer {
-        folders.forEach { try? FileManager.default.removeItem(at: $0) }
+        try? FileManager.default.removeItem(at: folder)
     }
     
     // Coders
@@ -63,7 +60,7 @@ private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #is
     try await exercise(InMemoryStorage(scope: .app(namespace: .bucket(named: id))), key: "key", context: context)
     try await exercise(UserDefaultsStorage(scope: .app(.suite(named: id))), key: "key", context: context)
     try await exercise(FileStorage(scope: .own(.temporary, namespace: .init(id))), key: "key", context: context)
-    try await exercise(SQLiteStorage(scope: .app(.temporary, namespace: .directory(named: id))), key: "key", context: context)
+    try await exercise(SQLiteStorage(scope: .own(.temporary, namespace: .init(id))), key: "key", context: context)
     try await exercise(KeychainStorage(scope: .app(namespace: .service(named: id)), backingStore: InMemoryKeychain(), locator: DefaultKeychainLocator()),
                        key: .init(name: "key"), context: context)
     if #available(watchOS 9.0, *) {

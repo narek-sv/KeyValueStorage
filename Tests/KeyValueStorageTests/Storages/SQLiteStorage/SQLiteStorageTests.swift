@@ -14,7 +14,7 @@ import SQLite3
 final class SQLiteStorageTests: XCTestCase {
     private let backingStore = SQLiteBackingStoreMock()
     private let locator = SQLiteLocatorStub()
-    private let scope = SQLiteStorage.Scope.app(.temporary, namespace: .directory(named: "name"))
+    private let scope = SQLiteStorage.Scope.own(.temporary, namespace: "name")
     private let data = Data([0xAA, 0xBB])
 
     // MARK: Initializers
@@ -70,13 +70,13 @@ final class SQLiteStorageTests: XCTestCase {
         let protections: [(SQLiteStorage.Protection, FileProtectionType?)] = [
             (.inherited, nil),
             (.none, FileProtectionType.none),
-            (.complete, .complete),
-            (.completeUnlessOpen, .completeUnlessOpen),
-            (.completeUntilFirstUserAuthentication, .completeUntilFirstUserAuthentication)
+            (.untilFirstUnlock, .completeUntilFirstUserAuthentication),
+            (.whileLocked, .complete),
+            (.whileLockedUnlessOpen, .completeUnlessOpen)
         ]
 
         for (protection, expected) in protections {
-            for scope in [SQLiteStorage.Scope.app(.temporary, protection: protection), .appGroup(groupId: "group.test", protection: protection)] {
+            for scope in [SQLiteStorage.Scope.own(protection: protection, namespace: "name"), .appGroup(id: "group.test", protection: protection, namespace: "name")] {
                 // When
                 let backingStore = SQLiteBackingStoreMock()
                 _ = try SQLiteStorage(scope: scope, backingStore: backingStore, locator: locator)

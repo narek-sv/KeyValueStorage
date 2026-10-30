@@ -12,7 +12,7 @@ import Foundation
 final class SQLiteLocatorStub: SQLiteLocator {
     enum Call: Equatable {
         case databaseURL(SQLiteStorage.Scope)
-        case storedKey(String, SQLiteStorage.Scope)
+        case storedKey(SQLiteStorage.Key, SQLiteStorage.Scope)
     }
 
     var databaseURL = URL(fileURLWithPath: "/located/database.sqlite", isDirectory: false)
@@ -28,7 +28,7 @@ final class SQLiteLocatorStub: SQLiteLocator {
         return databaseURL
     }
 
-    func storedKey(forKey key: String, in scope: SQLiteStorage.Scope) -> String {
+    func storedKey(forKey key: SQLiteStorage.Key, in scope: SQLiteStorage.Scope) -> String {
         calls.append(.storedKey(key, scope))
         return "located-\(key)"
     }

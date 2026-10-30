@@ -247,7 +247,7 @@ final class FileIntegrationTests: XCTestCase {
         try first.save(Data([1]), forKey: "Key")
         try second.save(Data([2]), forKey: "key")
         let folder = try folder(.own(namespace: "first"))
-        let sqlite = try SQLiteStorage(scope: .app(.directory(at: folder)))
+        let sqlite = try SQLiteStorage(scope: .own(namespace: "first"), backingStore: DefaultSQLiteBackingStoreWrapper(), locator: TestSQLiteLocator(base: base))
         try sqlite.save(Data([3]), forKey: "key")
         try makeFile(".hidden", in: folder)
         try makeFile("Notes.txt", in: folder)   // no key produces a raw capital or `.`
@@ -461,31 +461,6 @@ final class FileIntegrationTests: XCTestCase {
         let error = error as NSError
         let posix = error.domain == NSPOSIXErrorDomain ? error : error.userInfo[NSUnderlyingErrorKey] as? NSError
         return posix.flatMap { $0.domain == NSPOSIXErrorDomain ? POSIXErrorCode(rawValue: Int32($0.code)) : nil }
-    }
-}
-
-/// The default locator with its system directories and App Group containers in the test's folder, and the bundle ID `app`.
-private final class TestFileLocator: DefaultFileLocator {
-    private let base: URL
-
-    init(base: URL) {
-        self.base = base
-    }
-
-    override var temporaryDirectory: URL {
-        base.appendingPathComponent("tmp", isDirectory: true)
-    }
-
-    override func systemDirectory(_ directory: FileManager.SearchPathDirectory) -> URL? {
-        [.applicationSupportDirectory: "support", .cachesDirectory: "caches"][directory].map { base.appendingPathComponent($0, isDirectory: true) }
-    }
-
-    override func groupDirectory(for groupId: String) -> URL? {
-        base.appendingPathComponent(groupId, isDirectory: true)
-    }
-
-    override var bundleIdentifier: String? {
-        "app"
     }
 }
 

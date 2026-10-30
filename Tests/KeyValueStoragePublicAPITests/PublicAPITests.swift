@@ -82,8 +82,8 @@ final class PublicAPITests: XCTestCase {
     func testScopeIsReadable() throws {
         // Given
         let directory = UUID().uuidString
-        // The SQLite storage below makes its folder; the file storage writes nothing
-        let folder = try DefaultSQLiteLocator().databaseURL(for: .app(.temporary, namespace: .directory(named: directory))).deletingLastPathComponent()
+        // The SQLite storage below makes its namespace's folder; the file storage writes nothing
+        let folder = try DefaultSQLiteLocator().databaseURL(for: .own(.temporary, namespace: .init(directory))).deletingLastPathComponent().deletingLastPathComponent()
         addTeardownBlock {
             try? FileManager.default.removeItem(at: folder)
         }
@@ -92,7 +92,7 @@ final class PublicAPITests: XCTestCase {
         let userDefaultsScope = UserDefaultsStorage.Scope.app(.suite(named: "publicAPIScope"))
         let keychainScope = KeychainStorage.Scope.appGroup(groupId: "group.shared", namespace: .service(named: "publicAPIScope"))
         let fileScope = FileStorage.Scope.own(.temporary, namespace: .init(directory))
-        let sqliteScope = SQLiteStorage.Scope.app(.temporary, namespace: .directory(named: directory))
+        let sqliteScope = SQLiteStorage.Scope.own(.temporary, namespace: .init(directory))
         let inMemory = InMemoryStorage(scope: inMemoryScope)
         let userDefaults = try UserDefaultsStorage(scope: userDefaultsScope)
         let keychain = KeychainStorage(scope: keychainScope)

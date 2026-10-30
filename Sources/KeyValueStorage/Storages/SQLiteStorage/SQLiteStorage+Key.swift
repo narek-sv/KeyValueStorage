@@ -8,5 +8,6 @@
 // MARK: - SQLiteStorage + Key
 
 public extension SQLiteStorage {
-    typealias Key = String
+    /// Any string, even an empty one.
+    typealias Key = ExactString
 }

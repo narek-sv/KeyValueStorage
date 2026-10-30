@@ -11,13 +11,11 @@ import Foundation
 
 public extension SQLiteStorage {
     enum Error: KeyValueDataStorageError {
-        /// Usually the app isn't in the group.
+        /// Usually the app isn't in the group; also an empty id.
         case groupDirectoryNotFound(String)
         case directoryNotFound(FileManager.SearchPathDirectory)
-        /// Not a file URL.
-        case invalidDirectory(URL)
         /// Its encoded folder name exceeds 255 bytes.
-        case invalidNamespace(String)
+        case invalidNamespace(Namespace)
         case sqlite(code: Int32, message: String)
         case other(Swift.Error)
     }

@@ -20,14 +20,14 @@ final class ProtectedDataTests: XCTestCase {
         #else
         // Given: an open database of each protection class, and a file only readable while unlocked
         let report = Report()
-        let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("ProtectedDataTests", isDirectory: true)
+        // The namespace's folder, with every protection level's database and the file in it
+        let folder = try DefaultSQLiteLocator().databaseURL(for: .own(namespace: "ProtectedDataTests")).deletingLastPathComponent().deletingLastPathComponent()
         try? FileManager.default.removeItem(at: folder)
         defer { try? FileManager.default.removeItem(at: folder) }
 
-        let protections: [SQLiteStorage.Protection] = [.complete, .completeUnlessOpen, .completeUntilFirstUserAuthentication, .none]
+        let protections: [SQLiteStorage.Protection] = [.whileLocked, .whileLockedUnlessOpen, .untilFirstUnlock, .none]
         func database(_ protection: SQLiteStorage.Protection) throws -> SQLiteStorage {
-            try SQLiteStorage(scope: .app(.directory(at: folder), namespace: .directory(named: "\(protection)"), protection: protection))
+            try SQLiteStorage(scope: .own(protection: protection, namespace: "ProtectedDataTests"))
         }
 
         let databases = try protections.map { protection in
@@ -37,7 +37,6 @@ final class ProtectedDataTests: XCTestCase {
         }
 
         let file = try FileStorage(scope: .own(protection: .whileLocked, namespace: "ProtectedDataTests"))
-        defer { try? file.clear() }
         try file.save(Data([1]), forKey: "key")
 
         // Keep running while locked, also without a debugger

@@ -10,54 +10,44 @@ import Foundation
 // MARK: - SQLiteStorage + Scope
 
 public extension SQLiteStorage {
-    /// `nil` keeps the hidden `.KeyValueStorage.sqlite` directly in the scope's directory.
-    enum Namespace: KeyValueDataStorageNamespace {
-        /// Any name, even an empty one, encoded into a file-safe folder name.
-        /// - Note: `.invalidNamespace` if the encoded name exceeds 255 bytes, the file system's limit.
-        case directory(named: String)
+    /// Any string, even an empty one; `.invalidNamespace` if its encoded folder name exceeds 255 bytes.
+    typealias Namespace = ExactString
+
+    enum Retention: Hashable, Sendable {
+        /// Kept until deleted.
+        case persistent
+        /// The system can delete it when storage runs low.
+        case cache
+        /// The system can delete it while the app isn't running.
+        case temporary
     }
-    
+
     /// Applies to the database and its `-wal` and `-shm` files.
-    enum Protection: Sendable {
+    /// - Note: Part of the place: scopes that differ only in protection never share values.
+    enum Protection: Hashable, Sendable {
         /// No explicit class: the files get their folder's class or the app's default.
         case inherited
+        /// Usable at any time, even before the first unlock after a restart (`none`).
         case none
-        /// Unreadable while locked, even by an open database.
-        case complete
-        /// Unreadable while locked, unless the database was already open.
-        case completeUnlessOpen
-        /// Readable once the user unlocks the device after a restart.
-        case completeUntilFirstUserAuthentication
+        /// Usable once the user has unlocked the device after a restart, then also while locked (`completeUntilFirstUserAuthentication`).
+        case untilFirstUnlock
+        /// Usable only while the device is unlocked, even by an open database (`complete`).
+        case whileLocked
+        /// While locked, usable only by a storage created before locking, which keeps the database open (`completeUnlessOpen`).
+        case whileLockedUnlessOpen
     }
-    
-    /// - Warning: On macOS without App Sandbox, the standard directories are shared by all of the user's apps.
-    enum AppScope: Hashable, Sendable {
-        /// Backed up; never emptied by the system.
-        case applicationSupport
-        /// Not backed up; the system can empty it when storage runs low.
-        case cache
-        /// Backed up; can be visible to the user.
-        case documents
-        /// The system can empty it when the app isn't running.
-        case temporary
-        /// - Warning: URLs compare as given: `/a/b`, `/a/b/` and a symlinked path are separate scopes.
-        case directory(at: URL)
-    }
-    
+
     enum Scope: KeyValueDataStorageScope {
-        case app(AppScope, namespace: Namespace? = nil, protection: Protection = .inherited)
-        /// Readable by every app and extension in the group.
-        case appGroup(groupId: String, namespace: Namespace? = nil, protection: Protection = .inherited)
-        
-        public var namespace: Namespace? {
-            switch self {
-            case let .app(_, namespace, _):         return namespace
-            case let .appGroup(_, namespace, _):    return namespace
-            }
-        }
-        
+        /// The running app's or extension's own.
+        /// - Warning: On macOS without App Sandbox, the user's other apps can read it.
+        case own(_ retention: Retention = .persistent, protection: Protection = .inherited, namespace: Namespace)
+        /// Shared by the apps and extensions in the App Group.
+        /// - Note: An empty id throws.
+        /// - Note: On macOS, every id gets a folder, even one the app isn't entitled to, and ids that differ only in case share one.
+        case appGroup(id: String, protection: Protection = .inherited, namespace: Namespace)
+
         public static var `default`: Self {
-            .app(.applicationSupport, namespace: .directory(named: Self.defaultName))
+            .own(namespace: defaultNamespace)
         }
     }
 }

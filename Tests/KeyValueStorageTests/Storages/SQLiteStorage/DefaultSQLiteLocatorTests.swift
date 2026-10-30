@@ -14,90 +14,103 @@ final class DefaultSQLiteLocatorTests: XCTestCase {
 
     // MARK: Database
 
-    func testAppScopesUseTheirBaseDirectory() throws {
-        let custom = URL(fileURLWithPath: "/custom", isDirectory: true)
-        let bases: [(SQLiteStorage.AppScope, String)] = [
-            (.applicationSupport, "/support"),
-            (.cache, "/caches"),
-            (.documents, "/documents"),
-            (.temporary, "/temporary"),
-            (.directory(at: custom), "/custom")
-        ]
-
-        for (appScope, path) in bases {
-            XCTAssertEqual(try databasePath(.app(appScope)), path + "/.KeyValueStorage.sqlite")
-            XCTAssertEqual(try databasePath(.app(appScope, namespace: .directory(named: "name"))), path + "/name!/.KeyValueStorage.sqlite")
+    func testOwnScopesUseTheirRetentionsBaseAndTheAppsFolder() throws {
+        let bases: [(SQLiteStorage.Retention, String)] = [(.persistent, "/support"), (.cache, "/caches"), (.temporary, "/temporary")]
+        for (retention, path) in bases {
+            XCTAssertEqual(try databasePath(.own(retention, namespace: "name")), path + "/com%2etest%2e!app/name!/i/.KeyValueStorage.sqlite")
         }
     }
 
     func testAppGroupScopesUseTheGroupContainer() throws {
-        XCTAssertEqual(try databasePath(.appGroup(groupId: "group.test")), "/group/.KeyValueStorage.sqlite")
-        XCTAssertEqual(try databasePath(.appGroup(groupId: "group.test", namespace: .directory(named: "name"))), "/group/name!/.KeyValueStorage.sqlite")
+        XCTAssertEqual(try databasePath(.appGroup(id: "group.test", namespace: "name")), "/group/name!/i/.KeyValueStorage.sqlite")
     }
 
-    func testDefaultScopeUsesTheLibrarysFolderInApplicationSupport() throws {
-        XCTAssertEqual(try databasePath(.default), "/support/!key!value!storage!/.KeyValueStorage.sqlite")
+    func testEachProtectionIsADatabaseOfItsOwn() throws {
+        let folders: [(SQLiteStorage.Protection, String)] = [(.inherited, "i"), (.none, "n"), (.untilFirstUnlock, "u"), (.whileLocked, "w"), (.whileLockedUnlessOpen, "o")]
+        for (protection, folder) in folders {
+            XCTAssertEqual(try databasePath(.own(protection: protection, namespace: "name")), "/support/com%2etest%2e!app/name!/\(folder)/.KeyValueStorage.sqlite")
+            XCTAssertEqual(try databasePath(.appGroup(id: "group.test", protection: protection, namespace: "name")), "/group/name!/\(folder)/.KeyValueStorage.sqlite")
+        }
     }
 
-    func testProtectionDoesntChangeTheDatabase() throws {
-        XCTAssertEqual(try databasePath(.app(.temporary, protection: .complete)), try databasePath(.app(.temporary)))
+    func testDefaultScopeUsesTheLibrarysNamespaceInApplicationSupport() throws {
+        XCTAssertEqual(try databasePath(.default), "/support/com%2etest%2e!app/!key!value!storage!/i/.KeyValueStorage.sqlite")
+    }
+
+    func testTheAppsFolderIsItsBundleIDOrProcessName() throws {
+        locator.identifier = nil
+        XCTAssertEqual(try databasePath(.own(namespace: "name")), "/support/my%20tool/name!/i/.KeyValueStorage.sqlite")
     }
 
     func testMissingBaseDirectoriesThrowTheirDirectory() {
         locator.directories = [:]
 
         assertThrows(SQLiteStorage.Error.directoryNotFound(.applicationSupportDirectory)) {
-            try databasePath(.app(.applicationSupport))
+            try databasePath(.own(namespace: "name"))
         }
 
         assertThrows(SQLiteStorage.Error.directoryNotFound(.cachesDirectory)) {
-            try databasePath(.app(.cache))
-        }
-
-        assertThrows(SQLiteStorage.Error.directoryNotFound(.documentDirectory)) {
-            try databasePath(.app(.documents))
+            try databasePath(.own(.cache, namespace: "name"))
         }
     }
 
-    func testMissingGroupContainerThrowsTheGroupId() {
+    func testAMissingGroupContainerOrAnEmptyIdThrowsTheId() {
+        // macOS returns a container for any id, the empty one included
+        locator.groupDirectories[""] = URL(fileURLWithPath: "/empty", isDirectory: true)
+
         assertThrows(SQLiteStorage.Error.groupDirectoryNotFound("group.other")) {
-            try databasePath(.appGroup(groupId: "group.other"))
+            try databasePath(.appGroup(id: "group.other", namespace: "name"))
+        }
+
+        assertThrows(SQLiteStorage.Error.groupDirectoryNotFound("")) {
+            try databasePath(.appGroup(id: "", namespace: "name"))
         }
     }
 
-    func testDirectoryMustBeAFileURL() throws {
-        let url = try XCTUnwrap(URL(string: "https://example.com/folder"))
-        assertThrows(SQLiteStorage.Error.invalidDirectory(url)) {
-            try databasePath(.app(.directory(at: url)))
+    func testEveryScopesDatabaseIsInTheFileStoragesFolderForTheSameScope() throws {
+        let fileLocator = FixedDirectoriesFileLocator()
+        let names = (0..<128).map { String(UnicodeScalar(UInt8($0))) } + ["", "KeyValueStorage", "a/b", "\u{E9}", "e\u{301}", "🙂"]
+        let protections: [(SQLiteStorage.Protection, FileStorage.Protection)] = [
+            (.inherited, .inherited), (.none, .none), (.untilFirstUnlock, .untilFirstUnlock), (.whileLocked, .whileLocked), (.whileLockedUnlessOpen, .whileLockedUnlessOpen)
+        ]
+        let retentions: [(SQLiteStorage.Retention, FileStorage.Retention)] = [(.persistent, .persistent), (.cache, .cache), (.temporary, .temporary)]
+
+        for name in names {
+            for (protection, fileProtection) in protections {
+                for (retention, fileRetention) in retentions {
+                    let database = try locator.databaseURL(for: .own(retention, protection: protection, namespace: .init(name)))
+                    let folder = try fileLocator.directory(for: .own(fileRetention, protection: fileProtection, namespace: .init(name)))
+                    XCTAssertEqual(database.deletingLastPathComponent(), folder, name.debugDescription)
+                }
+
+                let database = try locator.databaseURL(for: .appGroup(id: "group.test", protection: protection, namespace: .init(name)))
+                let folder = try fileLocator.directory(for: .appGroup(id: "group.test", protection: fileProtection, namespace: .init(name)))
+                XCTAssertEqual(database.deletingLastPathComponent(), folder, name.debugDescription)
+            }
         }
     }
 
     // MARK: Namespaces
 
-    func testNamespaceFoldersAreNamedLikeFileStoragesOnes() throws {
-        let base = URL(fileURLWithPath: "/base", isDirectory: true)
-        let names = (0..<128).map { String(UnicodeScalar(UInt8($0))) } + ["", "KeyValueStorage", "a/b", "\u{E9}", "e\u{301}", "🙂"]
-
-        for name in names {
-            let database = try locator.databaseURL(for: .app(.directory(at: base), namespace: .directory(named: name)))
-            let fileFolder = try DefaultFileLocator().directory(for: .own(namespace: .init(name)))
-            XCTAssertEqual(database.deletingLastPathComponent().lastPathComponent, fileFolder.deletingLastPathComponent().lastPathComponent, name.debugDescription)
-        }
-    }
-
     func testNamespacesLongerThanAFolderNameThrow() throws {
-        XCTAssertNoThrow(try databasePath(.app(.temporary, namespace: .directory(named: String(repeating: "a", count: 254)))))
+        XCTAssertNoThrow(try databasePath(.own(namespace: .init(String(repeating: "a", count: 254)))))
 
-        let name = String(repeating: "a", count: 255)
+        let name = SQLiteStorage.Namespace(String(repeating: "a", count: 255))
         assertThrows(SQLiteStorage.Error.invalidNamespace(name)) {
-            try databasePath(.app(.temporary, namespace: .directory(named: name)))
+            try databasePath(.own(namespace: name))
         }
     }
 
     func testNamespaceIsCheckedBeforeTheEnvironment() {
-        let name = String(repeating: "A", count: 128)
+        let name = SQLiteStorage.Namespace(String(repeating: "A", count: 128))
+        locator.directories = [:]
+
         assertThrows(SQLiteStorage.Error.invalidNamespace(name)) {
-            try databasePath(.appGroup(groupId: "group.other", namespace: .directory(named: name)))
+            try databasePath(.own(namespace: name))
+        }
+
+        assertThrows(SQLiteStorage.Error.invalidNamespace(name)) {
+            try databasePath(.appGroup(id: "group.other", namespace: name))
         }
     }
 
@@ -105,7 +118,7 @@ final class DefaultSQLiteLocatorTests: XCTestCase {
 
     func testKeysAreStoredAsTheyAre() {
         for key in ["", "key", "Key", "a/b", "a\0b", "\u{E9}", "e\u{301}", "🙂"] {
-            XCTAssertTrue(locator.storedKey(forKey: key, in: .default).unicodeScalars.elementsEqual(key.unicodeScalars), key.debugDescription)
+            XCTAssertTrue(locator.storedKey(forKey: .init(key), in: .default).utf8.elementsEqual(key.utf8), key.debugDescription)
         }
     }
 
