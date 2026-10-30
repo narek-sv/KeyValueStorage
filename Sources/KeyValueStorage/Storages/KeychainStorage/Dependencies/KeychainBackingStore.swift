@@ -163,7 +163,7 @@ public enum KeychainOperationStatus: Equatable, Sendable {
     case duplicate
     case interactionNotAllowed
     case missingEntitlement
-    case otherError(Int32)
+    case other(OSStatus)
     
     init(status: OSStatus) {
         switch status {
@@ -172,7 +172,7 @@ public enum KeychainOperationStatus: Equatable, Sendable {
         case errSecDuplicateItem:         self = .duplicate
         case errSecInteractionNotAllowed: self = .interactionNotAllowed
         case errSecMissingEntitlement:    self = .missingEntitlement
-        default:                          self = .otherError(status)
+        default:                          self = .other(status)
         }
     }
     
@@ -183,7 +183,7 @@ public enum KeychainOperationStatus: Equatable, Sendable {
         case .duplicate:              return errSecDuplicateItem
         case .interactionNotAllowed:  return errSecInteractionNotAllowed
         case .missingEntitlement:     return errSecMissingEntitlement
-        case let .otherError(status): return OSStatus(status)
+        case let .other(status):      return status
         }
     }
 }

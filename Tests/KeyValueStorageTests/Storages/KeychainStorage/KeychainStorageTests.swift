@@ -183,6 +183,29 @@ final class KeychainStorageTests: XCTestCase {
 
     // MARK: Errors
 
+    func testALockedDeviceIsProtectedDataUnavailableAndOtherStatusesKeepTheirCode() {
+        let errors: [(KeychainOperationStatus, KeychainStorage.Error)] = [
+            (.interactionNotAllowed, .protectedDataUnavailable),
+            (.missingEntitlement, .keychain(status: errSecMissingEntitlement)),
+            (.duplicate, .keychain(status: errSecDuplicateItem)),
+            (.other(errSecAuthFailed), .keychain(status: errSecAuthFailed))
+        ]
+
+        for (status, expected) in errors {
+            XCTAssertEqual(String(reflecting: KeychainStorage.Error(status)), String(reflecting: expected), "\(status)")
+        }
+    }
+
+    func testStatusesKeepTheirCode() {
+        let codes = [errSecSuccess, errSecItemNotFound, errSecDuplicateItem, errSecInteractionNotAllowed, errSecMissingEntitlement, errSecAuthFailed, -1]
+        for code in codes {
+            XCTAssertEqual(KeychainOperationStatus(status: code).code, code)
+        }
+
+        XCTAssertEqual(KeychainOperationStatus(status: errSecAuthFailed), .other(errSecAuthFailed))
+        XCTAssertEqual(KeychainOperationStatus(status: errSecInteractionNotAllowed), .interactionNotAllowed)
+    }
+
     func testEveryKeychainFailureIsReported() throws {
         let operations: [(KeychainBackingStoreMock.Operation, (KeychainStorage) throws -> Void)] = [
             (.read, { _ = try $0.fetch(forKey: "key") }),
@@ -200,7 +223,7 @@ final class KeychainStorageTests: XCTestCase {
             let storage = KeychainStorage(scope: scope, backingStore: backingStore, locator: locator)
 
             // When - Then
-            assertThrows(KeychainStorage.Error.os(errSecInteractionNotAllowed)) { try body(storage) }
+            assertThrows(KeychainStorage.Error.protectedDataUnavailable) { try body(storage) }
             XCTAssertEqual(backingStore.items, [item("key", data: data)])
         }
     }
@@ -210,7 +233,7 @@ final class KeychainStorageTests: XCTestCase {
         backingStore.failures[.add] = .duplicate
 
         // When - Then
-        assertThrows(KeychainStorage.Error.os(errSecDuplicateItem)) { try makeStorage().save(data, forKey: "key") }
+        assertThrows(KeychainStorage.Error.keychain(status: errSecDuplicateItem)) { try makeStorage().save(data, forKey: "key") }
     }
 
     // MARK: Set

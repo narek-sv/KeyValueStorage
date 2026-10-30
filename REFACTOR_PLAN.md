@@ -263,7 +263,7 @@ What stays in the storages: system calls and their retries (File's `createDirect
 
 - **E1 Typed end to end.** A storage and its locator throw `<Storage>.Error`. An error is constructed once and never re-mapped, with no `as? <Storage>.Error` casts.
 - **E0 No logic in wrappers.** A default backing store is one system call per member, with no catches, translations or path rewriting. Every rule, including what an error means, lives in the storage, where the unit tests reach it.
-- **E2 Only backing-store calls are wrapped.** Their untyped errors map to specific cases where the meaning is known (`.protectedDataUnavailable`, `.sqlite(code:message:)`, `.os`), or else to `.other(underlying)`, which keeps the original error. A rule the storage checks before acting, such as File's `.pathOccupied`, is thrown by the storage itself, never read from an error code.
+- **E2 Only backing-store calls are wrapped.** Their untyped errors map to specific cases where the meaning is known (`.protectedDataUnavailable`, `.sqlite(code:message:)`, `.keychain(status:)`), or else to `.other(underlying)`, which keeps the original error. A rule the storage checks before acting, such as File's `.pathOccupied`, is thrown by the storage itself, never read from an error code.
 - **E3 Absence isn't an error, and nothing else is swallowed.** A missing value is `nil` on fetch and a no-op on delete and clear. Storages check what is there before acting; "nothing there" is the one error a check translates (File: `fileReadNoSuchFile` → `nil`), and every other error is thrown, so an unreadable location never passes for an empty one.
 - **E4 Validation before side effects.** Invalid keys, namespaces and values throw before any backing-store call.
 - **E5 Errors carry the failing input:** the key, namespace, group ID, directory, URL or size, and nothing derived from it.
@@ -272,7 +272,7 @@ What stays in the storages: system calls and their retries (File's `createDirect
 - **E8 Partial failure is documented:** `clear()` stops at the first failure, and a failed init leaves nothing open.
 - **Planned: refactor the errors with the sealed scopes** (2026-10-30, §13 item 8), against E1–E8:
   - drop the cases the redesign removes: `.invalidDirectory` (no `.directory(at:)`), Keychain's `.keyOccupied` (gone already, §5.2);
-  - one name for one meaning across storages: a group the app isn't in (`.groupDirectoryNotFound`, `.invalidSuiteName`, `.os(errSecMissingEntitlement)` today), an occupied place (`.pathOccupied`, `.keyOccupied`), and a locked device (`.protectedDataUnavailable` for File today; SQLite's and Keychain's locked results once the device test names them, §13 item 7);
+  - one name for one meaning across storages: a group the app isn't in (`.groupDirectoryNotFound`, `.invalidSuiteName`, `.keychain(status: errSecMissingEntitlement)` today), an occupied place (`.pathOccupied`, `.keyOccupied`), and a locked device (`.protectedDataUnavailable` for File and for Keychain's `errSecInteractionNotAllowed`; SQLite's locked result once the device test names it, §13 item 7);
   - cases carry `ExactString` keys and namespaces, the failing input as the caller passed it (E5);
   - every case documented and every throw site tested again (E7).
 
@@ -349,7 +349,7 @@ The setup members are `createDirectory(at:)` (always creates intermediate direct
   - `fetch` reads with `returnData` and `.one`; an item without data → `nil`;
   - `save` updates the item's data and accessibility, and adds the item if the update finds none. If another process adds it in between, the add's `errSecDuplicateItem` is thrown;
   - `delete` removes the key's item, and `clear()` every item of the scope's service, access group and kind (local, or synced for `.iCloud`), in one call each; "not found" is no error;
-  - the internal `Item` enum, its `.other` case and Keychain's `.keyOccupied` are gone. Any other status → `.os(status)`.
+  - the internal `Item` enum, its `.other` case and Keychain's `.keyOccupied` are gone. `errSecInteractionNotAllowed` → `.protectedDataUnavailable`; any other status → `.keychain(status:)`.
 - **Sealed scopes (done 2026-10-30):** `.own(protection:, namespace:)`, `.appGroup(id:, protection:, namespace:)` and `.iCloud(Owner, protection:, namespace:)`, `Owner` being `.own` or `.appGroup(id:)`; `Key` and `Namespace` are `ExactString`.
   - The protection is part of the place (§S): the storage maps it to the items' `kSecAttrAccessible`, set on add and on update, and `.iCloud` makes them synchronizable. `.iCloud` takes `SyncedProtection`, so a synced item with a device-only level can't be written. `KeychainQuery.Accessibility` holds the system's levels; `KeychainQuery.Synchronizable.any` is gone, unused.
   - Why the identifier: saves without an access group go to the first Keychain Sharing entry. When a developer lists a shared group first, two apps' items land in one group, and the same namespace would make them the same items. With the identifier in the service they stay apart, and an extension's are its own. Same rule as File and SQLite paths (D9).
@@ -608,7 +608,7 @@ Tests/
 - no read before a call: `save` updates, then adds only if there's no item; `fetch`, `delete` and `clear()` are one call each;
 - an item without data fetches as `nil`, and `save`, `delete` and `clear()` replace and remove it like a value;
 - delete; `clear()` removes every item of the scope, without data included, and nothing else, not even the synced items of its service; without items it succeeds;
-- every failing read, add, update and remove → `.os(status)`, and nothing changes; an item added between `save`'s update and add → `.os(errSecDuplicateItem)`;
+- every failing read, add, update and remove → `.keychain(status:)`, or `.protectedDataUnavailable` for `errSecInteractionNotAllowed`, and nothing changes; an item added between `save`'s update and add → `.keychain(status: errSecDuplicateItem)`;
 - `set`; `.own`, another namespace, another protection, App Groups (one of them the default access group) and `.iCloud` with either owner never reach each other's items.
 
 **DefaultFileLocator** (`DefaultFileLocatorTests`, no mocks)
@@ -755,7 +755,7 @@ Tests/
 - **Keychain** (`KeychainIntegrationTests` in KeychainHost, done; the 3.x tests are ported and deleted):
   - values round-trip and persist; keys are exact bytes; the scope's protection is the item's accessibility; scopes that differ only in protection never share items;
   - a synced scope and the local one of its service never reach each other's items; `.own`, App Groups (one of them the default group) and `.iCloud` with either owner never reach each other's items;
-  - a group the app isn't entitled to, and an empty group id, → `.os(errSecMissingEntitlement)`;
+  - a group the app isn't entitled to, and an empty group id, → `.keychain(status: errSecMissingEntitlement)`;
   - an item without data fetches as `nil`, and `save`, `delete` and `clear()` replace and remove it; other code's items, without a service or with the namespace as their service, are never reached.
 - **End-to-end:** one save/fetch/clear per storage through `UnifiedStorage` with real backings in temporary scopes.
 - **To add: the system behavior the scope docs state** (2026-10-30), so no comment rests on reasoning alone:

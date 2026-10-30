@@ -11,8 +11,10 @@ import Foundation
 
 public extension KeychainStorage {
     enum Error: Swift.Error, Sendable {
-        /// A Security framework status, such as `errSecInteractionNotAllowed` while locked or `errSecMissingEntitlement`.
-        case os(OSStatus)
+        /// `errSecInteractionNotAllowed`: the item is protected while the device is locked, or needs user interaction.
+        case protectedDataUnavailable
+        /// Any other Security framework status, such as `errSecMissingEntitlement` for a group the app isn't in.
+        case keychain(status: OSStatus)
     }
 }
 
@@ -21,6 +23,9 @@ public extension KeychainStorage {
 extension KeychainStorage.Error {
     /// For a status that failed the operation.
     init(_ status: KeychainOperationStatus) {
-        self = .os(status.code)
+        switch status {
+        case .interactionNotAllowed:    self = .protectedDataUnavailable
+        default:                        self = .keychain(status: status.code)
+        }
     }
 }

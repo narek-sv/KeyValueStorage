@@ -152,14 +152,14 @@ final class KeychainIntegrationTests: XCTestCase {
     }
 
     func testAGroupTheAppIsntEntitledToIsReported() {
-        assertOSError(errSecMissingEntitlement) {
+        assertKeychainError(errSecMissingEntitlement) {
             try self.storage(.appGroup(id: "not.entitled", namespace: self.namespace())).save(Data([1]), forKey: "key")
         }
     }
 
     func testAnEmptyGroupIdIsReported() {
         for scope in [KeychainStorage.Scope.appGroup(id: "", namespace: namespace()), .iCloud(.appGroup(id: ""), namespace: namespace())] {
-            assertOSError(errSecMissingEntitlement) { try self.storage(scope).save(Data([1]), forKey: "key") }
+            assertKeychainError(errSecMissingEntitlement) { try self.storage(scope).save(Data([1]), forKey: "key") }
         }
     }
 
@@ -251,10 +251,10 @@ final class KeychainIntegrationTests: XCTestCase {
         return status == errSecSuccess ? (result as? [[String: Any]] ?? []).compactMap { $0[kSecAttrService as String] as? String } : []
     }
 
-    private func assertOSError(_ expected: OSStatus, file: StaticString = #filePath, line: UInt = #line, _ body: () throws -> Void) {
+    private func assertKeychainError(_ expected: OSStatus, file: StaticString = #filePath, line: UInt = #line, _ body: () throws -> Void) {
         XCTAssertThrowsError(try body(), file: file, line: line) { error in
-            guard case .os(expected)? = error as? KeychainStorage.Error else {
-                return XCTFail("Expected .os(\(expected)), got \(error)", file: file, line: line)
+            guard case .keychain(status: expected)? = error as? KeychainStorage.Error else {
+                return XCTFail("Expected .keychain(status: \(expected)), got \(error)", file: file, line: line)
             }
         }
     }
