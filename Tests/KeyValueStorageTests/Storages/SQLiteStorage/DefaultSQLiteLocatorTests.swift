@@ -74,14 +74,14 @@ final class DefaultSQLiteLocatorTests: XCTestCase {
 
     // MARK: Namespaces
 
-    func testNamespacesShareTheFileStoragesFolder() throws {
+    func testNamespaceFoldersAreNamedLikeFileStoragesOnes() throws {
         let base = URL(fileURLWithPath: "/base", isDirectory: true)
         let names = (0..<128).map { String(UnicodeScalar(UInt8($0))) } + ["", "KeyValueStorage", "a/b", "\u{E9}", "e\u{301}", "🙂"]
 
         for name in names {
             let database = try locator.databaseURL(for: .app(.directory(at: base), namespace: .directory(named: name)))
-            let folder = try DefaultFileLocator().directory(for: .app(.directory(at: base), namespace: .directory(named: name)))
-            XCTAssertEqual(database.deletingLastPathComponent().path, folder.path, name.debugDescription)
+            let fileFolder = try DefaultFileLocator().directory(for: .own(namespace: .init(name)))
+            XCTAssertEqual(database.deletingLastPathComponent().lastPathComponent, fileFolder.deletingLastPathComponent().lastPathComponent, name.debugDescription)
         }
     }
 

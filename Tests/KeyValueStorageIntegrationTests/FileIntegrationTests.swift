@@ -13,11 +13,13 @@ import KeyValueStorage // not @testable: the real file system through the public
 final class FileIntegrationTests: XCTestCase {
     private let fileManager = FileManager.default
     private var base: URL!
+    private var locator: TestFileLocator!
 
     override func setUpWithError() throws {
         let base = fileManager.temporaryDirectory.appendingPathComponent("FileIntegrationTests-\(UUID().uuidString)", isDirectory: true)
         try fileManager.createDirectory(at: base, withIntermediateDirectories: true)
         self.base = base
+        locator = TestFileLocator(base: base)
         addTeardownBlock {
             try? FileManager.default.removeItem(at: base)
         }
@@ -71,14 +73,16 @@ final class FileIntegrationTests: XCTestCase {
         // Outside a sandbox, macOS returns a container for any group ID
         let groupId = "group.not.entitled.\(UUID().uuidString)"
         XCTAssertEqual(locator.groupDirectory(for: groupId), fileManager.containerURL(forSecurityApplicationGroupIdentifier: groupId))
+        XCTAssertEqual(locator.bundleIdentifier, Bundle.main.bundleIdentifier)
+        XCTAssertEqual(locator.processName, ProcessInfo.processInfo.processName)
     }
 
     // MARK: Values
 
     func testValuesRoundTripInFilesNamedAfterTheirKeys() throws {
         // Given
-        let storage = try FileStorage(scope: .app(.directory(at: base), namespace: .directory(named: "values")))
-        let folder = base.appendingPathComponent("values!", isDirectory: true)
+        let storage = try storage(.own(namespace: "values"))
+        let folder = try folder(.own(namespace: "values"))
 
         // When
         try storage.save(Data([1]), forKey: "key")
@@ -87,6 +91,7 @@ final class FileIntegrationTests: XCTestCase {
         try storage.save(Data([4]), forKey: "e\u{301}")
 
         // Then: keys that differ only in case, and the two spellings of `é`, have files of their own
+        XCTAssertEqual(folder.path, base.appendingPathComponent("support/app/values!/i").path)
         XCTAssertEqual(try storage.fetch(forKey: "key"), Data([1]))
         XCTAssertEqual(try storage.fetch(forKey: "Key"), Data([2]))
         XCTAssertEqual(try storage.fetch(forKey: "\u{E9}"), Data([3]))
@@ -103,29 +108,28 @@ final class FileIntegrationTests: XCTestCase {
 
     func testEveryShortASCIIKeyHasAFileOfItsOwn() throws {
         // Given: every key of up to two printable ASCII characters, so every pair that differs only in case
-        let storage = try FileStorage(scope: .app(.directory(at: base)))
+        let storage = try storage()
         let characters = (0x20...0x7E).map { String(UnicodeScalar(UInt8($0))) }
         let keys = [""] + characters + characters.flatMap { first in characters.map { first + $0 } }
 
         // When
         for key in keys {
-            try storage.save(Data(key.utf8), forKey: .init(name: key))
+            try storage.save(Data(key.utf8), forKey: .init(key))
         }
 
         // Then
         for key in keys {
-            XCTAssertEqual(try storage.fetch(forKey: .init(name: key)), Data(key.utf8), key.debugDescription)
+            XCTAssertEqual(try storage.fetch(forKey: .init(key)), Data(key.utf8), key.debugDescription)
         }
 
-        XCTAssertEqual(try fileManager.contentsOfDirectory(atPath: base.path).count, keys.count)
+        XCTAssertEqual(try fileManager.contentsOfDirectory(atPath: folder().path).count, keys.count)
         try storage.clear()
-        XCTAssertEqual(try fileManager.contentsOfDirectory(atPath: base.path), [])
+        XCTAssertEqual(try fileManager.contentsOfDirectory(atPath: folder().path), [])
     }
 
     func testOnlySavesCreateTheFolder() throws {
         // Given
-        let storage = try FileStorage(scope: .app(.directory(at: base), namespace: .directory(named: "lazy")))
-        let folder = base.appendingPathComponent("lazy!", isDirectory: true)
+        let storage = try storage(.own(namespace: "lazy"))
 
         // When
         XCTAssertNil(try storage.fetch(forKey: "key"))
@@ -133,19 +137,19 @@ final class FileIntegrationTests: XCTestCase {
         try storage.clear()
 
         // Then
-        XCTAssertFalse(fileManager.fileExists(atPath: folder.path))
+        XCTAssertEqual(try fileManager.contentsOfDirectory(atPath: base.path), [])
 
         // When
         try storage.save(Data([1]), forKey: "key")
 
         // Then
-        XCTAssertTrue(fileManager.fileExists(atPath: folder.appendingPathComponent("key").path))
+        XCTAssertTrue(fileManager.fileExists(atPath: try folder(.own(namespace: "lazy")).appendingPathComponent("key").path))
     }
 
     func testInstancesSharingAFolderSeeEachOthersChanges() throws {
         // Given
-        let first = try FileStorage(scope: .app(.directory(at: base)))
-        let second = try FileStorage(scope: .app(.directory(at: base)))
+        let first = try storage()
+        let second = try storage()
 
         // When - Then
         try first.save(Data([1]), forKey: "key")
@@ -158,10 +162,10 @@ final class FileIntegrationTests: XCTestCase {
 
     func testOverwriteNeverExposesAMissingOrPartialValue() throws {
         // Given
-        let storage = try FileStorage(scope: .app(.directory(at: base)))
+        let storage = try storage()
         let values = [Data(repeating: 0x01, count: 64 * 1024), Data(repeating: 0x02, count: 256 * 1024)]
         try storage.save(values[0], forKey: "key")
-        let reader = ConcurrentReader(url: base.appendingPathComponent("key"), expectedValues: values)
+        let reader = ConcurrentReader(url: try folder().appendingPathComponent("key"), expectedValues: values)
 
         // When
         reader.start()
@@ -178,42 +182,50 @@ final class FileIntegrationTests: XCTestCase {
 
     // MARK: Clashes
 
-    func testARootKeyAndANamespaceWithTheSameNameCoexist() throws {
-        // Given
-        let root = try FileStorage(scope: .app(.directory(at: base)))
-        let namespaced = try FileStorage(scope: .app(.directory(at: base), namespace: .directory(named: "settings")))
+    func testScopesThatDifferOnlyInRetentionProtectionOrGroupKeepTheirValuesApart() throws {
+        // Given: one namespace in every kind of place
+        let scopes: [FileStorage.Scope] = [
+            .own(namespace: "name"), .own(.cache, namespace: "name"), .own(.temporary, namespace: "name"),
+            .own(protection: .none, namespace: "name"), .appGroup(id: "group.test", namespace: "name")
+        ]
+        let storages = try scopes.map { try storage($0) }
 
         // When
-        try root.save(Data([1]), forKey: "settings")
-        try namespaced.save(Data([2]), forKey: "settings")
-        try root.clear()
+        for (index, storage) in storages.enumerated() {
+            try storage.save(Data([UInt8(index)]), forKey: "key")
+        }
+
+        try storages[0].clear()
 
         // Then
-        XCTAssertNil(try root.fetch(forKey: "settings"))
-        XCTAssertEqual(try namespaced.fetch(forKey: "settings"), Data([2]))
+        XCTAssertNil(try storages[0].fetch(forKey: "key"))
+        for (index, storage) in storages.enumerated().dropFirst() {
+            XCTAssertEqual(try storage.fetch(forKey: "key"), Data([UInt8(index)]), "\(scopes[index])")
+        }
     }
 
     func testAFolderAtAKeysPathIsNeverAValueAndNeverRemoved() throws {
         // Given: another app's folder with a key's name
-        let folder = try makeFolder("settings")
-        let root = try FileStorage(scope: .app(.directory(at: base)))
+        let storage = try storage()
+        let folder = try makeFolder("settings", in: makeScopeFolder())
 
         // When
-        let fetched = try root.fetch(forKey: "settings")
-        try root.delete(forKey: "settings")
-        try root.clear()
-        let error = storageError { try root.save(Data([2]), forKey: "settings") }
+        let fetched = try storage.fetch(forKey: "settings")
+        try storage.delete(forKey: "settings")
+        try storage.clear()
+        let error = storageError { try storage.save(Data([2]), forKey: "settings") }
 
         // Then
         XCTAssertNil(fetched)
-        assertPathOccupied(error, base.appendingPathComponent("settings", isDirectory: false))
+        assertPathOccupied(error, folder)
         XCTAssertTrue(fileManager.fileExists(atPath: folder.appendingPathComponent("inner").path))
     }
 
     func testAFileWhereTheScopesFolderGoesIsNeverAValueAndNeverRemoved() throws {
         // Given
-        let file = try makeFile("blocked!")
-        let storage = try FileStorage(scope: .app(.directory(at: base), namespace: .directory(named: "blocked")))
+        let storage = try storage()
+        let scopeFolder = try folder()
+        let file = try makeFile(scopeFolder.lastPathComponent, in: makeFolder(scopeFolder.deletingLastPathComponent()))
 
         // When
         let fetched = try storage.fetch(forKey: "key")
@@ -223,89 +235,80 @@ final class FileIntegrationTests: XCTestCase {
 
         // Then
         XCTAssertNil(fetched)
-        assertPathOccupied(error, base.appendingPathComponent("blocked!", isDirectory: true))
+        assertPathOccupied(error, scopeFolder)
         XCTAssertEqual(try Data(contentsOf: file), Data([1]))
     }
 
     func testClearRemovesExactlyTheScopesValues() throws {
-        // Given: the root and a namespace of both file and SQLite storages in one folder, with foreign files
-        let root = try FileStorage(scope: .app(.directory(at: base)))
-        let namespaced = try FileStorage(scope: .app(.directory(at: base), namespace: .directory(named: "name")))
-        let sqliteRoot = try SQLiteStorage(scope: .app(.directory(at: base)))
-        let sqliteNamespaced = try SQLiteStorage(scope: .app(.directory(at: base), namespace: .directory(named: "name")))
-        try root.save(Data([1]), forKey: "key")
-        try root.save(Data([1]), forKey: "Key")
-        try namespaced.save(Data([2]), forKey: "key")
-        try sqliteRoot.save(Data([3]), forKey: "key")
-        try sqliteNamespaced.save(Data([4]), forKey: "key")
-        try makeFile(".hidden")
-        try makeFile("Notes.txt")   // no key produces a raw capital or `.`
-        try makeFile("todo")        // a key could: documented, a root in a shared folder claims it
+        // Given: two namespaces, with SQLite's database and other code's files in the first one's folder
+        let first = try storage(.own(namespace: "first"))
+        let second = try storage(.own(namespace: "second"))
+        try first.save(Data([1]), forKey: "key")
+        try first.save(Data([1]), forKey: "Key")
+        try second.save(Data([2]), forKey: "key")
+        let folder = try folder(.own(namespace: "first"))
+        let sqlite = try SQLiteStorage(scope: .app(.directory(at: folder)))
+        try sqlite.save(Data([3]), forKey: "key")
+        try makeFile(".hidden", in: folder)
+        try makeFile("Notes.txt", in: folder)   // no key produces a raw capital or `.`
+        try makeFile("todo", in: folder)        // a key could have written it
 
         // When
-        try root.clear()
+        try first.clear()
 
         // Then
-        XCTAssertNil(try root.fetch(forKey: "key"))
-        XCTAssertNil(try root.fetch(forKey: "Key"))
-        XCTAssertEqual(try namespaced.fetch(forKey: "key"), Data([2]))
-        XCTAssertEqual(try sqliteRoot.fetch(forKey: "key"), Data([3]))
-        XCTAssertEqual(try sqliteNamespaced.fetch(forKey: "key"), Data([4]))
-        XCTAssertTrue(fileManager.fileExists(atPath: base.appendingPathComponent(".hidden").path))
-        XCTAssertTrue(fileManager.fileExists(atPath: base.appendingPathComponent("Notes.txt").path))
-        XCTAssertFalse(fileManager.fileExists(atPath: base.appendingPathComponent("todo").path))
-
-        // When
-        try root.save(Data([1]), forKey: "key")
-        try namespaced.clear()
-
-        // Then
-        XCTAssertNil(try namespaced.fetch(forKey: "key"))
-        XCTAssertEqual(try root.fetch(forKey: "key"), Data([1]))
-        XCTAssertEqual(try sqliteNamespaced.fetch(forKey: "key"), Data([4]))
+        XCTAssertNil(try first.fetch(forKey: "key"))
+        XCTAssertNil(try first.fetch(forKey: "Key"))
+        XCTAssertEqual(try second.fetch(forKey: "key"), Data([2]))
+        XCTAssertEqual(try sqlite.fetch(forKey: "key"), Data([3]))
+        XCTAssertTrue(fileManager.fileExists(atPath: folder.appendingPathComponent(".hidden").path))
+        XCTAssertTrue(fileManager.fileExists(atPath: folder.appendingPathComponent("Notes.txt").path))
+        XCTAssertFalse(fileManager.fileExists(atPath: folder.appendingPathComponent("todo").path))
     }
 
     // MARK: Links
 
     func testALinkIsNeverAValueAndNeverTouched() throws {
         // Given: links with keys' names, to a file and to a folder
-        let file = try makeFile("target")
-        let folder = try makeFolder("folder")
-        try makeLink("tofile", to: file)
-        try makeLink("tofolder", to: folder)
-        let storage = try FileStorage(scope: .app(.directory(at: base)))
+        let scopeFolder = try makeScopeFolder()
+        let file = try makeFile("target", in: scopeFolder)
+        let folder = try makeFolder("folder", in: scopeFolder)
+        try makeLink("tofile", to: file, in: scopeFolder)
+        try makeLink("tofolder", to: folder, in: scopeFolder)
+        let storage = try storage()
 
         for key in ["tofile", "tofolder"] {
             // When
-            let fetched = try storage.fetch(forKey: .init(name: key))
-            try storage.delete(forKey: .init(name: key))
-            let error = storageError { try storage.save(Data([2]), forKey: .init(name: key)) }
+            let fetched = try storage.fetch(forKey: .init(key))
+            try storage.delete(forKey: .init(key))
+            let error = storageError { try storage.save(Data([2]), forKey: .init(key)) }
 
             // Then
             XCTAssertNil(fetched, key)
-            assertPathOccupied(error, base.appendingPathComponent(key, isDirectory: false))
+            assertPathOccupied(error, scopeFolder.appendingPathComponent(key, isDirectory: false))
         }
 
         // When
         try storage.clear()
 
         // Then: both links stay, and so does what they point to, apart from `target`, a key's file
-        XCTAssertEqual(Set(try fileManager.contentsOfDirectory(atPath: base.path)), ["folder", "tofile", "tofolder"])
+        XCTAssertEqual(Set(try fileManager.contentsOfDirectory(atPath: scopeFolder.path)), ["folder", "tofile", "tofolder"])
         XCTAssertTrue(fileManager.fileExists(atPath: folder.appendingPathComponent("inner").path))
     }
 
     func testALinkInTheScopesFoldersPlaceIsNeverFollowed() throws {
         // Given
-        let folder = base.appendingPathComponent("target", isDirectory: true)
-        try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
-        let storage = try FileStorage(scope: .app(.directory(at: makeLink("link", to: folder))))
+        let target = try makeFolder(base.appendingPathComponent("target", isDirectory: true))
+        let scopeFolder = try folder()
+        try makeLink(scopeFolder.lastPathComponent, to: target, in: makeFolder(scopeFolder.deletingLastPathComponent()))
+        let storage = try storage()
 
         // When
         let error = storageError { try storage.save(Data([1]), forKey: "key") }
 
         // Then
-        assertPathOccupied(error, base.appendingPathComponent("link", isDirectory: true))
-        XCTAssertEqual(try fileManager.contentsOfDirectory(atPath: folder.path), [])
+        assertPathOccupied(error, scopeFolder)
+        XCTAssertEqual(try fileManager.contentsOfDirectory(atPath: target.path), [])
     }
 
     // MARK: Permissions
@@ -314,10 +317,9 @@ final class FileIntegrationTests: XCTestCase {
         try XCTSkipIf(getuid() == 0, "File permissions are not enforced for root")
 
         // Given: a folder that can be listed and read, but not written
-        let storage = try FileStorage(scope: .app(.directory(at: base), namespace: .directory(named: "readonly")))
-        let folder = base.appendingPathComponent("readonly!", isDirectory: true)
+        let storage = try storage()
         try storage.save(Data([1]), forKey: "key")
-        try setPermissions(0o555, of: folder)
+        try setPermissions(0o555, of: folder())
 
         // When
         let errors = [
@@ -340,9 +342,9 @@ final class FileIntegrationTests: XCTestCase {
         try XCTSkipIf(getuid() == 0, "File permissions are not enforced for root")
 
         // Given
-        let storage = try FileStorage(scope: .app(.directory(at: base), namespace: .directory(named: "locked")))
+        let storage = try storage()
         try storage.save(Data([1]), forKey: "key")
-        try setPermissions(0o000, of: base.appendingPathComponent("locked!", isDirectory: true))
+        try setPermissions(0o000, of: folder())
 
         // When
         let errors = [
@@ -361,9 +363,9 @@ final class FileIntegrationTests: XCTestCase {
         try XCTSkipIf(getuid() == 0, "File permissions are not enforced for root")
 
         // Given
-        let storage = try FileStorage(scope: .app(.directory(at: base)))
+        let storage = try storage()
         try storage.save(Data([1]), forKey: "key")
-        try setPermissions(0o000, of: base.appendingPathComponent("key"))
+        try setPermissions(0o000, of: folder().appendingPathComponent("key"))
 
         // When
         let error = storageError { _ = try storage.fetch(forKey: "key") }
@@ -371,29 +373,47 @@ final class FileIntegrationTests: XCTestCase {
 
         // Then
         assertOther(error, posix: .EACCES)
-        XCTAssertFalse(fileManager.fileExists(atPath: base.appendingPathComponent("key").path))
+        XCTAssertFalse(fileManager.fileExists(atPath: try folder().appendingPathComponent("key").path))
     }
 
     // MARK: Helpers
 
+    private func storage(_ scope: FileStorage.Scope = .own(namespace: "test")) throws(FileStorage.Error) -> FileStorage {
+        try FileStorage(scope: scope, backingStore: DefaultFileBackingStoreWrapper(), locator: locator)
+    }
+
+    private func folder(_ scope: FileStorage.Scope = .own(namespace: "test")) throws(FileStorage.Error) -> URL {
+        try locator.directory(for: scope)
+    }
+
+    /// The default scope's folder, made ahead of the storage.
+    private func makeScopeFolder() throws -> URL {
+        try makeFolder(folder())
+    }
+
     @discardableResult
-    private func makeFile(_ name: String) throws -> URL {
-        let url = base.appendingPathComponent(name, isDirectory: false)
+    private func makeFolder(_ url: URL) throws -> URL {
+        try fileManager.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    @discardableResult
+    private func makeFile(_ name: String, in folder: URL? = nil) throws -> URL {
+        let url = (folder ?? base).appendingPathComponent(name, isDirectory: false)
         try Data([1]).write(to: url)
         return url
     }
 
     @discardableResult
-    private func makeFolder(_ name: String) throws -> URL {
-        let url = base.appendingPathComponent(name, isDirectory: true)
-        try fileManager.createDirectory(at: url, withIntermediateDirectories: true)
+    private func makeFolder(_ name: String, in folder: URL? = nil) throws -> URL {
+        let url = try makeFolder((folder ?? base).appendingPathComponent(name, isDirectory: true))
         try Data([1]).write(to: url.appendingPathComponent("inner"))
         return url
     }
 
     @discardableResult
-    private func makeLink(_ name: String, to destination: URL) throws -> URL {
-        let url = base.appendingPathComponent(name, isDirectory: false)
+    private func makeLink(_ name: String, to destination: URL, in folder: URL? = nil) throws -> URL {
+        let url = (folder ?? base).appendingPathComponent(name, isDirectory: false)
         try fileManager.createSymbolicLink(at: url, withDestinationURL: destination)
         return url
     }
@@ -441,6 +461,31 @@ final class FileIntegrationTests: XCTestCase {
         let error = error as NSError
         let posix = error.domain == NSPOSIXErrorDomain ? error : error.userInfo[NSUnderlyingErrorKey] as? NSError
         return posix.flatMap { $0.domain == NSPOSIXErrorDomain ? POSIXErrorCode(rawValue: Int32($0.code)) : nil }
+    }
+}
+
+/// The default locator with its system directories and App Group containers in the test's folder, and the bundle ID `app`.
+private final class TestFileLocator: DefaultFileLocator {
+    private let base: URL
+
+    init(base: URL) {
+        self.base = base
+    }
+
+    override var temporaryDirectory: URL {
+        base.appendingPathComponent("tmp", isDirectory: true)
+    }
+
+    override func systemDirectory(_ directory: FileManager.SearchPathDirectory) -> URL? {
+        [.applicationSupportDirectory: "support", .cachesDirectory: "caches"][directory].map { base.appendingPathComponent($0, isDirectory: true) }
+    }
+
+    override func groupDirectory(for groupId: String) -> URL? {
+        base.appendingPathComponent(groupId, isDirectory: true)
+    }
+
+    override var bundleIdentifier: String? {
+        "app"
     }
 }
 

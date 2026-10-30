@@ -47,7 +47,8 @@ This file is the source of truth for the 4.0 refactor, written so that anyone, h
 - **Done: phases 0–6, the source side.** The synchronous `KeyValueDataStorage` with `init(scope:backingStore:)`, typed throws, scopes with namespaces, every storage on its backing store, the global actors removed, and `KeychainWrapper.swift` deleted.
 - **Added: `UbiquitousStorage`** (§5.7), on the same pattern.
 - **Tests:** the public API target and the coder tests are on the 4.0 API and pass. The 3.x unit tests live in `Tests/Legacy3x/` (not a target) as the porting reference; each storage's locator step ports and deletes its file.
-- **Next: the sealed scopes** (§S, Appendix A, phase 6b). Pilot on FileStorage and stop for review, then SQLite, UserDefaults, Ubiquitous, Keychain and InMemory. Each step brings that storage's planned items (§5.2–5.7), its part of the error refactor (§4.4) and its test revisit (§11.3).
+- **Done, in review: the sealed scopes' pilot, FileStorage** (§S, §5.3, 2026-10-30). Shared: `ExactString`, and a scope protocol that only requires `default`. Until the other five move, `defaultName` and `KeyValueDataStorageNamespace` stay for them, and File and SQLite no longer share a namespace's folder.
+- **Next: the sealed scopes** (§S, Appendix A, phase 6b) for SQLite, UserDefaults, Ubiquitous, Keychain and InMemory, after the pilot's review. Each step brings that storage's planned items (§5.2–5.7), its part of the error refactor (§4.4) and its test revisit (§11.3).
 - **Then: phases 7–9**, the coding, isolation and facade layers. The observation and unified layers still emit isolated-conformance warnings on Swift 6.2+ compilers, because the storage protocol is no longer `Sendable`.
 
 ## S. Sealed scopes and keys (decided 2026-10-30; next, and it changes every storage)
@@ -56,7 +57,7 @@ Read this first. It replaces the scope, key and place rules that §4 and §5 des
 
 **Rule:** the user says what they mean, and the library picks the place and owns every name inside it. A scope says who sees the values, on which devices, how long the system keeps them and how they're protected. It never names a system location. Interop with other code's files, items or keys goes through a custom locator, which then owns the guarantees (§13, item 8; D21).
 
-**Shared types** (`Layers/KeyValueDataStorage.swift`):
+**Shared types** (`Helpers/ExactString.swift`, `Layers/KeyValueDataStorage.swift`):
 - `ExactString`: a string compared and hashed by its exact UTF-8 bytes (`String`'s `==` takes `"é"` and `"e\u{301}"` for one); `ExpressibleByStringInterpolation` and `CustomStringConvertible`. Every storage has `typealias Namespace = ExactString` and `typealias Key = ExactString`, so the layers (`UnifiedStorage`'s cache, observation) compare names the way the storages store them. One type for both is fine: it carries no meaning of its own.
 - `KeyValueDataStorageScope` requires only `Hashable & Sendable` and `static var default`. `defaultNamespace` (`"KeyValueStorage"`) replaces `defaultName`. Scopes have no `namespace` property: locators read it from the cases.
 - The protocol keeps `associatedtype Key: KeyValueDataStorageKey` (`Hashable & Sendable`) generic, so custom storages can bring their own key types. `KeyValueDataStorageNamespace` goes.
@@ -89,11 +90,11 @@ case iCloud(Owner, namespace: Namespace)   // Owner: .own
 
 | Scope | File, SQLite | UserDefaults | Keychain | InMemory | Ubiquitous |
 |---|---|---|---|---|---|
-| `.own` | `<Application Support, Caches or tmp>/<encoded bundle ID>/`, a folder per namespace and protection; SQLite's `.KeyValueStorage.sqlite` in it | suite `<encoded bundle ID>.KeyValueStorage` | service `<bundle ID>:<namespace>` with the protection, the default access group, local items | the process's bucket | — |
-| `.appGroup(id)` | the group container's root, a folder per namespace and protection | the group's suite, `id` | service `<group>/<namespace>` with the protection, access group `id`, local items | — | — |
+| `.own` | `<Application Support, Caches or tmp>/<encoded bundle ID>/<namespace>!/<protection>/`; SQLite's `.KeyValueStorage.sqlite` in it | suite `<encoded bundle ID>.KeyValueStorage` | service `<bundle ID>:<namespace>` with the protection, the default access group, local items | the process's bucket | — |
+| `.appGroup(id)` | `<group container>/<namespace>!/<protection>/` | the group's suite, `id` | service `<group>/<namespace>` with the protection, access group `id`, local items | — | — |
 | `.iCloud(owner)` | — | — | the owner's service and group, synchronizable items | — | the store |
 
-- The protection level goes into the folder, database file or service name in a form no namespace encodes to. The obvious `name!code` would collide with File's capital marker, where `!c` is `C`.
+- File, and SQLite at its step, give each protection level a folder of its own inside the namespace's folder, named with one letter, because every byte counts toward the 1024-byte limit on a whole path: `i` (inherited), `n` (none), `u` (until first unlock), `w` (while locked), `o` (while locked unless open). Keychain puts the level into the service name, in a form no namespace encodes to; the obvious `name!code` would collide with File's capital marker, where `!c` is `C`.
 - **Every `.own` place carries the app's identifier** (D9), so two apps' `.own` scopes never meet, also on macOS without App Sandbox and when Keychain Sharing lists a shared group first (§5.2). InMemory needs none (per process); Ubiquitous's store is per app unless entitlements share it.
   - Where the identifier becomes a file name (File and SQLite paths, UserDefaults' suite), it's written in File's lossless encoding. Bundle IDs that differ only in case then never share a file on macOS, the process-name fallback needs no rules of its own, the folder never meets the conventional `Application Support/<bundle ID>` other code uses, and the suite name never starts with `group.`. Keychain services keep it as is, because the keychain compares exactly.
   - The one limit: a bundle ID longer than about 120 characters, with many capitals or dots, could pass 255 bytes once encoded, and the storage would throw. Real bundle IDs are far shorter.
@@ -228,11 +229,13 @@ Finding where a scope's values go is naming, so the default File and SQLite loca
 open func systemDirectory(_ directory: FileManager.SearchPathDirectory) -> URL?   // urls(for:in: .userDomainMask).first
 open var temporaryDirectory: URL                                                   // FileManager.temporaryDirectory
 open func groupDirectory(for groupId: String) -> URL?                              // containerURL(forSecurityApplicationGroupIdentifier:)
+open var bundleIdentifier: String?                                                 // Bundle.main.bundleIdentifier (File, sealed scopes)
+open var processName: String                                                       // ProcessInfo.processInfo.processName (File, sealed scopes)
 ```
 
 - Each is one `FileManager` call, with no logic, like a backing store's members (E0). A subclass changes where a directory is; the unit tests use one with fixed paths (`FixedDirectoriesFileLocator`).
-- Each default locator turns its own scope into its folder in one switch, and throws its storage's errors (`.directoryNotFound`, `.groupDirectoryNotFound`, `.invalidDirectory`, `.invalidNamespace`). File and SQLite have separate scope and error types, so they repeat the switch rather than share a helper.
-- The namespace's folder is named with the file name encoding (§5.3) plus a trailing `!`, so file and SQLite storages of one namespace share a folder. It's encoded first, so its one error, a name over 255 bytes (`.invalidNamespace`), doesn't depend on the system.
+- Each default locator turns its own scope into its folder in one switch, and throws its storage's errors (`.directoryNotFound`, `.groupDirectoryNotFound`, `.invalidNamespace`, and SQLite's `.invalidDirectory` until its step). File and SQLite have separate scope and error types, so they repeat the switch rather than share a helper.
+- The namespace's folder is named with the file name encoding (§5.3) plus a trailing `!`. File and SQLite storages of one namespace share a folder again once SQLite takes the sealed scopes; until then a test checks they name it the same way. It's encoded first, so its one error, a name over 255 bytes (`.invalidNamespace`), doesn't depend on the system.
 
 ### 4.3 Locators
 
@@ -382,12 +385,12 @@ The root encodings (§4.5) and the Keychain services are done.
 - a synchronizable and a non-synchronizable item with the same service and account are separate items;
 - `kSecReturnData` with `kSecMatchLimitAll` lists every item, with data where it has some.
 
-### 5.3 FileStorage (done: the locator pilot)
+### 5.3 FileStorage (done: the locator pilot; the sealed-scopes pilot, in review)
 
 **Backing store:** `FileBackingStore`, one `FileManager` or `Data` call per member, with no logic (E0): `itemType(at:)` (`attributesOfItem(atPath:)[.type]`, which describes a link itself), `read(at:)`, `write(_:at:options:)`, `remove(at:)` (`removeItem`, which deletes a folder with everything inside, so the storage calls it only for a file), `createDirectory(at:)` (with intermediates) and `itemNames(at:)` (every name in the folder). Path-based on purpose: `URL.resourceValues` caches answers on the URL instance, and a cached answer survives the file's removal.
 
 **Locator:** `FileLocator` / `DefaultFileLocator`, which owns all naming:
-- `directory(for:)`: the scope's base directory, from the locator's own lookups (§4.2), or the namespace's subfolder in it, named with the same encoding as keys plus a trailing `!`. The namespace is encoded first (`.invalidNamespace` over 255 bytes, mark included).
+- `directory(for:)` (sealed scopes, §S): `.own` is `<Application Support, Caches or tmp>/<app>/<namespace>!/<protection>`, where `<app>` is the bundle ID, or the process name without one, in the key encoding; `.appGroup` is `<group container>/<namespace>!/<protection>`, and an empty id → `.groupDirectoryNotFound("")`. The namespace's folder uses the key encoding plus a trailing `!`, and is encoded first, so `.invalidNamespace` (over 255 bytes, mark included) doesn't depend on the system. The protection folder is the level's one letter (§S). A custom place is a custom locator's `directory(for:)`.
 - `fileName(forKey:in:)`: one lossless encoding of the key's exact UTF-8 bytes, so nothing is rejected but length (`.invalidKey` over 255 bytes):
   - `a`–`z`, `0`–`9`, `_` and `-` stay; a capital is `!` and its lowercase letter; every other byte is `%` and two lowercase hex digits; the empty key is `%`.
   - Every name is one ASCII word without capitals, `.` or whitespace: no extension, no dot file, nothing a volume rejects (FAT's `"*:<>?\|`, a trailing `.` or space), and no two names that a case-insensitive or normalizing volume sees as one. Verified on APFS (both cases), HFS+, exFAT and FAT32.
@@ -401,12 +404,14 @@ The root encodings (§4.5) and the Keychain services are done.
 **Storage (business logic only): files are values, folders are namespaces.** It checks what is at a path, then acts:
 - **The check:** `itemType(at:)`; `fileReadNoSuchFile` means nothing is there, and every other error is thrown, so an unreadable path never passes for an empty one.
 - **A value is a regular file in the scope's folder.** The folder is checked first, so a file in its place is never looked into. Without one, `fetch` returns `nil`, and `delete` and `clear()` do nothing.
-- **Links are never followed:** a link is neither a value nor a folder, and is never read, written or removed. The scope's folder itself must not be a link (`AppScope.directory(at:)` says to resolve it first).
-- **`save`** creates a missing folder, then writes atomically with the key's protection. Anything but a folder where the folder goes, such as another app's file → `.pathOccupied(folder)`. Anything but a file at the key's path, such as another app's folder or a link → `.pathOccupied(file)`. Nothing is ever replaced.
+- **Links are never followed:** a link is neither a value nor a folder, and is never read, written or removed, also where the scope's folder goes.
+- **`save`** creates a missing folder, then writes atomically with the scope's protection. Anything but a folder where the folder goes, such as another app's file → `.pathOccupied(folder)`. Anything but a file at the key's path, such as another app's folder or a link → `.pathOccupied(file)`. Nothing is ever replaced.
 - **`delete`** removes the key's file; anything else at its path stays.
 - **`clear()`** lists the folder and removes a name only if the locator maps it to a key *and* that key back to the same name, and a file is there. So neither a folder with a key's name nor a locator whose two methods disagree can make it remove anything else. It stops at the first failure.
 - **Errors:** `.protectedDataUnavailable` for Cocoa no-permission with an underlying `EPERM` (from 3.x); every other system error is `.other(error)`, the original error. A failed check is an error, never "no value".
 - **Races:** if another process changes a path between a check and the call, the call's error is thrown (such as a file removed meanwhile). The one destructive case: a file swapped for a folder between `delete`'s check and its removal makes `removeItem` delete that folder. It needs a delete and a create of the same name at the same instant, and is documented.
+
+- **Sealed scopes (pilot, 2026-10-30):** `Key` and `Namespace` are `ExactString`; protection moved from the key to the scope; `.invalidDirectory` is gone, and `.invalidKey` and `.invalidNamespace` carry the `ExactString` passed. A non-folder at the app's or the namespace's level of the path (other code's file there) makes every call throw `.other` (`ENOTDIR`), and nothing is removed; only the scope's own folder gets `.pathOccupied`.
 
 `writingOptions(for:)` has a `#available(macOS 11, *)` fallback that can't run on any CI host. It's the only uncovered region (open decision 1).
 
@@ -629,10 +634,11 @@ Tests/
   - `a`–`z`, `0`–`9`, `_` and `-` stay; capitals are `!` and their letter; `.`, whitespace, `/`, NUL, `!`, `%`, `~`, non-ASCII and emoji are `%xx`; the empty key is `%`;
   - the two spellings of `é` get two names;
   - exactly 255 bytes is valid; 256 lowercase letters, 128 capitals or 22 emoji → `.invalidKey(key)`.
-- **Namespaces:** encoded like keys plus `!`; 254 bytes encoded is the longest; no key's file and namespace's folder share a name.
+- **Directories:** `.own` in each retention's base and the app's folder; `.appGroup` in the group container; a folder per protection level; the default scope; the app's folder is the bundle ID, or the process name without one, encoded (case-only bundle IDs get two folders); a missing base or group, or an empty group id, throws; every scope (namespaces, retentions, protections, groups) gets a folder of its own, also ignoring case.
+- **Namespaces:** encoded like keys plus `!`; 254 bytes encoded is the longest; checked before any lookup.
 - **Reverse mapping**, not claimed: dot files, raw capitals, `.`, spaces or non-ASCII, a lone or misplaced `!`, `%%`, malformed escapes, uppercase or needless escapes (`%2E`, `%41`), escapes that aren't UTF-8, names over 255 bytes.
 - **Subclassing:** a subclass calling `super` in both name methods keeps the laws.
-- **Laws L1, L2 and L4** over every ASCII character and a case and Unicode corpus (including the pairs Foundation's NFC merges), with APFS's case-insensitive, canonical comparison and keys compared by exact scalars. L3: namespaces and the root never share a folder.
+- **Laws L1, L2 and L4** over every ASCII character and a case and Unicode corpus (including the pairs Foundation's NFC merges), with APFS's case-insensitive, canonical comparison and keys compared by exact scalars. L3: every scope's folder is its own (above).
 - **Exhaustive, once, outside the suite:** every Unicode scalar, every ASCII key of up to 3 characters, 2M pairs of case, combining, jamo and joiner scalars, and 1M random strings round-trip exactly with no collisions; of 813,615 names over a mixed alphabet, only the encoder's own are claimed.
 
 **FileStorage** (`FileStorageTests`; `FileBackingStoreMock`, an in-memory file system with `FileManager`'s rules; the real locator, and `FileLocatorStub`)
@@ -641,13 +647,13 @@ Tests/
   - the locator's error is thrown as is;
   - `scope` is the one given.
 - **Locator use:**
-  - the locator gets the scope and `key.name`, and its names are used verbatim;
+  - the locator gets the scope and the key, and its names are used verbatim;
   - its errors and invalid keys stop before any file system call.
 - **Files are values, folders are namespaces**, over every no-value state (no folder, no file, a folder or a link at the file's path, a file or a link where the folder goes):
   - `fetch` returns `nil` without reading, and `delete` removes nothing;
   - a value where the folder goes is never looked into.
 - **Save:**
-  - options for each of the 5 protections (always `.atomic`);
+  - options for each of the 5 protections, from the scope (always `.atomic`);
   - creates the folder, and replaces the file;
   - never replaces what isn't the scope's: `.pathOccupied(file)` for a folder or a link, `.pathOccupied(folder)` for a file or a link where the folder goes.
 - **Delete:** removes only the key's file.

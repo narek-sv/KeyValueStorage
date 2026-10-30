@@ -12,7 +12,7 @@ import Foundation
 final class FileLocatorStub: FileLocator {
     enum Call: Equatable {
         case directory(FileStorage.Scope)
-        case fileName(String, FileStorage.Scope)
+        case fileName(FileStorage.Key, FileStorage.Scope)
         case key(String, FileStorage.Scope)
     }
 
@@ -21,7 +21,7 @@ final class FileLocatorStub: FileLocator {
     var directoryError: FileStorage.Error?
     var fileNameError: FileStorage.Error?
     /// The file names the locator claims, and their keys.
-    var keys = [String: String]()
+    var keys = [String: FileStorage.Key]()
 
     func directory(for scope: FileStorage.Scope) throws(FileStorage.Error) -> URL {
         calls.append(.directory(scope))
@@ -32,7 +32,7 @@ final class FileLocatorStub: FileLocator {
         return directory
     }
 
-    func fileName(forKey key: String, in scope: FileStorage.Scope) throws(FileStorage.Error) -> String {
+    func fileName(forKey key: FileStorage.Key, in scope: FileStorage.Scope) throws(FileStorage.Error) -> String {
         calls.append(.fileName(key, scope))
         if let fileNameError {
             throw fileNameError
@@ -41,7 +41,7 @@ final class FileLocatorStub: FileLocator {
         return "located-\(key)"
     }
 
-    func key(forFileName fileName: String, in scope: FileStorage.Scope) -> String? {
+    func key(forFileName fileName: String, in scope: FileStorage.Scope) -> FileStorage.Key? {
         calls.append(.key(fileName, scope))
         return keys[fileName]
     }

@@ -13,13 +13,11 @@ import Foundation
 final class FileStorageTests: XCTestCase {
     private typealias Items = [String: FileBackingStoreMock.Item]
 
-    private let root = URL(fileURLWithPath: "/root", isDirectory: true)
+    /// `scope`'s folder, as `FixedDirectoriesFileLocator` names it.
+    private let root = URL(fileURLWithPath: "/support/com%2etest%2e!app/name!/i", isDirectory: true)
+    private let scope = FileStorage.Scope.own(namespace: "name")
     private let data = Data([0xAA, 0xBB])
     private let backingStore = FileBackingStoreMock()
-
-    private var scope: FileStorage.Scope {
-        .app(.directory(at: root))
-    }
 
     /// Every way a key can have no value: no folder, no file, a folder or a link at the file's path,
     /// or a file or a link where the folder goes.
@@ -37,13 +35,21 @@ final class FileStorageTests: XCTestCase {
     // MARK: Initializers
 
     func testInitResolvesTheFolderWithoutFileSystemCalls() throws {
-        // When
-        let storage = try FileStorage(scope: .app(.temporary, namespace: .directory(named: "name")), backingStore: backingStore, locator: FixedDirectoriesFileLocator())
+        let folders: [(FileStorage.Scope, String)] = [
+            (.own(.temporary, namespace: "name"), "/temporary/com%2etest%2e!app/name!/i"),
+            (.appGroup(id: "group.test", protection: .whileLocked, namespace: "name"), "/group/name!/w")
+        ]
 
-        // Then
-        XCTAssertEqual(backingStore.calls, [])
-        try storage.save(data, forKey: "key")
-        XCTAssertEqual(backingStore.items["/temporary/name!/key"], .file(data))
+        for (scope, folder) in folders {
+            // When
+            let backingStore = FileBackingStoreMock()
+            let storage = try FileStorage(scope: scope, backingStore: backingStore, locator: FixedDirectoriesFileLocator())
+
+            // Then
+            XCTAssertEqual(backingStore.calls, [])
+            try storage.save(data, forKey: "key")
+            XCTAssertEqual(backingStore.items[folder + "/key"], .file(data))
+        }
     }
 
     func testInitThrowsTheLocatorsError() {
@@ -75,7 +81,7 @@ final class FileStorageTests: XCTestCase {
         let other = locator.directory.appendingPathComponent("other").path
 
         // When - Then
-        try storage.save(data, forKey: .init(name: "key", protection: .complete))
+        try storage.save(data, forKey: "key")
         XCTAssertEqual(backingStore.items, [folder: .directory, file: .file(data)])
         XCTAssertEqual(try storage.fetch(forKey: "key"), data)
         try storage.delete(forKey: "key")
@@ -115,13 +121,13 @@ final class FileStorageTests: XCTestCase {
     func testInvalidKeysStopBeforeTheFileSystem() throws {
         // Given
         let storage = try makeStorage()
-        let key = String(repeating: "a", count: 256)
+        let key = FileStorage.Key(String(repeating: "a", count: 256))
         let expected = FileStorage.Error.invalidKey(key)
 
         // When - Then
-        assertThrows(expected) { try storage.fetch(forKey: .init(name: key)) }
-        assertThrows(expected) { try storage.save(data, forKey: .init(name: key)) }
-        assertThrows(expected) { try storage.delete(forKey: .init(name: key)) }
+        assertThrows(expected) { try storage.fetch(forKey: key) }
+        assertThrows(expected) { try storage.save(data, forKey: key) }
+        assertThrows(expected) { try storage.delete(forKey: key) }
         XCTAssertEqual(backingStore.calls, [])
     }
 
@@ -167,20 +173,20 @@ final class FileStorageTests: XCTestCase {
 
     // MARK: Save
 
-    func testSaveWritesAtomicallyWithTheKeysProtection() throws {
+    func testSaveWritesAtomicallyWithTheScopesProtection() throws {
         // Given
-        let storage = try makeStorage()
-        let options: [(FileStorage.Key.Protection, Data.WritingOptions)] = [
+        let options: [(FileStorage.Protection, Data.WritingOptions)] = [
             (.inherited, .atomic),
             (.none, [.atomic, .noFileProtection]),
-            (.complete, [.atomic, .completeFileProtection]),
-            (.completeUnlessOpen, [.atomic, .completeFileProtectionUnlessOpen]),
-            (.completeUntilFirstUserAuthentication, [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            (.untilFirstUnlock, [.atomic, .completeFileProtectionUntilFirstUserAuthentication]),
+            (.whileLocked, [.atomic, .completeFileProtection]),
+            (.whileLockedUnlessOpen, [.atomic, .completeFileProtectionUnlessOpen])
         ]
 
         // When
         for (protection, _) in options {
-            try storage.save(data, forKey: .init(name: "key", protection: protection))
+            let storage = try FileStorage(scope: .own(protection: protection, namespace: "name"), backingStore: backingStore, locator: FixedDirectoriesFileLocator())
+            try storage.save(data, forKey: "key")
         }
 
         // Then
@@ -385,7 +391,7 @@ final class FileStorageTests: XCTestCase {
     // MARK: Helpers
 
     private func makeStorage(_ backingStore: FileBackingStoreMock? = nil) throws(FileStorage.Error) -> FileStorage {
-        try FileStorage(scope: scope, backingStore: backingStore ?? self.backingStore, locator: DefaultFileLocator())
+        try FileStorage(scope: scope, backingStore: backingStore ?? self.backingStore, locator: FixedDirectoriesFileLocator())
     }
 
     private func file(_ name: String) -> URL {

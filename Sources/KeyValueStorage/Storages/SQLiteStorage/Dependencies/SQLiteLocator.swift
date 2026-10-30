@@ -19,8 +19,8 @@ public protocol SQLiteLocator {
 
 // MARK: - DefaultSQLiteLocator
 
-/// Keeps the hidden `.KeyValueStorage.sqlite` in the scope's directory or its namespace's folder, named as
-/// `DefaultFileLocator` names it, so file and SQLite storages of one namespace share the folder.
+/// Keeps the hidden `.KeyValueStorage.sqlite` in the scope's directory or its namespace's folder, named with
+/// `DefaultFileLocator`'s encoding.
 open class DefaultSQLiteLocator: SQLiteLocator {
     private static let databaseName = ".\(SQLiteStorage.Scope.defaultName).sqlite"
     private static let maximumNameLength = 255

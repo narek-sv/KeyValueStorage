@@ -18,17 +18,17 @@ import Foundation
 public protocol FileLocator {
     func directory(for scope: FileStorage.Scope) throws(FileStorage.Error) -> URL
 
-    func fileName(forKey key: String, in scope: FileStorage.Scope) throws(FileStorage.Error) -> String
+    func fileName(forKey key: FileStorage.Key, in scope: FileStorage.Scope) throws(FileStorage.Error) -> String
 
     /// `nil` for names no key produces.
-    func key(forFileName fileName: String, in scope: FileStorage.Scope) -> String?
+    func key(forFileName fileName: String, in scope: FileStorage.Scope) -> FileStorage.Key?
 }
 
 // MARK: - DefaultFileLocator
 
-/// Encodes keys and namespaces losslessly into ASCII names: `a`–`z`, `0`–`9`, `_` and `-` stay, a capital is `!` and its
-/// lowercase letter, any other byte is `%xx`, and the empty name is `%`. Only names over 255 bytes throw.
-/// Folder names end with `!`, which file names never do, so a root key and a namespace never clash.
+/// Encodes keys, namespaces and the app's identifier losslessly into ASCII names: `a`–`z`, `0`–`9`, `_` and `-` stay,
+/// a capital is `!` and its lowercase letter, any other byte is `%xx`, and the empty name is `%`. Only names over 255 bytes throw.
+/// A scope's folder is `<namespace>!/<protection>`, in `<base>/<app identifier>` for `.own` and in the group's container for `.appGroup`.
 /// - Note: Names are exact bytes, not normalized: `"é"` and `"e\u{301}"` are two keys.
 /// - Note: A subclass that changes names overrides both name methods.
 open class DefaultFileLocator: FileLocator {
@@ -59,46 +59,42 @@ open class DefaultFileLocator: FileLocator {
         fileManager.containerURL(forSecurityApplicationGroupIdentifier: groupId)
     }
 
+    /// `Bundle.main.bundleIdentifier`.
+    open var bundleIdentifier: String? {
+        Bundle.main.bundleIdentifier
+    }
+
+    /// `ProcessInfo.processInfo.processName`, the app's identifier where there's no bundle ID.
+    open var processName: String {
+        ProcessInfo.processInfo.processName
+    }
+
     // MARK: Names
 
     open func directory(for scope: FileStorage.Scope) throws(FileStorage.Error) -> URL {
-        // Before the lookups, so the namespace's error doesn't depend on the system
-        let folderName = try scope.namespace.map(Self.folderName(for:))
-
-        let base: URL
         switch scope {
-        case .app(.applicationSupport, _):
-            base = try baseDirectory(.applicationSupportDirectory)
-        case .app(.cache, _):
-            base = try baseDirectory(.cachesDirectory)
-        case .app(.documents, _):
-            base = try baseDirectory(.documentDirectory)
-        case .app(.temporary, _):
-            base = temporaryDirectory
-        case let .app(.directory(url), _):
-            guard url.isFileURL else {
-                throw .invalidDirectory(url)
-            }
-
-            base = url
-        case let .appGroup(groupId, _):
-            guard let url = groupDirectory(for: groupId) else {
+        case let .own(retention, protection, namespace):
+            // Before the lookups, so the namespace's error doesn't depend on the system
+            let namespaceFolder = try Self.folderName(for: namespace)
+            let app = try baseDirectory(for: retention).appendingPathComponent(Self.encoded(bundleIdentifier ?? processName), isDirectory: true)
+            return Self.directory(in: app, namespaceFolder: namespaceFolder, protection: protection)
+        case let .appGroup(groupId, protection, namespace):
+            let namespaceFolder = try Self.folderName(for: namespace)
+            guard !groupId.isEmpty, let container = groupDirectory(for: groupId) else {
                 throw .groupDirectoryNotFound(groupId)
             }
 
-            base = url
+            return Self.directory(in: container, namespaceFolder: namespaceFolder, protection: protection)
         }
-
-        return folderName.map { base.appendingPathComponent($0, isDirectory: true) } ?? base
     }
 
-    open func fileName(forKey key: String, in scope: FileStorage.Scope) throws(FileStorage.Error) -> String {
+    open func fileName(forKey key: FileStorage.Key, in scope: FileStorage.Scope) throws(FileStorage.Error) -> String {
         try Self.fileName(forKey: key)
     }
 
-    open func key(forFileName fileName: String, in scope: FileStorage.Scope) -> String? {
+    open func key(forFileName fileName: String, in scope: FileStorage.Scope) -> FileStorage.Key? {
         // Decoding alone also accepts names the encoding never writes, such as `%41` for `A`
-        guard let key = Self.decoded(fileName), (try? Self.fileName(forKey: key)) == fileName else {
+        guard let key = Self.decoded(fileName).map({ FileStorage.Key($0) }), (try? Self.fileName(forKey: key)) == fileName else {
             return nil
         }
 
@@ -106,6 +102,14 @@ open class DefaultFileLocator: FileLocator {
     }
 
     // MARK: Helpers
+
+    private func baseDirectory(for retention: FileStorage.Retention) throws(FileStorage.Error) -> URL {
+        switch retention {
+        case .persistent:   return try baseDirectory(.applicationSupportDirectory)
+        case .cache:        return try baseDirectory(.cachesDirectory)
+        case .temporary:    return temporaryDirectory
+        }
+    }
 
     private func baseDirectory(_ directory: FileManager.SearchPathDirectory) throws(FileStorage.Error) -> URL {
         guard let url = systemDirectory(directory) else {
@@ -115,20 +119,32 @@ open class DefaultFileLocator: FileLocator {
         return url
     }
 
-    private static func folderName(for namespace: FileStorage.Namespace) throws(FileStorage.Error) -> String {
-        switch namespace {
-        case let .directory(name):
-            let folderName = encoded(name) + "!"
-            guard folderName.utf8.count <= maximumNameLength else {
-                throw .invalidNamespace(name)
-            }
+    private static func directory(in base: URL, namespaceFolder: String, protection: FileStorage.Protection) -> URL {
+        base.appendingPathComponent(namespaceFolder, isDirectory: true).appendingPathComponent(folderName(for: protection), isDirectory: true)
+    }
 
-            return folderName
+    private static func folderName(for namespace: FileStorage.Namespace) throws(FileStorage.Error) -> String {
+        let folderName = encoded(namespace.string) + "!"
+        guard folderName.utf8.count <= maximumNameLength else {
+            throw .invalidNamespace(namespace)
+        }
+
+        return folderName
+    }
+
+    // One letter: every byte here counts toward the system's 1024-byte limit on a whole path
+    private static func folderName(for protection: FileStorage.Protection) -> String {
+        switch protection {
+        case .inherited:                return "i"
+        case .none:                     return "n"
+        case .untilFirstUnlock:         return "u"
+        case .whileLocked:              return "w"
+        case .whileLockedUnlessOpen:    return "o"
         }
     }
 
-    private static func fileName(forKey key: String) throws(FileStorage.Error) -> String {
-        let fileName = encoded(key)
+    private static func fileName(forKey key: FileStorage.Key) throws(FileStorage.Error) -> String {
+        let fileName = encoded(key.string)
         guard fileName.utf8.count <= maximumNameLength else {
             throw .invalidKey(key)
         }

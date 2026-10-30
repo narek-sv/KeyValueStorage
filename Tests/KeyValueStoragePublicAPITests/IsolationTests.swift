@@ -43,10 +43,13 @@ private actor Caller {
 /// Runs on the caller's actor, so every call below is made from that context.
 private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #isolation) async throws {
     let id = "isolation-\(UUID().uuidString)"
-    // The file and SQLite storages below share this folder; `exercise` clears the UserDefaults suite itself
-    let folder = try DefaultFileLocator().directory(for: .app(.temporary, namespace: .directory(named: id)))
+    // The file and SQLite storages' folders; `exercise` clears the UserDefaults suite itself
+    let folders = try [
+        DefaultFileLocator().directory(for: .own(.temporary, namespace: .init(id))).deletingLastPathComponent(),
+        DefaultSQLiteLocator().databaseURL(for: .app(.temporary, namespace: .directory(named: id))).deletingLastPathComponent()
+    ]
     defer {
-        try? FileManager.default.removeItem(at: folder)
+        folders.forEach { try? FileManager.default.removeItem(at: $0) }
     }
     
     // Coders
@@ -59,7 +62,7 @@ private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #is
     // need entitlements that test bundles can't have, so those storages use in-memory backing storages
     try await exercise(InMemoryStorage(scope: .app(namespace: .bucket(named: id))), key: "key", context: context)
     try await exercise(UserDefaultsStorage(scope: .app(.suite(named: id))), key: "key", context: context)
-    try await exercise(FileStorage(scope: .app(.temporary, namespace: .directory(named: id))), key: .init(name: "key"), context: context)
+    try await exercise(FileStorage(scope: .own(.temporary, namespace: .init(id))), key: "key", context: context)
     try await exercise(SQLiteStorage(scope: .app(.temporary, namespace: .directory(named: id))), key: "key", context: context)
     try await exercise(KeychainStorage(scope: .app(namespace: .service(named: id)), backingStore: InMemoryKeychain(), locator: DefaultKeychainLocator()),
                        key: .init(name: "key"), context: context)

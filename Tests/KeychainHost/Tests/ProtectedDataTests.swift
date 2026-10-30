@@ -36,8 +36,9 @@ final class ProtectedDataTests: XCTestCase {
             return (protection, storage)
         }
 
-        let file = try FileStorage(scope: .app(.directory(at: folder), namespace: .directory(named: "file")))
-        try file.save(Data([1]), forKey: .init(name: "key", protection: .complete))
+        let file = try FileStorage(scope: .own(protection: .whileLocked, namespace: "ProtectedDataTests"))
+        defer { try? file.clear() }
+        try file.save(Data([1]), forKey: "key")
 
         // Keep running while locked, also without a debugger
         let task = UIApplication.shared.beginBackgroundTask(withName: "ProtectedDataTests")
@@ -60,8 +61,8 @@ final class ProtectedDataTests: XCTestCase {
             report.result("SQLite \(protection), new connection, fetch") { try database(protection).fetch(forKey: "key") }
         }
 
-        report.result("File .complete, fetch") { try file.fetch(forKey: "key") }
-        report.result("File .complete, save") { try file.save(Data([2]), forKey: .init(name: "key", protection: .complete)) }
+        report.result("File .whileLocked, fetch") { try file.fetch(forKey: "key") }
+        report.result("File .whileLocked, save") { try file.save(Data([2]), forKey: "key") }
 
         // When
         report.log("UNLOCK THE DEVICE NOW")
@@ -73,7 +74,7 @@ final class ProtectedDataTests: XCTestCase {
             report.result("SQLite \(protection), after unlocking, fetch") { try storage.fetch(forKey: "key") }
         }
 
-        report.result("File .complete, after unlocking, fetch") { try file.fetch(forKey: "key") }
+        report.result("File .whileLocked, after unlocking, fetch") { try file.fetch(forKey: "key") }
         report.log("Done. The report is also in the app's container: \(report.file.path)")
         #endif
     }

@@ -46,6 +46,12 @@ public extension KeyValueDataStorage {
 // MARK: - KeyValueDataStorageScope + Defaults
 
 public extension KeyValueDataStorageScope {
+    /// Every `default` scope's namespace.
+    /// - Warning: Shared by everything in the app that uses a `default` scope.
+    static var defaultNamespace: ExactString {
+        "KeyValueStorage"
+    }
+
     /// Every `default` scope's suite, directory, service, key prefix or bucket.
     static var defaultName: String {
         "KeyValueStorage"
@@ -57,10 +63,8 @@ public extension KeyValueDataStorageScope {
 public typealias KeyValueDataStorageKey = Hashable & Sendable
 public typealias KeyValueDataStorageError = Error & Sendable
 public typealias KeyValueDataStorageNamespace = Hashable & Sendable
-/// Cases default to a `nil` namespace; `default` uses the package's.
+/// - Warning: `.own` belongs to the bundle ID: builds that share one share values, and unit tests hosted in an app use the app's,
+///   so a test's `clear()` empties the app's data on that device. Give tests a namespace of their own.
 public protocol KeyValueDataStorageScope: Hashable & Sendable {
-    associatedtype Namespace: KeyValueDataStorageNamespace
-
-    var namespace: Namespace? { get }
     static var `default`: Self { get }
 }

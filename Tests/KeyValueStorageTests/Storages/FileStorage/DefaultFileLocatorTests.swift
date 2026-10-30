@@ -15,58 +15,77 @@ final class DefaultFileLocatorTests: XCTestCase {
 
     // MARK: Directory
 
-    func testAppScopesUseTheirBaseDirectory() throws {
-        let custom = URL(fileURLWithPath: "/custom", isDirectory: true)
-        let bases: [(FileStorage.AppScope, String)] = [
-            (.applicationSupport, "/support"),
-            (.cache, "/caches"),
-            (.documents, "/documents"),
-            (.temporary, "/temporary"),
-            (.directory(at: custom), "/custom")
-        ]
-
-        for (appScope, path) in bases {
-            XCTAssertEqual(try directory(.app(appScope)).path, path)
-            XCTAssertEqual(try directory(.app(appScope, namespace: .directory(named: "name"))).path, path + "/name!")
+    func testOwnScopesUseTheirRetentionsBaseAndTheAppsFolder() throws {
+        let bases: [(FileStorage.Retention, String)] = [(.persistent, "/support"), (.cache, "/caches"), (.temporary, "/temporary")]
+        for (retention, path) in bases {
+            XCTAssertEqual(try directory(.own(retention, namespace: "name")).path, path + "/com%2etest%2e!app/name!/i")
         }
     }
 
     func testAppGroupScopesUseTheGroupContainer() throws {
-        XCTAssertEqual(try directory(.appGroup(groupId: "group.test")).path, "/group")
-        XCTAssertEqual(try directory(.appGroup(groupId: "group.test", namespace: .directory(named: "name"))).path, "/group/name!")
+        XCTAssertEqual(try directory(.appGroup(id: "group.test", namespace: "name")).path, "/group/name!/i")
     }
 
-    func testDefaultScopeUsesTheLibrarysFolderInApplicationSupport() throws {
-        XCTAssertEqual(try directory(.default).path, "/support/!key!value!storage!")
+    func testEachProtectionIsAFolderOfItsOwn() throws {
+        let folders: [(FileStorage.Protection, String)] = [
+            (.inherited, "i"), (.none, "n"), (.untilFirstUnlock, "u"), (.whileLocked, "w"), (.whileLockedUnlessOpen, "o")
+        ]
+
+        for (protection, folder) in folders {
+            XCTAssertEqual(try directory(.own(protection: protection, namespace: "name")).lastPathComponent, folder)
+            XCTAssertEqual(try directory(.appGroup(id: "group.test", protection: protection, namespace: "name")).lastPathComponent, folder)
+        }
+    }
+
+    func testDefaultScopeUsesTheLibrarysNamespaceInApplicationSupport() throws {
+        XCTAssertEqual(try directory(.default).path, "/support/com%2etest%2e!app/!key!value!storage!/i")
+    }
+
+    func testTheAppsFolderIsItsBundleIDOrProcessNameEncodedLikeKeys() throws {
+        // Bundle IDs that differ only in case get two folders, also on a volume that ignores case
+        let folders = try ["com.test.App", "com.test.app", "", nil].map { identifier in
+            locator.identifier = identifier
+            return try directory(.own(namespace: "name")).deletingLastPathComponent().deletingLastPathComponent().lastPathComponent
+        }
+
+        XCTAssertEqual(folders, ["com%2etest%2e!app", "com%2etest%2eapp", "%", "my%20tool"])
     }
 
     func testMissingBaseDirectoriesThrowTheirDirectory() {
         locator.directories = [:]
 
         assertThrows(FileStorage.Error.directoryNotFound(.applicationSupportDirectory)) {
-            try directory(.app(.applicationSupport))
+            try directory(.own(namespace: "name"))
         }
 
         assertThrows(FileStorage.Error.directoryNotFound(.cachesDirectory)) {
-            try directory(.app(.cache))
-        }
-
-        assertThrows(FileStorage.Error.directoryNotFound(.documentDirectory)) {
-            try directory(.app(.documents))
+            try directory(.own(.cache, namespace: "name"))
         }
     }
 
-    func testMissingGroupContainerThrowsTheGroupId() {
+    func testAMissingGroupContainerOrAnEmptyIdThrowsTheId() {
+        // macOS returns a container for any id, the empty one included
+        locator.groupDirectories[""] = URL(fileURLWithPath: "/empty", isDirectory: true)
+
         assertThrows(FileStorage.Error.groupDirectoryNotFound("group.other")) {
-            try directory(.appGroup(groupId: "group.other"))
+            try directory(.appGroup(id: "group.other", namespace: "name"))
+        }
+
+        assertThrows(FileStorage.Error.groupDirectoryNotFound("")) {
+            try directory(.appGroup(id: "", namespace: "name"))
         }
     }
 
-    func testDirectoryMustBeAFileURL() throws {
-        let url = try XCTUnwrap(URL(string: "https://example.com/folder"))
-        assertThrows(FileStorage.Error.invalidDirectory(url)) {
-            try directory(.app(.directory(at: url)))
+    func testEveryScopeHasAFolderOfItsOwn() throws {
+        let namespaces: [FileStorage.Namespace] = ["", "a", "A", "settings", "Settings", "a b", "a%20b", "\u{E9}", "e\u{301}"]
+        let scopes = namespaces.flatMap { namespace -> [FileStorage.Scope] in
+            [.own(namespace: namespace), .own(.cache, namespace: namespace), .own(protection: .whileLocked, namespace: namespace),
+             .appGroup(id: "group.test", namespace: namespace)]
         }
+
+        // Lowercased, as a volume that ignores case compares them
+        let folders = try scopes.map { try directory($0).path.lowercased() }
+        XCTAssertEqual(Set(folders).count, scopes.count)
     }
 
     // MARK: Namespaces
@@ -74,40 +93,31 @@ final class DefaultFileLocatorTests: XCTestCase {
     func testNamespacesAreEncodedLikeKeysAndEndWithAnExclamationMark() throws {
         let folders = ["settings": "settings!", "KeyValueStorage": "!key!value!storage!", "": "%!", ".": "%2e!", "..": "%2e%2e!", "a/b": "a%2fb!"]
         for (name, folder) in folders {
-            XCTAssertEqual(try directory(.app(.temporary, namespace: .directory(named: name))).lastPathComponent, folder)
+            XCTAssertEqual(try directory(.own(namespace: .init(name))).deletingLastPathComponent().lastPathComponent, folder)
         }
     }
 
     func testNamespacesLongerThanAFolderNameThrow() throws {
-        XCTAssertEqual(try directory(.app(.temporary, namespace: .directory(named: String(repeating: "a", count: 254)))).lastPathComponent.utf8.count, 255)
+        let longest = try directory(.own(namespace: .init(String(repeating: "a", count: 254))))
+        XCTAssertEqual(longest.deletingLastPathComponent().lastPathComponent.utf8.count, 255)
 
-        let name = String(repeating: "a", count: 255)
+        let name = FileStorage.Namespace(String(repeating: "a", count: 255))
         assertThrows(FileStorage.Error.invalidNamespace(name)) {
-            try directory(.app(.temporary, namespace: .directory(named: name)))
+            try directory(.own(namespace: name))
         }
     }
 
     func testNamespaceIsCheckedBeforeTheEnvironment() {
-        let name = String(repeating: "A", count: 128)
+        let name = FileStorage.Namespace(String(repeating: "A", count: 128))
+        locator.directories = [:]
+
         assertThrows(FileStorage.Error.invalidNamespace(name)) {
-            try directory(.appGroup(groupId: "group.other", namespace: .directory(named: name)))
+            try directory(.own(namespace: name))
         }
-    }
 
-    func testNamespacesAndTheRootNeverShareAFolder() throws {
-        let namespaces: [String?] = [nil, "", "a", "A", "settings", "Settings", "a b", "a%20b", "\u{E9}", "e\u{301}"]
-        // Lowercased, as a case-insensitive volume compares them
-        let folders = try namespaces.map { try directory(.app(.temporary, namespace: $0.map { .directory(named: $0) })).path.lowercased() }
-
-        XCTAssertEqual(Set(folders).count, namespaces.count)
-    }
-
-    func testKeyFilesAndNamespaceFoldersNeverShareAName() throws {
-        let names = (0..<128).map { String(UnicodeScalar(UInt8($0))) } + ["", "settings", "Settings", "a!", "%", "%21", "🙂"]
-        let files = try Set(names.map(fileName))
-        let folders = try Set(names.map { try directory(.app(.temporary, namespace: .directory(named: $0))).lastPathComponent })
-
-        XCTAssertTrue(files.isDisjoint(with: folders))
+        assertThrows(FileStorage.Error.invalidNamespace(name)) {
+            try directory(.appGroup(id: "group.other", namespace: name))
+        }
     }
 
     // MARK: File Names
@@ -144,7 +154,7 @@ final class DefaultFileLocatorTests: XCTestCase {
         XCTAssertEqual(try fileName(String(repeating: "🙂", count: 21)).utf8.count, 252)
 
         for key in [String(repeating: "a", count: 256), String(repeating: "A", count: 128), String(repeating: "🙂", count: 22)] {
-            assertThrows(FileStorage.Error.invalidKey(key)) {
+            assertThrows(FileStorage.Error.invalidKey(.init(key))) {
                 try fileName(key)
             }
         }
@@ -166,11 +176,11 @@ final class DefaultFileLocatorTests: XCTestCase {
     func testSubclassesCanCallSuperForBothNameMethods() {
         // Given
         final class PrefixedLocator: DefaultFileLocator {
-            override func fileName(forKey key: String, in scope: FileStorage.Scope) throws(FileStorage.Error) -> String {
+            override func fileName(forKey key: FileStorage.Key, in scope: FileStorage.Scope) throws(FileStorage.Error) -> String {
                 try "v2-" + super.fileName(forKey: key, in: scope)
             }
 
-            override func key(forFileName fileName: String, in scope: FileStorage.Scope) -> String? {
+            override func key(forFileName fileName: String, in scope: FileStorage.Scope) -> FileStorage.Key? {
                 fileName.hasPrefix("v2-") ? super.key(forFileName: String(fileName.dropFirst(3)), in: scope) : nil
             }
         }
@@ -181,8 +191,8 @@ final class DefaultFileLocatorTests: XCTestCase {
         assertLocatorLaws(
             keys: ["key", "Key", ".hidden", "%", ""],
             foreignNames: ["key", "v2-Key", "v2-%2E"],
-            storedName: { try locator.fileName(forKey: $0, in: scope) },
-            key: { locator.key(forFileName: $0, in: scope) }
+            storedName: { try locator.fileName(forKey: .init($0), in: scope) },
+            key: { locator.key(forFileName: $0, in: scope)?.string }
         )
     }
 
@@ -200,8 +210,8 @@ final class DefaultFileLocatorTests: XCTestCase {
         assertLocatorLaws(
             keys: keys,
             foreignNames: [".KeyValueStorage.sqlite", ".DS_Store", "Key", "%41", "%2E", "a.b"],
-            storedName: { try locator.fileName(forKey: $0, in: scope) },
-            key: { locator.key(forFileName: $0, in: scope) },
+            storedName: { try locator.fileName(forKey: .init($0), in: scope) },
+            key: { locator.key(forFileName: $0, in: scope)?.string },
             sameName: { $0.compare($1, options: .caseInsensitive) == .orderedSame } // APFS's default: case-insensitive, canonical
         )
     }
@@ -213,6 +223,6 @@ final class DefaultFileLocatorTests: XCTestCase {
     }
 
     private func fileName(_ key: String) throws(FileStorage.Error) -> String {
-        try locator.fileName(forKey: key, in: scope)
+        try locator.fileName(forKey: .init(key), in: scope)
     }
 }

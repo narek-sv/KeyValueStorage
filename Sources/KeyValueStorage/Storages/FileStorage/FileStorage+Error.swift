@@ -11,15 +11,13 @@ import Foundation
 
 public extension FileStorage {
     enum Error: KeyValueDataStorageError {
-        /// Usually the app isn't in the group.
+        /// Usually the app isn't in the group; also an empty id.
         case groupDirectoryNotFound(String)
         case directoryNotFound(FileManager.SearchPathDirectory)
-        /// Not a file URL.
-        case invalidDirectory(URL)
         /// Its encoded folder name exceeds 255 bytes.
-        case invalidNamespace(String)
+        case invalidNamespace(Namespace)
         /// Its encoded file name exceeds 255 bytes.
-        case invalidKey(String)
+        case invalidKey(Key)
         /// Something that isn't the scope's is at the key's file or the scope's folder; it's never removed.
         case pathOccupied(URL)
         /// `EPERM`: the file is protected while the device is locked, or the sandbox denied access.

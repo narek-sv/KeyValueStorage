@@ -82,7 +82,8 @@ final class PublicAPITests: XCTestCase {
     func testScopeIsReadable() throws {
         // Given
         let directory = UUID().uuidString
-        let folder = try DefaultFileLocator().directory(for: .app(.temporary, namespace: .directory(named: directory)))
+        // The SQLite storage below makes its folder; the file storage writes nothing
+        let folder = try DefaultSQLiteLocator().databaseURL(for: .app(.temporary, namespace: .directory(named: directory))).deletingLastPathComponent()
         addTeardownBlock {
             try? FileManager.default.removeItem(at: folder)
         }
@@ -90,7 +91,7 @@ final class PublicAPITests: XCTestCase {
         let inMemoryScope = InMemoryStorage.Scope.app(namespace: .bucket(named: "publicAPIScope"))
         let userDefaultsScope = UserDefaultsStorage.Scope.app(.suite(named: "publicAPIScope"))
         let keychainScope = KeychainStorage.Scope.appGroup(groupId: "group.shared", namespace: .service(named: "publicAPIScope"))
-        let fileScope = FileStorage.Scope.app(.temporary, namespace: .directory(named: directory))
+        let fileScope = FileStorage.Scope.own(.temporary, namespace: .init(directory))
         let sqliteScope = SQLiteStorage.Scope.app(.temporary, namespace: .directory(named: directory))
         let inMemory = InMemoryStorage(scope: inMemoryScope)
         let userDefaults = try UserDefaultsStorage(scope: userDefaultsScope)
@@ -150,17 +151,16 @@ final class PublicAPITests: XCTestCase {
 
     /// Compiles only while the storage and its locator throw `FileStorage.Error`, and clients can match every case.
     func testFileStorageThrowsItsOwnErrors() {
-        let key = String(repeating: "a", count: 256)
+        let key = FileStorage.Key(String(repeating: "a", count: 256))
         do throws(FileStorage.Error) {
-            let storage = try FileStorage(scope: .app(.temporary, namespace: .directory(named: "publicAPI-\(UUID().uuidString)")))
-            _ = try storage.fetch(forKey: .init(name: key))
+            let storage = try FileStorage(scope: .own(.temporary, namespace: "publicAPI-\(UUID().uuidString)"))
+            _ = try storage.fetch(forKey: key)
             XCTFail("Expected .invalidKey")
         } catch {
             switch error {
             case .invalidKey(key):
                 break
-            case .invalidKey, .invalidNamespace, .pathOccupied, .directoryNotFound, .groupDirectoryNotFound, .invalidDirectory,
-                 .protectedDataUnavailable, .other:
+            case .invalidKey, .invalidNamespace, .pathOccupied, .directoryNotFound, .groupDirectoryNotFound, .protectedDataUnavailable, .other:
                 XCTFail("Unexpected \(error)")
             }
         }
@@ -176,13 +176,24 @@ final class PublicAPITests: XCTestCase {
     }
 
     func testFileStorageAcceptsALocator() throws {
-        // Given: a locator that keeps values under a legacy prefix, as an app adopting existing files might
+        // Given: a locator that keeps values in a folder of the app's choice, under a legacy prefix,
+        // as an app adopting existing files might
         final class LegacyLocator: DefaultFileLocator {
-            override func fileName(forKey key: String, in scope: FileStorage.Scope) throws(FileStorage.Error) -> String {
+            let folder: URL
+
+            init(folder: URL) {
+                self.folder = folder
+            }
+
+            override func directory(for scope: FileStorage.Scope) throws(FileStorage.Error) -> URL {
+                folder
+            }
+
+            override func fileName(forKey key: FileStorage.Key, in scope: FileStorage.Scope) throws(FileStorage.Error) -> String {
                 try "legacy-" + super.fileName(forKey: key, in: scope)
             }
 
-            override func key(forFileName fileName: String, in scope: FileStorage.Scope) -> String? {
+            override func key(forFileName fileName: String, in scope: FileStorage.Scope) -> FileStorage.Key? {
                 guard fileName.hasPrefix("legacy-") else {
                     return nil
                 }
@@ -196,7 +207,7 @@ final class PublicAPITests: XCTestCase {
             try? FileManager.default.removeItem(at: folder)
         }
 
-        let storage = try FileStorage(scope: .app(.directory(at: folder)), backingStore: DefaultFileBackingStoreWrapper(), locator: LegacyLocator())
+        let storage = try FileStorage(scope: .default, backingStore: DefaultFileBackingStoreWrapper(), locator: LegacyLocator(folder: folder))
 
         // When
         try storage.save(Data([1]), forKey: "key")

@@ -20,6 +20,7 @@ public final class FileStorage: KeyValueDataStorage {
     private let backingStore: any FileBackingStore
     private let locator: any FileLocator
     private let root: URL
+    private let writingOptions: Data.WritingOptions
 
     public let scope: Scope
 
@@ -27,6 +28,7 @@ public final class FileStorage: KeyValueDataStorage {
 
     public init(scope: Scope, backingStore: any FileBackingStore, locator: any FileLocator) throws(Error) {
         self.root = try locator.directory(for: scope)
+        self.writingOptions = Self.writingOptions(for: scope)
         self.scope = scope
         self.backingStore = backingStore
         self.locator = locator
@@ -60,7 +62,7 @@ public final class FileStorage: KeyValueDataStorage {
         default:                    throw .pathOccupied(url)
         }
 
-        try execute { try backingStore.write(value, at: url, options: Self.writingOptions(for: key.protection)) }
+        try execute { try backingStore.write(value, at: url, options: writingOptions) }
     }
 
     public func delete(forKey key: Key) throws(Error) {
@@ -72,7 +74,7 @@ public final class FileStorage: KeyValueDataStorage {
             return
         }
 
-        // The folder also holds namespaces, SQLite's files and other code's files
+        // The folder can also hold SQLite's files and other code's
         let names = try execute { try backingStore.itemNames(at: root) }
         for name in names where isValueName(name) {
             try removeValue(at: root.appendingPathComponent(name, isDirectory: false))
@@ -108,7 +110,7 @@ public final class FileStorage: KeyValueDataStorage {
     }
 
     private func url(for key: Key) throws(Error) -> URL {
-        try root.appendingPathComponent(locator.fileName(forKey: key.name, in: scope), isDirectory: false)
+        try root.appendingPathComponent(locator.fileName(forKey: key, in: scope), isDirectory: false)
     }
 
     /// `nil` only if nothing is there, so an unreadable path never passes for an empty one.
@@ -122,17 +124,20 @@ public final class FileStorage: KeyValueDataStorage {
         }
     }
 
-    private static func writingOptions(for protection: Key.Protection) -> Data.WritingOptions {
+    private static func writingOptions(for scope: Scope) -> Data.WritingOptions {
         guard #available(macOS 11, *) else {
             return .atomic
         }
 
-        switch protection {
-        case .inherited:                            return .atomic
-        case .none:                                 return [.atomic, .noFileProtection]
-        case .complete:                             return [.atomic, .completeFileProtection]
-        case .completeUnlessOpen:                   return [.atomic, .completeFileProtectionUnlessOpen]
-        case .completeUntilFirstUserAuthentication: return [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
+        switch scope {
+        case let .own(_, protection, _), let .appGroup(_, protection, _):
+            switch protection {
+            case .inherited:                return .atomic
+            case .none:                     return [.atomic, .noFileProtection]
+            case .untilFirstUnlock:         return [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
+            case .whileLocked:              return [.atomic, .completeFileProtection]
+            case .whileLockedUnlessOpen:    return [.atomic, .completeFileProtectionUnlessOpen]
+            }
         }
     }
 
