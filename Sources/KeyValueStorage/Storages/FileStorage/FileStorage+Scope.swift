@@ -48,3 +48,18 @@ public extension FileStorage {
         }
     }
 }
+
+// MARK: - Internal
+
+extension FileStorage.Protection {
+    @available(macOS 11, *)
+    var fileProtection: Data.WritingOptions? {
+        switch self {
+        case .inherited:                return nil
+        case .none:                     return .noFileProtection
+        case .untilFirstUnlock:         return .completeFileProtectionUntilFirstUserAuthentication
+        case .whileLocked:              return .completeFileProtection
+        case .whileLockedUnlessOpen:    return .completeFileProtectionUnlessOpen
+        }
+    }
+}

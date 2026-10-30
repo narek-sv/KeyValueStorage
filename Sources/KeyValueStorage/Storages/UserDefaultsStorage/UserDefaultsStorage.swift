@@ -79,7 +79,7 @@ public final class UserDefaultsStorage: KeyValueDataStorage {
             return false
         }
 
-        // Bytes, not `==`: the suite tells canonically equal keys apart
-        return locator.storedKey(forKey: key, in: scope).utf8.elementsEqual(storedKey.utf8)
+        let encoded = locator.storedKey(forKey: key, in: scope)
+        return Key(encoded) == Key(storedKey)
     }
 }

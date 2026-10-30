@@ -70,13 +70,7 @@ public final class SQLiteStorage: KeyValueDataStorage {
     private static func fileProtection(for scope: Scope) -> FileProtectionType? {
         switch scope {
         case let .own(_, protection, _), let .appGroup(_, protection, _):
-            switch protection {
-            case .inherited:                return nil
-            case .none:                     return FileProtectionType.none
-            case .untilFirstUnlock:         return .completeUntilFirstUserAuthentication
-            case .whileLocked:              return .complete
-            case .whileLockedUnlessOpen:    return .completeUnlessOpen
-            }
+            protection.fileProtection
         }
     }
 

@@ -86,11 +86,11 @@ public final class UbiquitousStorage: KeyValueDataStorage {
     }
 
     private func isValueKey(_ storedKey: String) -> Bool {
-        guard let key = locator.key(forStoredKey: storedKey, in: scope), let encoded = try? locator.storedKey(forKey: key, in: scope) else {
+        guard let key = locator.key(forStoredKey: storedKey, in: scope),
+              let encoded = try? locator.storedKey(forKey: key, in: scope) else {
             return false
         }
-
-        // Bytes, not `==`: the store tells canonically equal keys apart
-        return encoded.utf8.elementsEqual(storedKey.utf8)
+        
+        return Key(encoded) == Key(storedKey)
     }
 }

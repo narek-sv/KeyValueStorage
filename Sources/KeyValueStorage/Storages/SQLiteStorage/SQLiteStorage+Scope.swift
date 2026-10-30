@@ -48,3 +48,17 @@ public extension SQLiteStorage {
         }
     }
 }
+
+// MARK: - Internal
+
+extension SQLiteStorage.Protection {
+    var fileProtection: FileProtectionType? {
+        switch self {
+        case .inherited:                return nil
+        case .none:                     return FileProtectionType.none
+        case .untilFirstUnlock:         return .completeUntilFirstUserAuthentication
+        case .whileLocked:              return .complete
+        case .whileLockedUnlessOpen:    return .completeUnlessOpen
+        }
+    }
+}

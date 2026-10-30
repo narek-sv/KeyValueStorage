@@ -25,3 +25,20 @@ public extension FileStorage {
         case other(Swift.Error)
     }
 }
+
+// MARK: - Internal
+
+extension FileStorage.Error {
+    init(_ error: Swift.Error) {
+        let nsError = error as NSError
+        let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError
+
+        if nsError.domain == NSCocoaErrorDomain,
+           [NSFileReadNoPermissionError, NSFileWriteNoPermissionError].contains(nsError.code),
+           underlying?.domain == NSPOSIXErrorDomain, underlying?.code == Int(EPERM) {
+            self = .protectedDataUnavailable
+        } else {
+            self = .other(error)
+        }
+    }
+}

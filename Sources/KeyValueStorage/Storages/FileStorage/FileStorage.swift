@@ -131,32 +131,15 @@ public final class FileStorage: KeyValueDataStorage {
 
         switch scope {
         case let .own(_, protection, _), let .appGroup(_, protection, _):
-            switch protection {
-            case .inherited:                return .atomic
-            case .none:                     return [.atomic, .noFileProtection]
-            case .untilFirstUnlock:         return [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
-            case .whileLocked:              return [.atomic, .completeFileProtection]
-            case .whileLockedUnlessOpen:    return [.atomic, .completeFileProtectionUnlessOpen]
-            }
+            return (protection.fileProtection ?? []).union(.atomic)
         }
-    }
-
-    private static func isProtectedDataUnavailable(_ error: Swift.Error) -> Bool {
-        let error = error as NSError
-        guard error.domain == NSCocoaErrorDomain,
-              error.code == NSFileReadNoPermissionError || error.code == NSFileWriteNoPermissionError,
-              let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError else {
-            return false
-        }
-
-        return underlying.domain == NSPOSIXErrorDomain && underlying.code == Int(EPERM)
     }
 
     private func execute<T>(_ body: () throws -> T) throws(Error) -> T {
         do {
             return try body()
         } catch {
-            throw Self.isProtectedDataUnavailable(error) ? .protectedDataUnavailable : .other(error)
+            throw Error(error)
         }
     }
 }
