@@ -9,7 +9,7 @@ This file is the source of truth for the 4.0 refactor, written so that anyone, h
 - **Pilot, then roll out:** plan a change fully, adopt it on one storage, stop for review, then apply the settled pattern to the other five. Audit errors and clashes along the way.
 - **Simple, bulletproof, sound:** the simplest rule that holds for every input.
   - No logic in wrappers (E0): a default backing store is one system call per member.
-  - All naming lives in the locators. No shared helper that a dependency only forwards to.
+  - All naming lives in the locators. The byte-level encodings they share (`portableName`, `percentEscaping`, `droppingExactPrefix`) live in `Helpers/String+UTF8.swift`; which encoding a name gets, and its marks and separators, stays in each locator as named members. No shared helper that a dependency only forwards to.
   - No parameters or properties for demonstration only.
   - Never swallow a "can't tell": throw instead.
 - **Consistency:** a rule decided for one storage applies to all six, Keychain included. Keep the per-storage tables in this plan current.
@@ -26,7 +26,7 @@ This file is the source of truth for the 4.0 refactor, written so that anyone, h
 - Coverage: §11.4.
 - Test runs take minutes, so run them in the background rather than with a short timeout.
 
-## Status (2026-10-30)
+## Status (2026-10-31)
 
 - **Done: locators (§4.3).** Naming moved out of the storages into one locator per storage. Each step also applies the error contract (§4.4) and the clash rules (§4.5), and writes the storage's mock-based unit tests.
   - **Done, in review: FileStorage**, the pilot (§5.3). Its tests pass on macOS and the iOS Simulator. The gated files have 100% coverage, except the `#available(macOS 11)` fallback.
@@ -48,8 +48,14 @@ This file is the source of truth for the 4.0 refactor, written so that anyone, h
 - **Added: `UbiquitousStorage`** (§5.7), on the same pattern.
 - **Tests:** the public API target and the coder tests are on the 4.0 API and pass. The 3.x unit tests live in `Tests/Legacy3x/` (not a target) as the porting reference; each storage's locator step ports and deletes its file.
 - **Done: the sealed scopes in all six storages** (§S, §5.2–5.7, 2026-10-30): File, the pilot, then SQLite, UserDefaults, Ubiquitous, Keychain and InMemory. Shared: `ExactString`, and a scope protocol that only requires `default`; `defaultName` and `KeyValueDataStorageNamespace` are gone. File and SQLite storages of one scope share its folder.
-- **Next: the rest of phase 6b.** The error refactor (§4.4): `.invalidDirectory` is gone and keys and namespaces in errors are `ExactString`, but one name per meaning across storages is still to decide, and `.keyOccupied` (UserDefaults, Ubiquitous) still carries the stored key, not the key passed. Then the test revisit and the tests for unmeasured behavior (§11.3).
-- **Then: phases 7–9**, the coding, isolation and facade layers. The observation and unified layers still emit isolated-conformance warnings on Swift 6.2+ compilers, because the storage protocol is no longer `Sendable`.
+- **Done: the error refactor** (§4.4, 2026-10-31): one name per meaning (a locked device is `.protectedDataUnavailable` in File and Keychain; Keychain's raw status is `.keychain(status:)`; `KeychainOperationStatus.other(OSStatus)`); each storage that translates its backing store's failures does it in an internal `Error.init(_:)` in its `+Error.swift`, and every other case is thrown by name; every error type and case is documented in one style; the README's error section lists the current cases.
+- **Done: shared names and exactness** (2026-10-31): the encodings the locators shared moved to `Helpers/String+UTF8.swift`, each locator's marks and separators are named members, `DefaultInMemoryBackingStoreWrapper` keys by `ExactString`, `ExactString` hashes its bytes in one buffer with their count, and every storage claims stored names byte for byte (`FileStorage.clear()` no longer removes a file whose name differs from its own only in Unicode form). `ExistentialAny` is on for every target.
+- **Done: the README** on the sealed scopes (2026-10-31): scopes, places, protection, `UbiquitousStorage`, errors and thread safety. Left for the release: Installation's version and "Migrating from 2.x".
+- **Open in phase 6b:**
+  - `.keyOccupied` (UserDefaults, Ubiquitous) carries the stored key, not the key passed (E5).
+  - The test revisit and the tests for unmeasured behavior (§11.3): none of the "To add" tests are written yet.
+- **Then: phases 7–9**, the coding, isolation and facade layers, which today are still 3.x-shaped: `async` coders, `open` `@unchecked Sendable` layers, `KeyValueObservableStorage`, `CodingStorageActor` and an actor `UnifiedStorage`. A clean build has 4 warnings, all there (`Storage.Type` isn't `Sendable`), against the no-warnings rule.
+  - **Bug until then:** `UnifiedStorage`'s operations are `nonisolated`, so concurrent calls reach one cached `SQLiteStorage` at once, and `DefaultSQLiteDatabase`'s prepared statements aren't safe to share (§5.6): two operations' bindings can interleave. Not reproduced yet; phase 9's facade removes the sharing.
 
 ## S. Sealed scopes and keys (decided and done 2026-10-30)
 
@@ -227,8 +233,7 @@ Finding where a scope's values go is naming, so the default File and SQLite loca
 open func systemDirectory(_ directory: FileManager.SearchPathDirectory) -> URL?   // urls(for:in: .userDomainMask).first
 open var temporaryDirectory: URL                                                   // FileManager.temporaryDirectory
 open func groupDirectory(for groupId: String) -> URL?                              // containerURL(forSecurityApplicationGroupIdentifier:)
-open var bundleIdentifier: String?                                                 // Bundle.main.bundleIdentifier
-open var processName: String                                                       // ProcessInfo.processInfo.processName
+open var ownIdentifier: String                                                     // OwnIdentity.identifier: the bundle ID, or the process name
 ```
 
 - Each is one `FileManager` call, with no logic, like a backing store's members (E0). A subclass changes where a directory is; the unit tests use one with fixed paths (`FixedDirectoriesFileLocator`).
@@ -242,17 +247,17 @@ A locator translates the library's names (scope, namespace, key name) into the s
 - **Shape:** one public protocol per storage and an `open class Default<Name>Locator`, in `Storages/<Name>/Dependencies/<Name>Locator.swift`, next to the backing store. A shared generic protocol would need parameterized existentials (`any P<A>`), which need iOS 16 / macOS 13.
 - **Stateless:** the same inputs give the same outputs, given the same system directories. The storage passes its `scope` to every call, so the two can't disagree.
 - **Injected:** every storage's `init(scope:backingStore:locator:)` takes the locator; `init(scope:)` passes the defaults.
-- **Key names, not keys:** it takes `String` names, never `Key` structs.
+- **Keys are names:** it takes the storage's `Key` (`ExactString`), which carries the name only (§S).
 - **Exact keys:** every storage keeps a key's and a namespace's exact bytes, so `"é"` and `"e\u{301}"` are two keys, though Swift's `==` takes them for one. Verified in File, SQLite, UserDefaults, Keychain and InMemory; Ubiquitous keys are `NSString` dictionary keys like UserDefaults', and can't be checked without the entitlement.
 - **Typed throws** in the storage's `Error`, only where the default can fail. Otherwise the method doesn't throw, so the Keychain, InMemory and Ubiquitous initializers stay non-throwing.
-- **Inverse law:** where a reverse method exists, it maps every stored name a valid key produces back to that key, and returns `nil` for every other name. The default's reverse method calls `self`'s forward method, so a subclass that changes the forward rule stays consistent.
+- **Inverse law:** where a reverse method exists, it maps every stored name a valid key produces back to that key, and returns `nil` for every other name. The defaults' reverse methods use their own static rules, so a subclass that changes names overrides both methods; the protocols and defaults document it.
 - **System limits** (D18): each protocol documents the limits a stored name must respect, and the locator enforces them.
 
 | Protocol | Location (once, in init) | Key → stored name (each call) | Stored name → key (`clear()`) |
 |---|---|---|---|
 | `FileLocator` | `directory(for:) throws` | `fileName(forKey:in:) throws` | `key(forFileName:in:)` |
 | `SQLiteLocator` | `databaseURL(for:) throws` | `storedKey(forKey:in:)` | — |
-| `UserDefaultsLocator` | `suite(for:)` → `AppScope` (`.standard` / `.suite(named:)`) | `storedKey(forKey:in:)` | `key(forStoredKey:in:)` |
+| `UserDefaultsLocator` | `suiteName(for:) throws` | `storedKey(forKey:in:)` | `key(forStoredKey:in:)` |
 | `UbiquitousLocator` | — (one store) | `storedKey(forKey:in:) throws` | `key(forStoredKey:in:)` |
 | `KeychainLocator` | `service(for:)`, `accessGroup(for:)` | `account(forKey:in:)` | — |
 | `InMemoryLocator` | `bucket(for:)` | `storedKey(forKey:in:)` | — |
@@ -270,13 +275,16 @@ What stays in the storages: system calls and their retries (File's `createDirect
 - **E6 No traps:** no `try!`, no force unwraps of system results, no `fatalError`, and no reachable Objective-C exceptions.
 - **E7 Every case is documented, and every throw site is tested.**
 - **E8 Partial failure is documented:** `clear()` stops at the first failure, and a failed init leaves nothing open.
-- **Planned: refactor the errors with the sealed scopes** (2026-10-30, §13 item 8), against E1–E8:
+- **Done: the errors refactored with the sealed scopes** (2026-10-31, §13 item 8), against E1–E8, except where marked:
   - drop the cases the redesign removes: `.invalidDirectory` (no `.directory(at:)`), Keychain's `.keyOccupied` (gone already, §5.2);
   - one name for one meaning across storages: a group the app isn't in (`.groupDirectoryNotFound`, `.invalidSuiteName`, `.keychain(status: errSecMissingEntitlement)` today), an occupied place (`.pathOccupied`, `.keyOccupied`), and a locked device (`.protectedDataUnavailable` for File and for Keychain's `errSecInteractionNotAllowed`; SQLite's locked result once the device test names it, §13 item 7);
-  - cases carry `ExactString` keys and namespaces, the failing input as the caller passed it (E5);
-  - every case documented and every throw site tested again (E7).
+  - cases carry `ExactString` keys and namespaces, the failing input as the caller passed it (E5). **Open:** `.keyOccupied` still carries the stored key;
+  - every case documented and every throw site tested again (E7);
+  - one place per storage translates its backing store's failures: an internal `Error.init(_:)` (File and SQLite from a thrown error, Keychain from a `KeychainOperationStatus`). UserDefaults, Ubiquitous and InMemory have nothing to translate.
 
 ### 4.5 Key clashes and scope-exact `clear()`
+
+*Written before §S: the root it mentions is gone, and every scope names a namespace. The rules hold with "another namespace" in place of the root.*
 
 **Invariant:** in one physical store, two different (namespace or root, key) pairs never get the same stored name. A scope's reverse mapping claims exactly the names its own keys can produce, so `clear()` removes exactly the scope's values: never another namespace's, never a namespace's from the root, and never the root's from a namespace.
 
@@ -289,11 +297,11 @@ What stays in the storages: system calls and their retries (File's `createDirect
 - **Not fixable without marking stored names:** in a space shared with other code's entries (a folder the user picked, `UserDefaults.standard`), the root `clear()` also removes entries that a key could have produced, such as `notes` or `AppleLanguages`. A namespace never does. Each scope's docs say so.
 - **Laws** run against every default locator: round trip; no collisions within a namespace (File: also case-insensitively and canonically, as on APFS, with keys compared by their exact scalars); no collisions across namespaces, including the root; and no claiming of names that another scope or no key produces.
 - **Clashes outside the locators, settled by the sealed scopes (§S)** (audit of 2026-10-30, through the public API with the default locators). The storages' own names never clash: not within `.app`, not between `.app` and `.appGroup`, not between the root and namespaces, and not where File and SQLite share a folder. What does clash, most severe first:
-  1. **UserDefaults suites that are the global domain.** `UserDefaults(suiteName:)` rejects `NSGlobalDomain`, but accepts `.GlobalPreferences`, `kCFPreferencesAnyApplication` and `Apple Global Domain`, and writes through them land in the global domain (measured on the Simulator). `.standard`, every suite and every App Group then fetch the value, and their `delete` and `clear()` most likely can't remove it (not measured). Fix: `.invalidSuiteName` for these names, and for the app scope's own suite name (§5.4). Documented on UserDefaults' group scope. It's the one system gotcha with a check, because it lets two scopes reach each other's values.
-  2. **The layers merge names the storages keep apart.** Swift's `==` is canonical, so scopes or keys that differ only in Unicode form (`"é"`, `"e\u{301}"`) are one entry in `UnifiedStorage`'s storage cache and in the observation registry (measured). The scope used first gets both scopes' values, and an observer of `"é"` receives a value saved under `"e\u{301}"`. Fix: compare names by bytes in the layers too (§4.3). The `String` keys of SQLite, UserDefaults, Ubiquitous and InMemory can't change `==`, so either they become `Key` structs like File's and Keychain's, or the layers compare bytes themselves.
-  3. **Observation misses changes between keys that reach one value:** File keys that differ in `protection`, Keychain keys that differ in `accessibility`, different value types (§6.3 already plans this one), and the scope pairs in items 4 and 5.
-  4. **SQLite scopes that differ only in `protection` share one database.** Each `clear()` empties both, and each open re-applies its class, so opening the `.none` scope downgrades the `.complete` one's files. Fix: move protection out of the scope, into an init parameter, so a scope only names a place.
-  5. **UserDefaults `.app(.suite(named: g))` is `.appGroup(groupId: g)`**, because the group's suite is the suite named after it. Fix: document it.
+  1. **Fixed: UserDefaults suites that are the global domain.** `UserDefaults(suiteName:)` rejects `NSGlobalDomain`, but accepts `.GlobalPreferences`, `kCFPreferencesAnyApplication` and `Apple Global Domain`, and writes through them land in the global domain (measured on the Simulator). `.standard`, every suite and every App Group then fetch the value, and their `delete` and `clear()` most likely can't remove it (not measured). Fix: `.invalidSuiteName` for these names, and for the app scope's own suite name (§5.4). Documented on UserDefaults' group scope. It's the one system gotcha with a check, because it lets two scopes reach each other's values.
+  2. **Fixed (§S): the layers merge names the storages keep apart.** Swift's `==` is canonical, so scopes or keys that differ only in Unicode form (`"é"`, `"e\u{301}"`) are one entry in `UnifiedStorage`'s storage cache and in the observation registry (measured). The scope used first gets both scopes' values, and an observer of `"é"` receives a value saved under `"e\u{301}"`. Fix: compare names by bytes in the layers too (§4.3). The `String` keys of SQLite, UserDefaults, Ubiquitous and InMemory can't change `==`, so either they become `Key` structs like File's and Keychain's, or the layers compare bytes themselves.
+  3. **Open, for phase 7 (§6.3): observation misses changes between keys that reach one value.** Since §S only different value types remain: File keys that differ in `protection`, Keychain keys that differ in `accessibility`, different value types (§6.3 already plans this one), and the scope pairs in items 4 and 5.
+  4. **Fixed (§S): SQLite scopes that differ only in `protection` share one database.** Each `clear()` empties both, and each open re-applies its class, so opening the `.none` scope downgrades the `.complete` one's files. Fix: move protection out of the scope, into an init parameter, so a scope only names a place.
+  5. **Fixed (§S, no `.suite(named:)`): UserDefaults `.app(.suite(named: g))` is `.appGroup(groupId: g)`**, because the group's suite is the suite named after it. Fix: document it.
 
 ### 4.6 Only the storage's own values
 
@@ -316,9 +324,10 @@ Common shape for every storage, matching `FileStorage` today:
 ```
 Storages/<Name>/
   <Name>.swift                 final class, business logic only
-  <Name>+Scope.swift           Namespace, AppScope, Scope
-  <Name>+Error.swift
-  <Name>+Key.swift
+  <Name>+Scope.swift           Scope, and its Retention, Protection and Owner
+  <Name>+Error.swift           Error, and the internal Error.init(_:) that translates backing failures
+  <Name>+Key.swift             typealias Key = ExactString
+  <Name>+Namespace.swift       typealias Namespace = ExactString
   Dependencies/                what the storage is given: injected, public, with open defaults
     <Name>BackingStore.swift   protocol + open Default<Name>BackingStoreWrapper
     <Name>Locator.swift        protocol + open Default<Name>Locator
@@ -379,7 +388,6 @@ The setup members are `createDirectory(at:)` (always creates intermediate direct
   - No normalization: keys are their exact bytes, as in UserDefaults, the keychain and SQLite, so `"é"` and `"e\u{301}"` are two keys. Foundation's `precomposedStringWithCanonicalMapping` maps some keys that Swift's `==` keeps apart to one string (`"\u{10410}\u{306}"` → `"Ӑ"`), and `removingPercentEncoding` drops a leading U+FEFF, so the locator uses neither.
   - Longest keys: 255 lowercase letters, digits, `_` or `-`; 127 capitals; 42 Cyrillic or accented letters; 28 CJK characters; 21 emoji.
 - `key(forFileName:in:)`: decodes, and returns the key only if it encodes back to the same name, so it claims exactly the names the encoding writes.
-- `key(forFileName:in:)`: the exact inverse of the default names.
 - A subclass that changes names overrides both name methods and can call `super` in both.
 
 **Storage (business logic only): files are values, folders are namespaces.** It checks what is at a path, then acts:
@@ -412,7 +420,7 @@ The setup members are `createDirectory(at:)` (always creates intermediate direct
 
 ### 5.5 InMemoryStorage (done)
 
-**Backing store:** `InMemoryBackingStore` (`read`, `write`, `remove` and `removeAll`, each in a bucket, which is a `String`: there's no unnamed bucket). `DefaultInMemoryBackingStoreWrapper` is process-wide memory behind a lock; it keys buckets and values by their UTF-8 bytes, because Swift's `String` dictionaries take `"é"` and `"e\u{301}"` for one key.
+**Backing store:** `InMemoryBackingStore` (`read`, `write`, `remove` and `removeAll`, each in a bucket, which is a `String`: there's no unnamed bucket). `DefaultInMemoryBackingStoreWrapper` is process-wide memory behind a lock; it keys buckets and values by `ExactString`, because Swift's `String` dictionaries take `"é"` and `"e\u{301}"` for one key.
 
 **Locator** (sealed scopes, 2026-10-30): `bucket(for:)` is the namespace's exact bytes; `storedKey(forKey:in:)` keeps the key's. Both are non-throwing (`Error == Never`).
 
@@ -437,7 +445,7 @@ The setup members are `createDirectory(at:)` (always creates intermediate direct
 
 **Locator:** the same scheme as UserDefaults' (§5.4): `<namespace>!/<key>`, `%` and `/` escaped byte by byte in the namespace, and a byte-compared prefix strip as the inverse. `storedKey(forKey:in:)` also enforces the store's limit: a stored key, namespace, mark and escapes included, of more than 128 UTF-16 code units throws `.invalidKey(key)`, because the store raises an Objective-C exception, a crash, for longer keys.
 
-**Storage:** only `Data` is a value (§4.6): `fetch` returns `nil` for anything else, `save` throws `.keyOccupied(storedKey)` instead of replacing it, and `delete` and `clear()` never remove it. `clear()` removes the `Data` at every stored key the locator claims and maps back byte for byte. `save` checks the key, then the 1 MB value limit (`.valueTooLarge`), both before calling the store.
+**Storage:** only `Data` is a value (§4.6): `fetch` returns `nil` for anything else, `save` throws `.keyOccupied(storedKey)` instead of replacing it, and `delete` and `clear()` never remove it. `clear()` removes the `Data` at every stored key the locator claims and maps back byte for byte. `save` checks the key, then the 1 MiB value limit (`.valueTooLarge`), both before calling the store.
 
 - **Availability:** `@available(watchOS 9.0, *)`, matching `NSUbiquitousKeyValueStore`; the package supports watchOS 6. Raising the watchOS minimum to 9 would remove the annotations (see Open decisions).
 - **Store and sharing:** a process can reach exactly one store, `NSUbiquitousKeyValueStore.default`, chosen only by its signed `com.apple.developer.ubiquity-kvstore-identifier` entitlement and the Apple Account. There's no API to pick a store, App Groups have no effect on it, and on iOS the code can't read the entitlement. So the scope has one case, `.iCloud(.own, namespace:)` (sealed scopes, 2026-10-30; `Key` and `Namespace` are `ExactString`, and `.invalidKey` and `.valueTooLarge` carry the key passed). The docs explain the setup:
@@ -445,11 +453,13 @@ The setup members are `createDirectory(at:)` (always creates intermediate direct
   - an app and its extensions, or apps of one team, set the same value in every target's entitlements;
   - an extension that keeps its default identifier silently gets its own store.
 - **Limits it documents but can't enforce:** 1024 keys and 1 MB in total. Exceeding them fails silently and is reported only through `didChangeExternallyNotification` with `NSUbiquitousKeyValueStoreQuotaViolationChange`.
-- **Planned with the sealed scopes:** stored keys are `<namespace>!/<key>`, as in UserDefaults (§5.4). The store is shared with the app's other code and its SDKs, and the `!` marks the library's entries; it counts toward the 128-unit limit.
+- **Done with the sealed scopes:** stored keys are `<namespace>!/<key>`, as in UserDefaults (§5.4). The store is shared with the app's other code and its SDKs, and the `!` marks the library's entries; it counts toward the 128-unit limit.
 - **Without the entitlement** (test bundles, unsigned builds) the store keeps nothing, lists nothing, never raises, and `synchronize()` returns `false`. So the default adapter has no integration tests; covering it needs a signed host app with the entitlement and an Apple Account.
 - **Not observed yet:** external changes, `didChangeExternallyNotification`, aren't published to observers. That's a candidate for the observation work in §6.3.
 
 ## 6. Coding layer
+
+**Status (2026-10-31): not started.** The code is 3.x-shaped: `async` `DataCoder`, an `open` `@unchecked Sendable` `KeyValueCodingStorage` without `update`, and observation in `KeyValueObservableStorage` on `CodingStorageActor`.
 
 `Sources/KeyValueStorage/Coding/`
 
@@ -498,6 +508,8 @@ public final class KeyValueCodingStorage<Storage: KeyValueDataStorage> {
 
 ## 7. Isolation layer
 
+**Status (2026-10-31): not started.** No `IsolatedKeyValueStorage` yet.
+
 `Sources/KeyValueStorage/Isolation/IsolatedKeyValueStorage.swift`
 
 ```swift
@@ -530,6 +542,8 @@ extension IsolatedKeyValueStorage {
 
 ## 8. Facade
 
+**Status (2026-10-31): not started.** `UnifiedStorage` is still the 3.x actor with `nonisolated` operations, `DefaultUnifiedStorageFactory` and `ObservableUnifiedStorageFactory`; `UbiquitousKey` exists next to the five typealiases.
+
 `Sources/KeyValueStorage/Unified/`
 
 - `UnifiedStorageKey<Storage, Value>`: `key`, `scope` (non-optional, defaults to `.default`), value type. Keep the typealiases `FileKey`, `SQLiteKey`, `KeychainKey`, `UserDefaultsKey`, `InMemoryKey`.
@@ -547,19 +561,21 @@ extension IsolatedKeyValueStorage {
 
 ## 9. Removals checklist
 
-- Global actors: `FileActor`, `SQLiteActor`, `KeychainActor`, `UserDefaultsActor`, `InMemoryActor`, `CodingStorageActor`.
-- `@unchecked Sendable` on storages and layers; `open`/`required`; `nonisolated` on type declarations.
-- `async` on `KeyValueDataStorage`, `DataCoder` and `KeyValueCodingStorage`.
-- `KeyValueObservableStorage`, `ObservableUnifiedStorageFactory`, `DefaultUnifiedStorageFactory` (replaced by the protocol default).
-- `IsolatedKeyValueDataStorage` typealias, `KeyValueDataStorageScope.appIdentifier`.
-- `Helpers/KeychainWrapper.swift`.
-- `InMemoryStorage.container` static.
-- Direct `FileManager`/`Bundle` use inside storages and locators.
-- `StorageDirectory`, `StorageDirectoryError` and `StorageDirectoryLookup`: the default File and SQLite locators look up their folders themselves (§4.2).
-- `KeyNamespace`: the UserDefaults and Ubiquitous locators build their key prefixes.
-- Stale leftovers: `Storages/Layers/` index entries (run `git add -A Sources` once the tree is consistent).
+- Global actors: `FileActor`, `SQLiteActor`, `KeychainActor`, `UserDefaultsActor`, `InMemoryActor` (done), `CodingStorageActor` (open, phase 7).
+- `@unchecked Sendable` on storages and layers; `open`/`required`; `nonisolated` on type declarations. Storages done; layers open (phases 7–9).
+- `async` on `KeyValueDataStorage` (done), `DataCoder` and `KeyValueCodingStorage` (open, phase 7).
+- `KeyValueObservableStorage`, `ObservableUnifiedStorageFactory`, `DefaultUnifiedStorageFactory` (replaced by the protocol default). Open, phases 7 and 9.
+- `IsolatedKeyValueDataStorage` typealias, `KeyValueDataStorageScope.appIdentifier`. Done.
+- `Helpers/KeychainWrapper.swift`. Done.
+- `InMemoryStorage.container` static. Done.
+- Direct `FileManager`/`Bundle` use inside storages and locators. Done, except the File and SQLite locators' `open` directory lookups, which §4.2 allows, and `OwnIdentity`.
+- `StorageDirectory`, `StorageDirectoryError` and `StorageDirectoryLookup`: the default File and SQLite locators look up their folders themselves (§4.2). Done.
+- `KeyNamespace`: the UserDefaults and Ubiquitous locators build their key prefixes. Done.
+- Stale leftovers: `Storages/Layers/` index entries (run `git add -A Sources` once the tree is consistent). Done: the tree is clean.
 
 ## 10. File layout
+
+**Status (2026-10-31): the target layout.** Today the layers are in `Layers/` and `Coders/`, and the shared types in `Helpers/` (`ExactString`, `String+UTF8`, `OwnIdentity`, `Lock`, `KeyValuePublisher`, `Typealiases`); the move comes with phases 7–9.
 
 ```
 Sources/KeyValueStorage/
@@ -757,23 +773,23 @@ Tests/
   - a synced scope and the local one of its service never reach each other's items; `.own`, App Groups (one of them the default group) and `.iCloud` with either owner never reach each other's items;
   - a group the app isn't entitled to, and an empty group id, → `.keychain(status: errSecMissingEntitlement)`;
   - an item without data fetches as `nil`, and `save`, `delete` and `clear()` replace and remove it; other code's items, without a service or with the namespace as their service, are never reached.
-- **End-to-end:** one save/fetch/clear per storage through `UnifiedStorage` with real backings in temporary scopes.
-- **To add: the system behavior the scope docs state** (2026-10-30), so no comment rests on reasoning alone:
+- **End-to-end (open):** one save/fetch/clear per storage through `UnifiedStorage` with real backings in temporary scopes. The public API target checks construction and scopes, not round trips per storage.
+- **To add (open, none written as of 2026-10-31): the system behavior the scope docs state** (2026-10-30), so no comment rests on reasoning alone:
   - iOS Simulator: a UserDefaults suite named after an App Group the app isn't entitled to works and reports nothing, and its plist lands in the app's own container;
   - macOS: `containerURL(forSecurityApplicationGroupIdentifier:)` returns a path for any id, and two ids that differ only in case get paths that differ only in case, on a volume that ignores case. The test checks paths and the volume, without creating folders in `~/Library/Group Containers`;
   - macOS: whether two UserDefaults suites whose names differ only in case share values in the process, and on disk;
   - the docs are then worded after what these tests measure.
-- **To add: a test for every behavior the plan or the docs assume without a measurement** (2026-10-30). Known so far, besides the system behavior above:
+- **To add (open): a test for every behavior the plan or the docs assume without a measurement** (2026-10-30). Known so far, besides the system behavior above:
   - a NUL in UserDefaults, Ubiquitous and Keychain names: whether the system keeps the whole string. If one cuts at the NUL, two keys would merge, so that storage escapes NUL like `%` and `/`;
   - an empty key and an empty namespace in every storage, and an empty Keychain account in particular;
-  - the encoded app identifier in paths and in UserDefaults' suite name, including bundle IDs that differ only in case;
-  - an empty group id throwing in every storage (Keychain: measured, the system rejects it).
-- **To do with the sealed scopes: revisit every test suite** and cover every reachable edge case. That means each scope case and parameter, each retention and protection level, empty names, NUL, emoji, both spellings of `é`, maximum lengths (including a whole File or SQLite path at the system's 1024-byte limit), case-only differences, the marks, the rejected names, and two scopes or two storages that share a place. The gated files stay at 100%.
+  - the encoded app identifier in paths and in UserDefaults' suite name, including bundle IDs that differ only in case (done in the locator tests: `testTheAppsFolderIsItsIdentifierEncodedLikeKeys`, `testTheAppsSuiteIsItsIdentifierEncoded`);
+  - an empty group id throwing in every storage (done: File, SQLite and UserDefaults locator tests; Keychain measured in KeychainHost).
+- **To do (open) with the sealed scopes: revisit every test suite** and cover every reachable edge case. That means each scope case and parameter, each retention and protection level, empty names, NUL, emoji, both spellings of `é`, maximum lengths (including a whole File or SQLite path at the system's 1024-byte limit), case-only differences, the marks, the rejected names, and two scopes or two storages that share a place. The gated files stay at 100%.
 - **Fixed: UserDefaults tests left empty plists behind** (2026-10-30). `removePersistentDomain(forName:)` empties a suite but keeps its file, and deleting the file doesn't help: the system writes an emptied suite back after it's deleted. So every test uses one fixed suite, emptied in teardown, and one file stays, reused across runs.
 
 ### 11.4 CI
 
-- Add a coverage job (macOS, latest Xcode):
+- **Open:** add a coverage job (macOS, latest Xcode); `swift.yml` has none yet:
 
   ```sh
   swift test --enable-code-coverage
@@ -788,6 +804,8 @@ Tests/
 ## 12. Execution phases
 
 Each phase ends with: the library builds on every CI toolchain, the phase's tests pass, and its gated files have 100% coverage.
+
+**Status (2026-10-31):** phases 0–6 done; 6b done except the `.keyOccupied` input (E5) and the test revisit (§11.3); 7–11 not started.
 
 | Phase | Work | Done when |
 |---|---|---|
@@ -807,13 +825,13 @@ Each phase ends with: the library builds on every CI toolchain, the phase's test
 
 ## 13. Open decisions
 
-1. **macOS minimum 10.15 → 11.** Removes the untestable `#available` branch in `FileStorage.writingOptions` and simplifies the protection options. Recommended.
-2. **Names:** `IsolatedKeyValueStorage` vs `ActorKeyValueStorage`; keep `KeyValueCodingStorage` or shorten it to `CodingStorage`.
-3. **Isolated facade:** one actor per (type, scope) (recommended, §8) vs a single actor around `UnifiedStorage`.
-4. **Observation always on** (recommended, D11) vs opt-in.
+1. **Open: macOS minimum 10.15 → 11.** Removes the untestable `#available` branch in `FileStorage.writingOptions` and simplifies the protection options. Recommended.
+2. **Open, before phase 8: names:** `IsolatedKeyValueStorage` vs `ActorKeyValueStorage`; keep `KeyValueCodingStorage` or shorten it to `CodingStorage`.
+3. **Open, before phase 9: isolated facade:** one actor per (type, scope) (recommended, §8) vs a single actor around `UnifiedStorage`.
+4. **Open, before phase 7: observation always on** (recommended, D11) vs opt-in.
 5. ~~**Typed throws** on the data layer.~~ Adopted: every storage, the locators and the coding layer throw typed errors, and they build for the iOS 13 / macOS 10.15 deployment targets.
-6. **watchOS minimum 6 → 9.** That's what `UbiquitousStorage` needs; it would remove its `@available(watchOS 9.0, *)` annotations.
-7. **Locked-device errors (deferred: needs a real iPhone).** `ProtectedDataTests` in KeychainHost records what SQLite (each protection class, on an open and on a new connection) and a `.complete` file do while the device is locked, and that both recover after unlocking. It skips on the Simulator and unless `KVS_LOCK_TEST=1`.
+6. **Open: watchOS minimum 6 → 9.** That's what `UbiquitousStorage` needs; it would remove its `@available(watchOS 9.0, *)` annotations.
+7. **Locked-device errors (deferred: needs a real iPhone).** Keychain's `errSecInteractionNotAllowed` is mapped to `.protectedDataUnavailable` from Apple's docs (2026-10-31); SQLite's code still needs the run. `ProtectedDataTests` in KeychainHost records what SQLite (each protection class, on an open and on a new connection) and a `.complete` file do while the device is locked, and that both recover after unlocking. It skips on the Simulator and unless `KVS_LOCK_TEST=1`.
    - From its report: map SQLite's locked-database result code to a `.protectedDataUnavailable` case, like `FileStorage`'s, and confirm File's `EPERM` mapping on a device.
    - Also confirm, now that Keychain no longer reads before its calls (§5.2): that the keychain deletes a `.whenUnlocked` item while locked, and that saves at `.complete` and `.whenUnlocked` fail while locked.
    - And, for the sealed scopes (§S): what each protection level does while locked; whether the system deletes a database's files one at a time in `.cache` and `.temporary`; which file protection classes macOS enforces.
@@ -831,6 +849,7 @@ Each phase ends with: the library builds on every CI toolchain, the phase's test
 - **iOS group containers:** the system terminates a suspended app that holds a file lock in a group container (`0xdead10cc`). SQLite in an App Group scope should finish its work before suspension. This is already in the scope docs.
 - **Observation across instances on different actors** has no ordering guarantee; in-process users should go through one facade.
 - **Actor I/O on the concurrency pool**, see §7.
+- **Shared SQLite statements through today's `UnifiedStorage`** (found 2026-10-31): see the Status. Phase 9 removes it; until then, a lock in `DefaultSQLiteDatabase` would also do.
 
 ## Appendix A. Sealed scopes: the agreed enums and docs
 
@@ -885,7 +904,11 @@ public struct ExactString: Hashable, Sendable, ExpressibleByStringInterpolation,
     }
 
     public func hash(into hasher: inout Hasher) {
-        hasher.combine(Array(string.utf8))
+        var string = string
+        string.withUTF8 { bytes in
+            hasher.combine(bytes.count)
+            hasher.combine(bytes: UnsafeRawBufferPointer(bytes))
+        }
     }
 }
 
