@@ -47,7 +47,7 @@ This file is the source of truth for the 4.0 refactor, written so that anyone, h
 - **Done: phases 0–6, the source side.** The synchronous `KeyValueDataStorage` with `init(scope:backingStore:)`, typed throws, scopes with namespaces, every storage on its backing store, the global actors removed, and `KeychainWrapper.swift` deleted.
 - **Added: `UbiquitousStorage`** (§5.7), on the same pattern.
 - **Tests:** the public API target and the coder tests are on the 4.0 API and pass. The 3.x unit tests live in `Tests/Legacy3x/` (not a target) as the porting reference; each storage's locator step ports and deletes its file.
-- **Done: the sealed scopes for FileStorage, the pilot, and SQLite** (§S, §5.3, §5.6, 2026-10-30). Shared: `ExactString`, and a scope protocol that only requires `default`. File and SQLite storages of one scope share its folder. Until the other four move, `defaultName` and `KeyValueDataStorageNamespace` stay for them.
+- **Done: the sealed scopes for FileStorage, the pilot, SQLite and UserDefaults** (§S, §5.3, §5.6, §5.4, 2026-10-30). Shared: `ExactString`, and a scope protocol that only requires `default`. File and SQLite storages of one scope share its folder. Until the other three move, `defaultName` and `KeyValueDataStorageNamespace` stay for them.
 - **Next: the sealed scopes** (§S, Appendix A, phase 6b) for SQLite, UserDefaults, Ubiquitous, Keychain and InMemory, after the pilot's review. Each step brings that storage's planned items (§5.2–5.7), its part of the error refactor (§4.4) and its test revisit (§11.3).
 - **Then: phases 7–9**, the coding, isolation and facade layers. The observation and unified layers still emit isolated-conformance warnings on Swift 6.2+ compilers, because the storage protocol is no longer `Sendable`.
 
@@ -417,18 +417,17 @@ The root encodings (§4.5) and the Keychain services are done.
 
 ### 5.4 UserDefaultsStorage (done)
 
-**Backing store:** `UserDefaultsBackingStore` (`standard`, `suite(named:)`) opens a `UserDefaultsSuite`, one call per member: `read(forKey:)` (`object(forKey:)`: any property-list value, registered defaults included), `write(_:forKey:)`, `remove(forKey:)` and `keys()` (`dictionaryRepresentation().keys`, the global domain's included).
+**Backing store:** `UserDefaultsBackingStore` (`suite(named:)`) opens a `UserDefaultsSuite`, one call per member: `read(forKey:)` (`object(forKey:)`: any property-list value, registered defaults included), `write(_:forKey:)`, `remove(forKey:)` and `keys()` (`dictionaryRepresentation().keys`, the global domain's included).
 
-**Locator:** `suite(for:)` is an app scope's suite, or the App Group's suite named after the group. `storedKey(forKey:in:)` is `<namespace>/<key>`, or the root key as is, with `%` → `%25` and `/` → `%2F` in the namespace and in root keys, so a root key never contains `/` and never equals a namespace's. It escapes byte by byte: Foundation's `replacingOccurrences` skips a `/` that carries a combining mark. `key(forStoredKey:in:)` is the exact inverse, compared by bytes.
+**Locator** (sealed scopes, 2026-10-30): `suiteName(for:)` is `<app>.KeyValueStorage` for `.own`, `<app>` being the bundle ID, or the process name without one, in File's encoding; for `.appGroup`, the group id, unless it's empty, one of the global domain's names, or the app scope's suite name → `.invalidSuiteName` (§4.5, item 1). `storedKey(forKey:in:)` is `<namespace>!/<key>`, with `%` → `%25` and `/` → `%2F` in the namespace, byte by byte (Foundation's `replacingOccurrences` skips a `/` that carries a combining mark), so its first `/` always ends the namespace. `key(forStoredKey:in:)` strips the prefix, compared by bytes, which is the exact inverse.
 
 **Storage:** only `Data` is a value (§4.6). `fetch` returns `nil` for anything else; `save` throws `.keyOccupied(storedKey)` instead of replacing it; `delete` and `clear()` never remove it. `clear()` removes the `Data` at every stored key the locator claims and maps back byte for byte. Keys are exact bytes: the suite keeps `"é"` and `"e\u{301}"` apart.
 - Registered defaults are process-wide, so a registered non-`Data` default under a stored key makes `save` throw in every suite.
-- `keys()` lists the global domain's keys too, but removing one only touches the suite's own domain, so a root `clear()` never changes the global domain.
-- **Interop:** root keys containing `%` or `/` are stored escaped (`a/b` → `a%2Fb`); other keys are unchanged. A CHANGELOG note.
-- **Planned with the sealed scopes** (2026-10-30, §13 item 8):
-  - The app scope uses a suite of the library's own, `<encoded bundle ID>.KeyValueStorage` (the identifier in File's lossless encoding, §S), never `.standard`. Only the library writes there, so other code's keys never meet ours; the common reset call `UserDefaults.standard.removePersistentDomain(forName: bundleID)` can't wipe our values; and `.standard`, which loads at launch, stays small. A custom locator can still map a scope to `.standard`.
-  - Stored keys are `<namespace>!/<key>`, the namespace escaped as today. The `!` marks the library's entries in App Group suites, which must be named after the group, so other code in the group writes there too. One format in every suite.
-  - `.appGroup` rejects an empty id, the global domain's names and the app scope's suite name as group ids (§4.5, item 1).
+- `keys()` lists the global domain's keys too, but removing one only touches the suite's own domain, so `clear()` never changes the global domain.
+- **Sealed scopes (done 2026-10-30):** `.own(namespace:)` and `.appGroup(id:, namespace:)`; `Key` and `Namespace` are `ExactString`.
+  - The app scope's suite is the library's own, never `.standard`. Only the library writes there, so other code's keys never meet ours; the common reset call `UserDefaults.standard.removePersistentDomain(forName: bundleID)` can't wipe our values; and `.standard`, which loads at launch, stays small. `UserDefaultsBackingStore.standard` is gone; a custom backing store's `suite(named:)` could still return it.
+  - The `!` marks the library's keys in App Group suites, which must be named after the group, so other code in the group writes there too. One format in every suite.
+  - No interop by design (§S): keys other code wrote under their plain names aren't reached.
 
 ### 5.5 InMemoryStorage (done)
 
@@ -685,14 +684,13 @@ Tests/
 - **Permissions:** a read-only folder reports `EACCES` and changes nothing; a folder that can't be looked into reports `EACCES` and is never taken for empty; an unreadable file reports `EACCES` and can still be deleted.
 
 **DefaultUserDefaultsLocator** (`DefaultUserDefaultsLocatorTests`, no mocks)
-- each scope's suite; an App Group's keys are prefixed like an app scope's;
-- namespaced keys: `ns/key`, `/` and `%` in the namespace escaped (also with a combining mark), an empty namespace, a key with `/` and `%` kept as is;
-- root keys escape only `%` and `/`;
-- not claimed: a root `a/b`, `%41`, `%2f`, a lone or trailing `%`; for a namespace, its name alone, another namespace's keys, an escaped `/` or another case;
-- laws within each scope, with bytes as the comparison; no two scopes, the root included, share or claim each other's stored keys.
+- suites: `.own`'s is the encoded bundle ID, or process name, plus `.KeyValueStorage` (case-only bundle IDs get two); a group's is its id; an empty id, the global domain's names and the app's suite name throw;
+- stored keys: `ns!/key`, `/` and `%` in the namespace escaped (also with a combining mark), an empty namespace, a namespace ending with `!`, a key with `/`, `%` and `!` kept as is; App Groups like `.own`;
+- not claimed: the namespace alone, an unmarked `ns/key` such as other code's `settings/theme`, another namespace's keys, an escaped `/` or another case;
+- laws within each scope, with bytes as the comparison; no two namespaces share or claim each other's stored keys.
 
 **UserDefaultsStorage** (`UserDefaultsStorageTests`; `UserDefaultsBackingStoreMock`, `UserDefaultsLocatorStub`)
-- init: the locator's suite, `standard` or named; a name `UserDefaults` rejects → `.invalidSuiteName`; `scope` is the one given;
+- init: the locator's suite name; its error stops before any suite opens; a name `UserDefaults` rejects → `.invalidSuiteName`; `scope` is the one given;
 - only `Data` is a value: a string, number, Boolean, date, array or dictionary under a key is never fetched, replaced or removed, and `save` throws `.keyOccupied`;
 - `save` writes and replaces `Data`; `delete` removes it, and reads nothing else;
 - `clear()` removes only the `Data` at claimed stored keys; it skips keys the locator maps to a key with another stored key, also when they differ only in how `é` is written;
@@ -766,11 +764,11 @@ Tests/
   - a file where the folder goes → `.other`, kept; a folder at the database path → `SQLITE_CANTOPEN`; a corrupt database → `SQLITE_NOTADB`, kept; another app's view → `SQLITE_ERROR`;
   - a lock held by another connection → `SQLITE_BUSY` after the 1 s timeout, reads still working in WAL mode; a dropped table → `SQLITE_ERROR` until reopened.
   - Uncovered: `sqlite3_open_v2` returning no handle, which happens only out of memory.
-- **UserDefaults** (`UserDefaultsIntegrationTests`, done; a suite of each test's own, removed in teardown):
-  - values persist across instances; stored keys are the locator's exact bytes (`a%2Fb`, `ns/a/b`, both spellings of `é`, the empty key); `.standard` is `UserDefaults.standard`;
+- **UserDefaults** (`UserDefaultsIntegrationTests`, done; the own suite of a test bundle ID, emptied after each test):
+  - values persist across instances; stored keys are the locator's exact bytes (`ns!/a/b`, `a%2Fb!/c`, both spellings of `é`, the empty key); `.own` isn't `UserDefaults.standard`;
   - a value of another type is never replaced or removed; a registered non-`Data` default occupies its key;
-  - `clear()` is exact across the root, two namespaces, other code's data and values of other types, and never changes the global domain;
-  - `NSGlobalDomain` → `.invalidSuiteName`.
+  - `clear()` is exact across two namespaces, other code's unmarked data and values of other types, and never changes the global domain;
+  - an empty group id, the global domain's names and the app's suite name → `.invalidSuiteName`; the locator's lookups match the system's.
 - **`DefaultInMemoryBackingStoreWrapper`** (`DefaultInMemoryBackingStoreWrapperTests`, unit target): concurrent access is serialized, and released values are freed after unlocking.
 - **Keychain** (`KeychainIntegrationTests` in KeychainHost, done; the 3.x tests are ported and deleted):
   - values round-trip and persist; accessibility is set on add and on update; synchronizable keys are items of their own;
@@ -789,7 +787,7 @@ Tests/
   - the encoded app identifier in paths and in UserDefaults' suite name, including bundle IDs that differ only in case;
   - an empty group id throwing in every storage.
 - **To do with the sealed scopes: revisit every test suite** and cover every reachable edge case. That means each scope case and parameter, each retention and protection level, empty names, NUL, emoji, both spellings of `é`, maximum lengths (including a whole File or SQLite path at the system's 1024-byte limit), case-only differences, the marks, the rejected names, and two scopes or two storages that share a place. The gated files stay at 100%.
-- **To fix: UserDefaults tests leave empty plists behind.** `removePersistentDomain(forName:)` empties a suite but keeps its file: 41 empty `UserDefaultsIntegrationTests-*.plist` were found in `~/Library/Preferences` (2026-10-30). Teardown also deletes the file.
+- **Fixed: UserDefaults tests left empty plists behind** (2026-10-30). `removePersistentDomain(forName:)` empties a suite but keeps its file, and deleting the file doesn't help: the system writes an emptied suite back after it's deleted. So every test uses one fixed suite, emptied in teardown, and one file stays, reused across runs.
 
 ### 11.4 CI
 

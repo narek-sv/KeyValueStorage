@@ -11,27 +11,32 @@ import Foundation
 /// Fixed names, to check that the storage uses exactly what its locator returns; records each call.
 final class UserDefaultsLocatorStub: UserDefaultsLocator {
     enum Call: Equatable {
-        case suite(UserDefaultsStorage.Scope)
-        case storedKey(String, UserDefaultsStorage.Scope)
+        case suiteName(UserDefaultsStorage.Scope)
+        case storedKey(UserDefaultsStorage.Key, UserDefaultsStorage.Scope)
         case key(String, UserDefaultsStorage.Scope)
     }
 
-    var suite = UserDefaultsStorage.AppScope.suite(named: "located")
+    var suiteName = "located"
+    var suiteNameError: UserDefaultsStorage.Error?
     /// The stored keys the locator claims, and their keys.
-    var keys = [String: String]()
+    var keys = [String: UserDefaultsStorage.Key]()
     private(set) var calls = [Call]()
 
-    func suite(for scope: UserDefaultsStorage.Scope) -> UserDefaultsStorage.AppScope {
-        calls.append(.suite(scope))
-        return suite
+    func suiteName(for scope: UserDefaultsStorage.Scope) throws(UserDefaultsStorage.Error) -> String {
+        calls.append(.suiteName(scope))
+        if let suiteNameError {
+            throw suiteNameError
+        }
+
+        return suiteName
     }
 
-    func storedKey(forKey key: String, in scope: UserDefaultsStorage.Scope) -> String {
+    func storedKey(forKey key: UserDefaultsStorage.Key, in scope: UserDefaultsStorage.Scope) -> String {
         calls.append(.storedKey(key, scope))
         return "located-\(key)"
     }
 
-    func key(forStoredKey storedKey: String, in scope: UserDefaultsStorage.Scope) -> String? {
+    func key(forStoredKey storedKey: String, in scope: UserDefaultsStorage.Scope) -> UserDefaultsStorage.Key? {
         calls.append(.key(storedKey, scope))
         return keys[storedKey]
     }

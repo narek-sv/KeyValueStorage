@@ -89,7 +89,7 @@ final class PublicAPITests: XCTestCase {
         }
 
         let inMemoryScope = InMemoryStorage.Scope.app(namespace: .bucket(named: "publicAPIScope"))
-        let userDefaultsScope = UserDefaultsStorage.Scope.app(.suite(named: "publicAPIScope"))
+        let userDefaultsScope = UserDefaultsStorage.Scope.own(namespace: "publicAPIScope")
         let keychainScope = KeychainStorage.Scope.appGroup(groupId: "group.shared", namespace: .service(named: "publicAPIScope"))
         let fileScope = FileStorage.Scope.own(.temporary, namespace: .init(directory))
         let sqliteScope = SQLiteStorage.Scope.own(.temporary, namespace: .init(directory))
@@ -134,7 +134,7 @@ final class PublicAPITests: XCTestCase {
         // Given
         let name = "publicAPISet-\(UUID().uuidString)"
         let inMemory = InMemoryStorage(scope: .app(namespace: .bucket(named: name)))
-        let userDefaults = try UserDefaultsStorage(scope: .app(.suite(named: name)))
+        let userDefaults = try UserDefaultsStorage(scope: .own(namespace: .init(name)))
         defer { userDefaults.clear() }
 
         // When - Then: no `try`, except for UserDefaults' saves, which throw `.keyOccupied`

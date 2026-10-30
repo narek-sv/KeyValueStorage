@@ -10,9 +10,6 @@ import Foundation
 // MARK: - UserDefaultsBackingStore
 
 public protocol UserDefaultsBackingStore {
-    /// `UserDefaults.standard`.
-    var standard: any UserDefaultsSuite { get }
-
     /// `UserDefaults(suiteName:)`.
     func suite(named name: String) -> (any UserDefaultsSuite)?
 }
@@ -35,10 +32,6 @@ public protocol UserDefaultsSuite: AnyObject {
 /// The live `UserDefaults`.
 open class DefaultUserDefaultsBackingStoreWrapper: UserDefaultsBackingStore {
     public init() { }
-
-    open var standard: any UserDefaultsSuite {
-        DefaultUserDefaultsSuite(.standard)
-    }
 
     open func suite(named name: String) -> (any UserDefaultsSuite)? {
         UserDefaults(suiteName: name).map(DefaultUserDefaultsSuite.init)

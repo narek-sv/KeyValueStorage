@@ -13,7 +13,7 @@ import Foundation
 final class UserDefaultsStorageTests: XCTestCase {
     private let suite = UserDefaultsSuiteMock()
     private let locator = UserDefaultsLocatorStub()
-    private let scope = UserDefaultsStorage.Scope.app(.suite(named: "name"), namespace: .keyPrefix(named: "prefix"))
+    private let scope = UserDefaultsStorage.Scope.own(namespace: "prefix")
     private let data = Data([0xAA, 0xBB])
     /// Values of other types, as other code can put under any key.
     private let foreignValues: [Any] = ["text", 1, true, Date(timeIntervalSince1970: 0), ["a"], ["a": 1]]
@@ -31,25 +31,22 @@ final class UserDefaultsStorageTests: XCTestCase {
         _ = try makeStorage()
 
         // Then
-        XCTAssertEqual(locator.calls, [.suite(scope)])
-        XCTAssertEqual(backingStore.calls, [.suite("located")])
+        XCTAssertEqual(locator.calls, [.suiteName(scope)])
+        XCTAssertEqual(backingStore.calls, ["located"])
     }
 
-    func testInitOpensTheStandardSuite() throws {
+    func testInitThrowsTheLocatorsErrorBeforeOpeningASuite() {
         // Given
-        locator.suite = .standard
+        locator.suiteNameError = .invalidSuiteName("group.rejected")
 
-        // When
-        try makeStorage().save(data, forKey: "key")
-
-        // Then
-        XCTAssertEqual(backingStore.calls, [.standard])
-        XCTAssertEqual(backingStore.standardSuite.values["located-key"] as? Data, data)
+        // When - Then
+        assertThrows(UserDefaultsStorage.Error.invalidSuiteName("group.rejected")) { try makeStorage() }
+        XCTAssertEqual(backingStore.calls, [])
     }
 
     func testInitThrowsForASuiteNameUserDefaultsRejects() {
         // Given
-        locator.suite = .suite(named: "rejected")
+        locator.suiteName = "rejected"
 
         // When - Then
         assertThrows(UserDefaultsStorage.Error.invalidSuiteName("rejected")) { try makeStorage() }

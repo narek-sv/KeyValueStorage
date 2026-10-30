@@ -57,3 +57,16 @@ final class TestSQLiteLocator: DefaultSQLiteLocator {
         "app"
     }
 }
+
+/// The default locator with a bundle ID of the test's choice, so its own suite is the test's alone.
+final class TestUserDefaultsLocator: DefaultUserDefaultsLocator {
+    private let identifier: String
+
+    init(bundleIdentifier: String) {
+        identifier = bundleIdentifier
+    }
+
+    override var bundleIdentifier: String? {
+        identifier
+    }
+}

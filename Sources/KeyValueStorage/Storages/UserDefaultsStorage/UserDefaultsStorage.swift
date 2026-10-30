@@ -20,17 +20,12 @@ public final class UserDefaultsStorage: KeyValueDataStorage {
     // MARK: Initializers
 
     public init(scope: Scope, backingStore: any UserDefaultsBackingStore, locator: any UserDefaultsLocator) throws(Error) {
-        switch locator.suite(for: scope) {
-        case .standard:
-            self.suite = backingStore.standard
-        case let .suite(name):
-            guard let suite = backingStore.suite(named: name) else {
-                throw .invalidSuiteName(name)
-            }
-
-            self.suite = suite
+        let name = try locator.suiteName(for: scope)
+        guard let suite = backingStore.suite(named: name) else {
+            throw .invalidSuiteName(name)
         }
 
+        self.suite = suite
         self.scope = scope
         self.locator = locator
     }

@@ -43,7 +43,7 @@ private actor Caller {
 /// Runs on the caller's actor, so every call below is made from that context.
 private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #isolation) async throws {
     let id = "isolation-\(UUID().uuidString)"
-    // The file and SQLite storages below share this namespace's folder; `exercise` clears the UserDefaults suite itself
+    // The file and SQLite storages below share this namespace's folder; `exercise` clears the UserDefaults namespace itself
     let folder = try DefaultFileLocator().directory(for: .own(.temporary, namespace: .init(id))).deletingLastPathComponent()
     defer {
         try? FileManager.default.removeItem(at: folder)
@@ -58,7 +58,7 @@ private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #is
     // Every storage, directly and through the coding and observation layers. The keychain and the iCloud key-value store
     // need entitlements that test bundles can't have, so those storages use in-memory backing storages
     try await exercise(InMemoryStorage(scope: .app(namespace: .bucket(named: id))), key: "key", context: context)
-    try await exercise(UserDefaultsStorage(scope: .app(.suite(named: id))), key: "key", context: context)
+    try await exercise(UserDefaultsStorage(scope: .own(namespace: .init(id))), key: "key", context: context)
     try await exercise(FileStorage(scope: .own(.temporary, namespace: .init(id))), key: "key", context: context)
     try await exercise(SQLiteStorage(scope: .own(.temporary, namespace: .init(id))), key: "key", context: context)
     try await exercise(KeychainStorage(scope: .app(namespace: .service(named: id)), backingStore: InMemoryKeychain(), locator: DefaultKeychainLocator()),

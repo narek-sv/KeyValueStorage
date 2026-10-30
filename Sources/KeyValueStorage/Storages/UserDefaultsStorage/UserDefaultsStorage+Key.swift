@@ -8,5 +8,6 @@
 // MARK: - UserDefaultsStorage + Key
 
 public extension UserDefaultsStorage {
-    typealias Key = String
+    /// Any string, even an empty one.
+    typealias Key = ExactString
 }

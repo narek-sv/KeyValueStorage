@@ -8,24 +8,13 @@
 import Foundation
 @testable import KeyValueStorage
 
-/// Opens the standard suite and the suites in `suites`; any other name is rejected, as `UserDefaults` rejects some.
+/// Opens the suites in `suites`; any other name is rejected, as `UserDefaults` rejects some. Records every call.
 final class UserDefaultsBackingStoreMock: UserDefaultsBackingStore {
-    enum Call: Equatable {
-        case standard
-        case suite(String)
-    }
-
-    let standardSuite = UserDefaultsSuiteMock()
     var suites = [String: UserDefaultsSuiteMock]()
-    private(set) var calls = [Call]()
-
-    var standard: any UserDefaultsSuite {
-        calls.append(.standard)
-        return standardSuite
-    }
+    private(set) var calls = [String]()
 
     func suite(named name: String) -> (any UserDefaultsSuite)? {
-        calls.append(.suite(name))
+        calls.append(name)
         return suites[name]
     }
 }

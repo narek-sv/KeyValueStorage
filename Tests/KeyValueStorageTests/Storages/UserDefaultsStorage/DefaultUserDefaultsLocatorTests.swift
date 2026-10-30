@@ -10,83 +10,88 @@ import Foundation
 @testable import KeyValueStorage
 
 final class DefaultUserDefaultsLocatorTests: XCTestCase {
-    private let locator = DefaultUserDefaultsLocator()
-    private let root = UserDefaultsStorage.Scope.app(.standard)
+    private let locator = FixedIdentifierUserDefaultsLocator()
 
     // MARK: Suites
 
-    func testEachScopesSuite() {
-        XCTAssertEqual(locator.suite(for: .app(.standard)), .standard)
-        XCTAssertEqual(locator.suite(for: .app(.suite(named: "suite"), namespace: .keyPrefix(named: "ns"))), .suite(named: "suite"))
-        XCTAssertEqual(locator.suite(for: .appGroup(groupId: "group.test")), .suite(named: "group.test"))
+    func testOwnScopesUseTheAppsSuiteAndGroupsTheirOwn() throws {
+        XCTAssertEqual(try locator.suiteName(for: .own(namespace: "ns")), "com%2etest%2e!app.KeyValueStorage")
+        XCTAssertEqual(try locator.suiteName(for: .appGroup(id: "group.test", namespace: "ns")), "group.test")
+    }
+
+    func testTheAppsSuiteIsItsBundleIDOrProcessNameEncoded() throws {
+        // Bundle IDs that differ only in case get two suite files, also on a volume that ignores case
+        let names = try ["com.test.App", "com.test.app", "", nil].map { identifier in
+            locator.identifier = identifier
+            return try locator.suiteName(for: .own(namespace: "ns"))
+        }
+
+        XCTAssertEqual(names, ["com%2etest%2e!app.KeyValueStorage", "com%2etest%2eapp.KeyValueStorage", "%.KeyValueStorage", "my%20tool.KeyValueStorage"])
+    }
+
+    func testGroupIdsThatAreTheGlobalDomainTheAppsSuiteOrEmptyThrow() {
+        for groupId in ["", "NSGlobalDomain", ".GlobalPreferences", "kCFPreferencesAnyApplication", "Apple Global Domain", "com%2etest%2e!app.KeyValueStorage"] {
+            assertThrows(UserDefaultsStorage.Error.invalidSuiteName(groupId)) {
+                try locator.suiteName(for: .appGroup(id: groupId, namespace: "ns"))
+            }
+        }
     }
 
     // MARK: Stored Keys
 
-    func testNamespacedKeysFollowTheEscapedNamespace() {
+    func testKeysFollowTheEscapedAndMarkedNamespace() {
         let storedKeys = [
-            ("ns", "key", "ns/key"),
-            ("a/b", "c", "a%2Fb/c"),
-            ("%", "c", "%25/c"),
-            ("", "c", "/c"),
-            ("ns", "a/b%", "ns/a/b%"),
-            ("a/\u{301}", "c", "a%2F\u{301}/c")
+            ("ns", "key", "ns!/key"),
+            ("a/b", "c", "a%2Fb!/c"),
+            ("%", "c", "%25!/c"),
+            ("", "c", "!/c"),
+            ("a!", "c", "a!!/c"),
+            ("ns", "a/b%!", "ns!/a/b%!"),
+            ("a/\u{301}", "c", "a%2F\u{301}!/c")
         ]
 
         for (namespace, key, storedKey) in storedKeys {
-            assertBytes(locator.storedKey(forKey: key, in: namespaced(namespace)), storedKey)
+            assertBytes(locator.storedKey(forKey: .init(key), in: .own(namespace: .init(namespace))), storedKey)
         }
     }
 
-    func testAppGroupScopesPrefixTheirKeysLikeAppScopes() {
-        assertBytes(locator.storedKey(forKey: "key", in: .appGroup(groupId: "group.test", namespace: .keyPrefix(named: "ns"))), "ns/key")
-    }
-
-    func testRootKeysEscapeOnlyPercentAndSlash() {
-        // Pairs, not a dictionary: Swift's `==` takes `"\u{E9}"` and `"e\u{301}"` for one key
-        let storedKeys = [("key", "key"), ("Key é 🙂", "Key é 🙂"), ("a/b", "a%2Fb"), ("100%", "100%25"), ("/\u{301}", "%2F\u{301}"), ("", "")]
-
-        for (key, storedKey) in storedKeys {
-            assertBytes(locator.storedKey(forKey: key, in: root), storedKey)
-        }
+    func testAppGroupScopesStoreKeysLikeOwnScopes() {
+        assertBytes(locator.storedKey(forKey: "key", in: .appGroup(id: "group.test", namespace: "ns")), "ns!/key")
     }
 
     // MARK: Keys
 
     func testStoredKeysNoKeyProducesArentClaimed() {
-        for storedKey in ["a/b", "%41", "%2f", "%", "100%", "%2", "x%"] {
-            XCTAssertNil(locator.key(forStoredKey: storedKey, in: root), storedKey.debugDescription)
-        }
-
-        for storedKey in ["ns", "other/key", "ns%2Fkey", "NS/key"] {
-            XCTAssertNil(locator.key(forStoredKey: storedKey, in: namespaced("ns")), storedKey.debugDescription)
+        // Other code's keys, such as `settings/theme`, never carry the mark
+        for storedKey in ["ns", "ns/key", "ns!", "ns!key", "other!/key", "ns%2F!/key", "NS!/key", "settings/theme"] {
+            XCTAssertNil(locator.key(forStoredKey: storedKey, in: .own(namespace: "ns")), storedKey.debugDescription)
         }
     }
 
     // MARK: Laws
 
     func testLawsWithinEachScope() {
-        let keys = ["", "key", "Key", "a/b", "b/c", "%", "%2F", "%25", "\u{301}x", "/\u{301}", "\u{E9}", "e\u{301}", "🙂"]
+        let keys = ["", "key", "Key", "a/b", "b/c", "!", "!/", "%", "%2F", "%25", "\u{301}x", "/\u{301}", "\u{E9}", "e\u{301}", "🙂"]
 
-        for scope in [root, namespaced("ns"), namespaced("")] {
+        for scope in [UserDefaultsStorage.Scope.own(namespace: "ns"), .own(namespace: ""), .appGroup(id: "group.test", namespace: "ns")] {
             assertLocatorLaws(
                 keys: keys,
-                foreignNames: ["%41", "a/b"].filter { _ in scope == root },
-                storedName: { locator.storedKey(forKey: $0, in: scope) },
-                key: { locator.key(forStoredKey: $0, in: scope) },
+                foreignNames: ["ns/key", "settings/theme"],
+                storedName: { locator.storedKey(forKey: .init($0), in: scope) },
+                key: { locator.key(forStoredKey: $0, in: scope)?.string },
                 sameName: { $0.utf8.elementsEqual($1.utf8) } // UserDefaults compares keys by their bytes
             )
         }
     }
 
-    func testScopesNeverShareOrClaimEachOthersStoredKeys() {
-        let scopes = [root] + ["", "a", "a/b", "a%2Fb", "%", "KeyValueStorage"].map(namespaced)
-        let keys = ["", "b", "a/b", "b/c", "%", "%2F", "KeyValueStorage/key", "\u{301}x", "\u{E9}", "e\u{301}"]
+    func testNamespacesNeverShareOrClaimEachOthersStoredKeys() {
+        let scopes = ["", "a", "a!", "a!!", "a/b", "a%2Fb", "%", "!", "KeyValueStorage"].map { UserDefaultsStorage.Scope.own(namespace: .init($0)) }
+        let keys = ["", "b", "!", "!/b", "a/b", "b/c", "%", "%2F", "KeyValueStorage!/key", "\u{301}x", "\u{E9}", "e\u{301}"]
         var owners = [[UInt8]: Int]()
 
         for (index, scope) in scopes.enumerated() {
             for key in keys {
-                let storedKey = locator.storedKey(forKey: key, in: scope)
+                let storedKey = locator.storedKey(forKey: .init(key), in: scope)
                 XCTAssertNil(owners.updateValue(index, forKey: Array(storedKey.utf8)), "\(storedKey.debugDescription) is shared")
 
                 for (other, otherScope) in scopes.enumerated() where other != index {
@@ -98,11 +103,20 @@ final class DefaultUserDefaultsLocatorTests: XCTestCase {
 
     // MARK: Helpers
 
-    private func namespaced(_ name: String) -> UserDefaultsStorage.Scope {
-        .app(.standard, namespace: .keyPrefix(named: name))
-    }
-
     private func assertBytes(_ storedKey: String, _ expected: String, file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertTrue(storedKey.utf8.elementsEqual(expected.utf8), "\(storedKey.debugDescription) isn't \(expected.debugDescription)", file: file, line: line)
+    }
+}
+
+/// The default locator with the app's identifier fixed.
+private final class FixedIdentifierUserDefaultsLocator: DefaultUserDefaultsLocator {
+    var identifier: String? = "com.test.App"
+
+    override var bundleIdentifier: String? {
+        identifier
+    }
+
+    override var processName: String {
+        "my tool"
     }
 }

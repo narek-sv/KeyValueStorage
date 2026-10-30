@@ -97,23 +97,22 @@ final class RawDataCoderTests: XCTestCase {
         underlyingStorage.clear()
     }
     
-    func testReadsRawValuesSavedByOtherCode() async throws {
-        // Given
-        let suiteName = "rawInterop"
-        let userDefaults = UserDefaults(suiteName: suiteName)!
-        userDefaults.set(Data([0x01, 0x02, 0x03]), forKey: "token")
-        userDefaults.set(Data("Alice".utf8), forKey: "name")
+    func testReadsRawValuesSavedWithoutACoder() async throws {
+        // Given: raw bytes saved through the data storage, as code without a coder would
+        let scope = UserDefaultsStorage.Scope.own(namespace: "rawInterop-\(UUID().uuidString)")
+        let userDefaults = try UserDefaultsStorage(scope: scope)
+        defer { userDefaults.clear() }
+        try userDefaults.save(Data([0x01, 0x02, 0x03]), forKey: "token")
+        try userDefaults.save(Data("Alice".utf8), forKey: "name")
         let storage = UnifiedStorage()
         
         // When
-        let token = try await storage.fetch(forKey: UserDefaultsKey<Data>(key: "token", scope: .app(.suite(named: suiteName))))
-        let name = try await storage.fetch(forKey: UserDefaultsKey<String>(key: "name", scope: .app(.suite(named: suiteName))))
+        let token = try await storage.fetch(forKey: UserDefaultsKey<Data>(key: "token", scope: scope))
+        let name = try await storage.fetch(forKey: UserDefaultsKey<String>(key: "name", scope: scope))
         
         // Then
         XCTAssertEqual(token, Data([0x01, 0x02, 0x03]))
         XCTAssertEqual(name, "Alice")
-        
-        userDefaults.removePersistentDomain(forName: suiteName)
     }
     
     // MARK: Helpers
