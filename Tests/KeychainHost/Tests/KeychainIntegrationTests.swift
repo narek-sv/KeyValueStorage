@@ -34,30 +34,17 @@ final class KeychainIntegrationTests: XCTestCase {
 
     func testValuesRoundTripAndPersistAcrossInstances() throws {
         // When
-        try storage(.app(namespace: namespace())).save(Data([1]), forKey: "key")
-        try storage(.app(namespace: namespace())).save(Data(), forKey: "empty")
+        try storage(.own(namespace: namespace())).save(Data([1]), forKey: "key")
+        try storage(.own(namespace: namespace())).save(Data(), forKey: "empty")
 
         // Then
-        XCTAssertEqual(try storage(.app(namespace: namespace())).fetch(forKey: "key"), Data([1]))
-        XCTAssertEqual(try storage(.app(namespace: namespace())).fetch(forKey: "empty"), Data())
-    }
-
-    func testAccessibilityIsSetOnAddAndOnUpdate() throws {
-        // Given
-        let storage = storage(.app(namespace: namespace()))
-
-        // When - Then
-        try storage.save(Data([1]), forKey: .init(name: "key", accessibility: .afterFirstUnlock))
-        XCTAssertEqual(try attribute(kSecAttrAccessible, service: tag, account: "key") as? String, kSecAttrAccessibleAfterFirstUnlock as String)
-
-        try storage.save(Data([2]), forKey: .init(name: "key", accessibility: .whenUnlockedThisDeviceOnly))
-        XCTAssertEqual(try attribute(kSecAttrAccessible, service: tag, account: "key") as? String, kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String)
-        XCTAssertEqual(try storage.fetch(forKey: "key"), Data([2]))
+        XCTAssertEqual(try storage(.own(namespace: namespace())).fetch(forKey: "key"), Data([1]))
+        XCTAssertEqual(try storage(.own(namespace: namespace())).fetch(forKey: "empty"), Data())
     }
 
     func testKeysAreTheirExactBytes() throws {
         // Given
-        let storage = storage(.app(namespace: namespace()))
+        let storage = storage(.own(namespace: namespace()))
 
         // When
         try storage.save(Data([1]), forKey: "\u{E9}")
@@ -68,50 +55,79 @@ final class KeychainIntegrationTests: XCTestCase {
         XCTAssertEqual(try storage.fetch(forKey: "e\u{301}"), Data([2]))
     }
 
-    func testSynchronizableKeysAreItemsOfTheirOwn() throws {
+    // MARK: Protection
+
+    func testTheScopesProtectionIsTheItemsAccessibility() throws {
+        let scopes: [(KeychainStorage.Scope, CFString)] = [
+            (.own(protection: .untilFirstUnlock, namespace: namespace()), kSecAttrAccessibleAfterFirstUnlock),
+            (.own(protection: .whileLockedThisDeviceOnly, namespace: namespace()), kSecAttrAccessibleWhenUnlockedThisDeviceOnly),
+            (.own(namespace: namespace()), kSecAttrAccessibleWhenUnlocked),
+            (.iCloud(.own, protection: .untilFirstUnlock, namespace: namespace()), kSecAttrAccessibleAfterFirstUnlock)
+        ]
+
+        for (scope, accessibility) in scopes {
+            // When
+            try storage(scope).save(Data([1]), forKey: "key")
+
+            // Then
+            XCTAssertEqual(try attribute(kSecAttrAccessible, of: scope, account: "key") as? String, accessibility as String, "\(scope)")
+        }
+    }
+
+    func testScopesThatDifferOnlyInProtectionNeverShareItems() throws {
         // Given
-        let storage = storage(.app(namespace: namespace()))
+        let firstUnlock = storage(.own(protection: .untilFirstUnlock, namespace: namespace()))
+        let unlocked = storage(.own(protection: .whileLocked, namespace: namespace()))
 
         // When
-        try storage.save(Data([1]), forKey: .init(name: "key", isSynchronizable: true))
-        try storage.save(Data([2]), forKey: "key")
+        try firstUnlock.save(Data([1]), forKey: "key")
+        try unlocked.save(Data([2]), forKey: "key")
+        try unlocked.clear()
 
         // Then
-        XCTAssertEqual(try storage.fetch(forKey: .init(name: "key", isSynchronizable: true)), Data([1]))
-        XCTAssertEqual(try storage.fetch(forKey: "key"), Data([2]))
-
-        // When
-        try storage.clear()
-
-        // Then
-        XCTAssertNil(try storage.fetch(forKey: .init(name: "key", isSynchronizable: true)))
-        XCTAssertNil(try storage.fetch(forKey: "key"))
+        XCTAssertEqual(try firstUnlock.fetch(forKey: "key"), Data([1]))
+        XCTAssertNil(try unlocked.fetch(forKey: "key"))
     }
 
     // MARK: Scopes
 
-    func testTheRootNeverReachesNamespacedItems() throws {
-        // Given
-        let root = storage(.app())
-        let namespaced = storage(.app(namespace: namespace()))
-        try root.save(Data([1]), forKey: .init(name: tag))
-        try namespaced.save(Data([2]), forKey: .init(name: tag))
+    func testSyncedScopesNeverReachTheLocalItemsOfTheirService() throws {
+        // Given: one service, told apart by sync alone
+        let local = storage(.own(namespace: namespace()))
+        let synced = storage(.iCloud(.own, namespace: namespace()))
 
         // When
-        try root.clear()
+        try synced.save(Data([1]), forKey: "key")
+        try local.save(Data([2]), forKey: "key")
 
         // Then
-        XCTAssertNil(try root.fetch(forKey: .init(name: tag)))
-        XCTAssertEqual(try namespaced.fetch(forKey: .init(name: tag)), Data([2]))
+        XCTAssertEqual(try synced.fetch(forKey: "key"), Data([1]))
+        XCTAssertEqual(try local.fetch(forKey: "key"), Data([2]))
+        XCTAssertEqual(try attribute(kSecAttrSynchronizable, of: .iCloud(.own, namespace: namespace()), account: "key") as? Bool, true)
+
+        // When
+        try local.clear()
+
+        // Then
+        XCTAssertEqual(try synced.fetch(forKey: "key"), Data([1]))
+        XCTAssertNil(try local.fetch(forKey: "key"))
+
+        // When
+        try synced.clear()
+
+        // Then
+        XCTAssertNil(try synced.fetch(forKey: "key"))
     }
 
-    func testAppScopesAndAppGroupsNeverReachEachOthersItems() throws {
-        // Given: an app scope, whose queries reach every access group, and App Groups with the same namespace,
-        // one of them the app's default group, where the app scope's items go
+    func testOwnScopesAndAppGroupsNeverReachEachOthersItems() throws {
+        // Given: an own scope, whose queries reach every access group, and App Groups with the same namespace,
+        // one of them the app's default group, where the own scope's items go
         let scopes: [KeychainStorage.Scope] = [
-            .app(namespace: namespace()),
-            .appGroup(groupId: sharedGroup, namespace: namespace()),
-            .appGroup(groupId: defaultGroup, namespace: namespace())
+            .own(namespace: namespace()),
+            .appGroup(id: sharedGroup, namespace: namespace()),
+            .appGroup(id: defaultGroup, namespace: namespace()),
+            .iCloud(.own, namespace: namespace()),
+            .iCloud(.appGroup(id: sharedGroup), namespace: namespace())
         ]
         let storages = scopes.map(storage)
 
@@ -130,13 +146,20 @@ final class KeychainIntegrationTests: XCTestCase {
 
         // Then
         XCTAssertNil(try storages[0].fetch(forKey: "token"))
-        XCTAssertEqual(try storages[1].fetch(forKey: "token"), Data([1]))
-        XCTAssertEqual(try storages[2].fetch(forKey: "token"), Data([2]))
+        for (index, storage) in storages.enumerated().dropFirst() {
+            XCTAssertEqual(try storage.fetch(forKey: "token"), Data([UInt8(index)]), "\(scopes[index])")
+        }
     }
 
     func testAGroupTheAppIsntEntitledToIsReported() {
         assertOSError(errSecMissingEntitlement) {
-            try self.storage(.appGroup(groupId: "not.entitled", namespace: self.namespace())).save(Data([1]), forKey: "key")
+            try self.storage(.appGroup(id: "not.entitled", namespace: self.namespace())).save(Data([1]), forKey: "key")
+        }
+    }
+
+    func testAnEmptyGroupIdIsReported() {
+        for scope in [KeychainStorage.Scope.appGroup(id: "", namespace: namespace()), .iCloud(.appGroup(id: ""), namespace: namespace())] {
+            assertOSError(errSecMissingEntitlement) { try self.storage(scope).save(Data([1]), forKey: "key") }
         }
     }
 
@@ -144,9 +167,10 @@ final class KeychainIntegrationTests: XCTestCase {
 
     func testAnItemWithoutDataFetchesAsNilAndIsReplacedAndRemovedLikeAValue() throws {
         // Given: items without data at two of the scope's accounts
-        let storage = storage(.app(namespace: namespace()))
+        let scope = KeychainStorage.Scope.own(namespace: namespace())
+        let storage = storage(scope)
         for account in ["key", "other"] {
-            XCTAssertEqual(SecItemAdd(query([kSecAttrService: tag!, kSecAttrAccount: account]), nil), errSecSuccess)
+            XCTAssertEqual(SecItemAdd(query([kSecAttrService: service(of: scope), kSecAttrAccount: account]), nil), errSecSuccess)
         }
 
         // When - Then
@@ -156,18 +180,31 @@ final class KeychainIntegrationTests: XCTestCase {
         XCTAssertEqual(try storage.fetch(forKey: "key"), Data([1]))
 
         try storage.delete(forKey: "key")
-        XCTAssertEqual(SecItemCopyMatching(query([kSecAttrService: tag!, kSecAttrAccount: "key"]), nil), errSecItemNotFound)
+        XCTAssertEqual(SecItemCopyMatching(query([kSecAttrService: service(of: scope), kSecAttrAccount: "key"]), nil), errSecItemNotFound)
 
         try storage.clear()
-        XCTAssertEqual(SecItemCopyMatching(query([kSecAttrService: tag!, kSecAttrAccount: "other"]), nil), errSecItemNotFound)
+        XCTAssertEqual(SecItemCopyMatching(query([kSecAttrService: service(of: scope), kSecAttrAccount: "other"]), nil), errSecItemNotFound)
     }
 
-    func testItemsWithoutAServiceShareTheRoot() throws {
-        // Given: the documented edge, another app's item saved without a service
-        XCTAssertEqual(SecItemAdd(query([kSecAttrAccount: tag!, kSecValueData: Data([1])]), nil), errSecSuccess)
+    func testOtherCodesItemsAreNeverReached() throws {
+        // Given: items without a service, and with the namespace as their service
+        for service in [nil, tag] {
+            var attributes: [CFString: Any] = [kSecAttrAccount: tag!, kSecValueData: Data([1])]
+            attributes[kSecAttrService] = service
+            XCTAssertEqual(SecItemAdd(query(attributes), nil), errSecSuccess)
+        }
 
-        // When - Then
-        XCTAssertEqual(try storage(.app()).fetch(forKey: .init(name: tag)), Data([1]))
+        let storage = storage(.own(namespace: namespace()))
+
+        // When
+        let fetched = try storage.fetch(forKey: .init(tag))
+        try storage.clear()
+
+        // Then
+        var result: AnyObject?
+        XCTAssertNil(fetched)
+        XCTAssertEqual(SecItemCopyMatching(query([kSecAttrAccount: tag!, kSecMatchLimit: kSecMatchLimitAll, kSecReturnAttributes: true]), &result), errSecSuccess)
+        XCTAssertEqual((result as? [[String: Any]])?.count, 2)
     }
 
     // MARK: Helpers
@@ -177,7 +214,11 @@ final class KeychainIntegrationTests: XCTestCase {
     }
 
     private func namespace() -> KeychainStorage.Namespace {
-        .service(named: tag)
+        .init(tag)
+    }
+
+    private func service(of scope: KeychainStorage.Scope) -> String {
+        DefaultKeychainLocator().service(for: scope)
     }
 
     private func query(_ attributes: [CFString: Any]) -> CFDictionary {
@@ -189,9 +230,16 @@ final class KeychainIntegrationTests: XCTestCase {
         return query as CFDictionary
     }
 
-    private func attribute(_ attribute: CFString, service: String, account: String) throws -> Any? {
+    private func attribute(_ attribute: CFString, of scope: KeychainStorage.Scope, account: String) throws -> Any? {
+        // The scope's kind of item: a synced and a local item can share a service and account
+        var synchronizable = false
+        if case .iCloud = scope {
+            synchronizable = true
+        }
+
         var result: AnyObject?
-        let status = SecItemCopyMatching(query([kSecAttrService: service, kSecAttrAccount: account, kSecReturnAttributes: true]), &result)
+        let attributes: [CFString: Any] = [kSecAttrService: service(of: scope), kSecAttrAccount: account, kSecReturnAttributes: true, kSecAttrSynchronizable: synchronizable]
+        let status = SecItemCopyMatching(query(attributes), &result)
         XCTAssertEqual(status, errSecSuccess)
         return (result as? [String: Any])?[attribute as String]
     }

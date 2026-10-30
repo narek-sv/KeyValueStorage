@@ -69,8 +69,8 @@ final class PublicAPITests: XCTestCase {
     }
     
     func testKeychainIsConfigurable() {
-        // Given: an existing Keychain Sharing group and a service that other code already saves items under
-        let scope = KeychainStorage.Scope.appGroup(groupId: "TEAMID.group.shared", namespace: .service(named: "existing.service"))
+        // Given: synced items of a Keychain Sharing group, usable while locked
+        let scope = KeychainStorage.Scope.iCloud(.appGroup(id: "TEAMID.group.shared"), protection: .untilFirstUnlock, namespace: "auth")
 
         // When
         let storage = KeychainStorage(scope: scope)
@@ -90,7 +90,7 @@ final class PublicAPITests: XCTestCase {
 
         let inMemoryScope = InMemoryStorage.Scope.app(namespace: .bucket(named: "publicAPIScope"))
         let userDefaultsScope = UserDefaultsStorage.Scope.own(namespace: "publicAPIScope")
-        let keychainScope = KeychainStorage.Scope.appGroup(groupId: "group.shared", namespace: .service(named: "publicAPIScope"))
+        let keychainScope = KeychainStorage.Scope.appGroup(id: "group.shared", namespace: "publicAPIScope")
         let fileScope = FileStorage.Scope.own(.temporary, namespace: .init(directory))
         let sqliteScope = SQLiteStorage.Scope.own(.temporary, namespace: .init(directory))
         let inMemory = InMemoryStorage(scope: inMemoryScope)
@@ -121,12 +121,12 @@ final class PublicAPITests: XCTestCase {
 
         // When
         first.save(Data([1]), forKey: "key")
-        try keychain.save(Data([2]), forKey: .init(name: "key"))
+        try keychain.save(Data([2]), forKey: "key")
 
         // Then: the default backing store is shared by the whole process
         XCTAssertEqual(second.fetch(forKey: "key"), Data([1]))
         XCTAssertNil(isolated.fetch(forKey: "key"))
-        XCTAssertEqual(try keychain.fetch(forKey: .init(name: "key")), Data([2]))
+        XCTAssertEqual(try keychain.fetch(forKey: "key"), Data([2]))
         first.clear()
     }
 

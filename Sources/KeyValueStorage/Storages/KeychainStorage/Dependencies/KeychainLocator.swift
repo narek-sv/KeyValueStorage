@@ -18,55 +18,94 @@ public protocol KeychainLocator {
     func accessGroup(for scope: KeychainStorage.Scope) -> String?
 
     /// `kSecAttrAccount`.
-    func account(forKey key: String, in scope: KeychainStorage.Scope) -> String
+    func account(forKey key: KeychainStorage.Key, in scope: KeychainStorage.Scope) -> String
 }
 
 // MARK: - DefaultKeychainLocator
 
-/// The namespace is the service, `""` at the root, and an App Group's service is `<group>/<namespace>`, with `%` and `/`
-/// percent-encoded in both and the empty name `%`. So an app scope's service never contains `/` and never equals a group's,
-/// which matters because an app scope's queries reach every access group the app has.
+/// Services are `<app>:<namespace>:<protection>` for `.own`, `<app>` being the bundle ID or, without one, the process name,
+/// and `<group>/<namespace>/<protection>` for `.appGroup`, with `%`, `/` and `:` percent-encoded in each name. So no two
+/// scopes share a service, which matters because `.own` queries reach every access group the app has, and apps can share one.
+/// `.iCloud` uses its owner's services, for synced items, which the other scopes' queries never match.
 open class DefaultKeychainLocator: KeychainLocator {
     public init() { }
 
+    // MARK: App Identifier
+
+    /// `Bundle.main.bundleIdentifier`.
+    open var bundleIdentifier: String? {
+        Bundle.main.bundleIdentifier
+    }
+
+    /// `ProcessInfo.processInfo.processName`, the app's identifier where there's no bundle ID.
+    open var processName: String {
+        ProcessInfo.processInfo.processName
+    }
+
+    // MARK: Names
+
     open func service(for scope: KeychainStorage.Scope) -> String {
-        let namespace = scope.namespace.map(Self.name(of:)) ?? ""
         switch scope {
-        case .app:                          return namespace
-        case let .appGroup(groupId, _):     return Self.escaped(groupId) + "/" + namespace
+        case let .own(protection, namespace):
+            return ownService(namespace, Self.name(for: protection))
+        case let .appGroup(groupId, protection, namespace):
+            return Self.groupService(groupId, namespace, Self.name(for: protection))
+        case let .iCloud(.own, protection, namespace):
+            return ownService(namespace, Self.name(for: protection))
+        case let .iCloud(.appGroup(groupId), protection, namespace):
+            return Self.groupService(groupId, namespace, Self.name(for: protection))
         }
     }
 
     open func accessGroup(for scope: KeychainStorage.Scope) -> String? {
         switch scope {
-        case .app:                          return nil
-        case let .appGroup(groupId, _):     return groupId
+        case .own, .iCloud(.own, _, _):
+            return nil
+        case let .appGroup(groupId, _, _), let .iCloud(.appGroup(groupId), _, _):
+            return groupId
         }
     }
 
-    open func account(forKey key: String, in scope: KeychainStorage.Scope) -> String {
-        key
+    open func account(forKey key: KeychainStorage.Key, in scope: KeychainStorage.Scope) -> String {
+        key.string
     }
 
     // MARK: Helpers
 
-    private static func name(of namespace: KeychainStorage.Namespace) -> String {
-        switch namespace {
-        case let .service(name):    return escaped(name)
+    private func ownService(_ namespace: KeychainStorage.Namespace, _ protection: String) -> String {
+        Self.escaped(bundleIdentifier ?? processName) + ":" + Self.escaped(namespace.string) + ":" + protection
+    }
+
+    private static func groupService(_ groupId: String, _ namespace: KeychainStorage.Namespace, _ protection: String) -> String {
+        escaped(groupId) + "/" + escaped(namespace.string) + "/" + protection
+    }
+
+    private static func name(for protection: KeychainStorage.Protection) -> String {
+        switch protection {
+        case .untilFirstUnlock:                 return "u"
+        case .untilFirstUnlockThisDeviceOnly:   return "ud"
+        case .whileLocked:                      return "w"
+        case .whileLockedThisDeviceOnly:        return "wd"
+        case .whileLockedOrWithoutPasscode:     return "p"
+        }
+    }
+
+    // Local queries never match synced items, so the two share letters
+    private static func name(for protection: KeychainStorage.SyncedProtection) -> String {
+        switch protection {
+        case .untilFirstUnlock: return "u"
+        case .whileLocked:      return "w"
         }
     }
 
     // Bytes, because Foundation's `replacingOccurrences` skips a `/` that carries a combining mark
     private static func escaped(_ name: String) -> String {
-        guard !name.isEmpty else {
-            return "%"
-        }
-
         var escaped = [UInt8]()
         for byte in name.utf8 {
             switch byte {
             case UInt8(ascii: "%"): escaped += Array("%25".utf8)
             case UInt8(ascii: "/"): escaped += Array("%2F".utf8)
+            case UInt8(ascii: ":"): escaped += Array("%3A".utf8)
             default:                escaped.append(byte)
             }
         }

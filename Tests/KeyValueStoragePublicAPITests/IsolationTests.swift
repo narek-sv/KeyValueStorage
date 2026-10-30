@@ -61,8 +61,8 @@ private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #is
     try await exercise(UserDefaultsStorage(scope: .own(namespace: .init(id))), key: "key", context: context)
     try await exercise(FileStorage(scope: .own(.temporary, namespace: .init(id))), key: "key", context: context)
     try await exercise(SQLiteStorage(scope: .own(.temporary, namespace: .init(id))), key: "key", context: context)
-    try await exercise(KeychainStorage(scope: .app(namespace: .service(named: id)), backingStore: InMemoryKeychain(), locator: DefaultKeychainLocator()),
-                       key: .init(name: "key"), context: context)
+    try await exercise(KeychainStorage(scope: .own(namespace: .init(id)), backingStore: InMemoryKeychain(), locator: DefaultKeychainLocator()),
+                       key: "key", context: context)
     if #available(watchOS 9.0, *) {
         try await exercise(UbiquitousStorage(scope: .iCloud(.own, namespace: .init(id)), backingStore: InMemoryUbiquitousStore(), locator: DefaultUbiquitousLocator()),
                            key: "key", context: context)

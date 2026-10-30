@@ -55,7 +55,7 @@ final class InMemoryKeychain: KeychainBackingStore {
     private func matches(_ item: Item, _ query: KeychainQuery) -> Bool {
         item.service == query.service && item.accessGroup == query.accessGroup
             && (query.account == nil || item.account == query.account)
-            && (query.synchronizable == .any || item.synchronizable == (query.synchronizable == .yes))
+            && item.synchronizable == (query.synchronizable == .yes)
     }
 }
 

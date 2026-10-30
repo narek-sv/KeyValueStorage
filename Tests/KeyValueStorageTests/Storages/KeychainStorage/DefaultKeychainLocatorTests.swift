@@ -10,35 +10,69 @@ import Foundation
 @testable import KeyValueStorage
 
 final class DefaultKeychainLocatorTests: XCTestCase {
-    private let locator = DefaultKeychainLocator()
+    private let locator = FixedIdentifierKeychainLocator()
 
     // MARK: Services
 
     func testServices() {
         let services: [(KeychainStorage.Scope, String)] = [
-            (.app(), ""),
-            (.app(namespace: .service(named: "auth")), "auth"),
-            (.app(namespace: .service(named: "")), "%"),
-            (.app(namespace: .service(named: "a/b%")), "a%2Fb%25"),
-            (.app(namespace: .service(named: "/\u{301}")), "%2F\u{301}"),
-            (.appGroup(groupId: "group.com.app"), "group.com.app/"),
-            (.appGroup(groupId: "group.com.app", namespace: .service(named: "auth")), "group.com.app/auth"),
-            (.appGroup(groupId: "group.com.app", namespace: .service(named: "")), "group.com.app/%"),
-            (.appGroup(groupId: "a/b", namespace: .service(named: "c/d")), "a%2Fb/c%2Fd")
+            (.own(namespace: "auth"), "com.test.App:auth:w"),
+            (.own(namespace: ""), "com.test.App::w"),
+            (.own(namespace: "a/b%:"), "com.test.App:a%2Fb%25%3A:w"),
+            (.own(namespace: "/\u{301}"), "com.test.App:%2F\u{301}:w"),
+            (.appGroup(id: "group.com.app", namespace: "auth"), "group.com.app/auth/w"),
+            (.appGroup(id: "group.com.app", namespace: ""), "group.com.app//w"),
+            (.appGroup(id: "a/b:", namespace: "c/d"), "a%2Fb%3A/c%2Fd/w"),
+            (.iCloud(.own, namespace: "auth"), "com.test.App:auth:w"),
+            (.iCloud(.appGroup(id: "group.com.app"), namespace: "auth"), "group.com.app/auth/w")
         ]
 
         for (scope, service) in services {
-            XCTAssertTrue(locator.service(for: scope).utf8.elementsEqual(service.utf8), "\(scope) → \(locator.service(for: scope).debugDescription)")
+            assertBytes(locator.service(for: scope), service)
         }
     }
 
-    func testNoTwoScopesShareAService() {
-        // App scopes' queries reach every access group, so their services must differ from every App Group's
-        let names = [nil, "", "auth", "a/b", "%", "%2F", "group.com.app/auth", "group.com.app%2Fauth"]
-        let scopes = names.map { name in KeychainStorage.Scope.app(namespace: name.map { .service(named: $0) }) }
-            + ["group.com.app", "a/b", "a", ""].flatMap { group in names.map { name in .appGroup(groupId: group, namespace: name.map { .service(named: $0) }) } }
-        var owners = [[UInt8]: KeychainStorage.Scope]()
+    func testTheAppsIdentifierIsItsBundleIDOrProcessNameEscaped() {
+        let services = ["com.test.App", "a:b/c%", "", nil].map { identifier in
+            locator.identifier = identifier
+            return locator.service(for: .own(namespace: "ns"))
+        }
 
+        XCTAssertEqual(services, ["com.test.App:ns:w", "a%3Ab%2Fc%25:ns:w", ":ns:w", "my tool:ns:w"])
+    }
+
+    func testEveryProtectionHasItsOwnService() {
+        let protections: [(KeychainStorage.Protection, String)] = [
+            (.untilFirstUnlock, "u"),
+            (.untilFirstUnlockThisDeviceOnly, "ud"),
+            (.whileLocked, "w"),
+            (.whileLockedThisDeviceOnly, "wd"),
+            (.whileLockedOrWithoutPasscode, "p")
+        ]
+
+        for (protection, name) in protections {
+            XCTAssertEqual(locator.service(for: .own(protection: protection, namespace: "ns")), "com.test.App:ns:\(name)")
+            XCTAssertEqual(locator.service(for: .appGroup(id: "g", protection: protection, namespace: "ns")), "g/ns/\(name)")
+        }
+
+        XCTAssertEqual(locator.service(for: .iCloud(.own, protection: .untilFirstUnlock, namespace: "ns")), "com.test.App:ns:u")
+        XCTAssertEqual(locator.service(for: .iCloud(.appGroup(id: "g"), protection: .untilFirstUnlock, namespace: "ns")), "g/ns/u")
+    }
+
+    func testNoTwoLocalScopesShareAService() {
+        // `.own` queries reach every access group, so its services must differ from every group's;
+        // `.iCloud` shares its owner's services, for synced items
+        let namespaces: [KeychainStorage.Namespace] = ["", "auth", "a/b", "a:b", "%", "%2F", "%3A", "g/auth", "g%2Fauth", "auth:w", "auth/w"]
+        let protections: [KeychainStorage.Protection] = [.untilFirstUnlock, .untilFirstUnlockThisDeviceOnly, .whileLocked, .whileLockedThisDeviceOnly, .whileLockedOrWithoutPasscode]
+        var scopes = [KeychainStorage.Scope]()
+        for namespace in namespaces {
+            for protection in protections {
+                scopes.append(.own(protection: protection, namespace: namespace))
+                scopes += ["g", "g/auth", "a:b", "com.test.App", ""].map { .appGroup(id: $0, protection: protection, namespace: namespace) }
+            }
+        }
+
+        var owners = [[UInt8]: KeychainStorage.Scope]()
         for scope in scopes {
             let service = locator.service(for: scope)
             if let owner = owners.updateValue(scope, forKey: Array(service.utf8)) {
@@ -47,16 +81,54 @@ final class DefaultKeychainLocatorTests: XCTestCase {
         }
     }
 
+    func testTwoAppsNeverShareAService() {
+        // Apps sharing a default access group
+        let services = ["com.test.App", "com.test.App:ns", "com.test.app"].map { identifier in
+            locator.identifier = identifier
+            return locator.service(for: .own(namespace: "ns"))
+        }
+
+        XCTAssertEqual(Set(services).count, services.count)
+    }
+
+    func testTheLookupsReturnTheSystems() {
+        let locator = DefaultKeychainLocator()
+
+        XCTAssertEqual(locator.bundleIdentifier, Bundle.main.bundleIdentifier)
+        XCTAssertEqual(locator.processName, ProcessInfo.processInfo.processName)
+    }
+
     // MARK: Access Groups And Accounts
 
     func testAccessGroups() {
-        XCTAssertNil(locator.accessGroup(for: .app(namespace: .service(named: "auth"))))
-        XCTAssertEqual(locator.accessGroup(for: .appGroup(groupId: "group.com.app", namespace: .service(named: "auth"))), "group.com.app")
+        XCTAssertNil(locator.accessGroup(for: .own(namespace: "auth")))
+        XCTAssertNil(locator.accessGroup(for: .iCloud(.own, namespace: "auth")))
+        XCTAssertEqual(locator.accessGroup(for: .appGroup(id: "group.com.app", namespace: "auth")), "group.com.app")
+        XCTAssertEqual(locator.accessGroup(for: .iCloud(.appGroup(id: "group.com.app"), namespace: "auth")), "group.com.app")
     }
 
     func testAccountsAreTheKeysExactBytes() {
-        for key in ["", "key", "Key", "a/b", "\u{E9}", "e\u{301}", "🙂"] {
-            XCTAssertTrue(locator.account(forKey: key, in: .default).utf8.elementsEqual(key.utf8), key.debugDescription)
+        for key in ["", "key", "Key", "a/b", "a:b", "\u{E9}", "e\u{301}", "🙂"] {
+            assertBytes(locator.account(forKey: .init(key), in: .default), key)
         }
+    }
+
+    // MARK: Helpers
+
+    private func assertBytes(_ name: String, _ expected: String, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(name.utf8.elementsEqual(expected.utf8), "\(name.debugDescription) isn't \(expected.debugDescription)", file: file, line: line)
+    }
+}
+
+/// The default locator with the app's identifier fixed.
+private final class FixedIdentifierKeychainLocator: DefaultKeychainLocator {
+    var identifier: String? = "com.test.App"
+
+    override var bundleIdentifier: String? {
+        identifier
+    }
+
+    override var processName: String {
+        "my tool"
     }
 }

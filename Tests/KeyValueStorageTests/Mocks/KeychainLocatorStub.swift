@@ -13,7 +13,7 @@ final class KeychainLocatorStub: KeychainLocator {
     enum Call: Equatable {
         case service(KeychainStorage.Scope)
         case accessGroup(KeychainStorage.Scope)
-        case account(String, KeychainStorage.Scope)
+        case account(KeychainStorage.Key, KeychainStorage.Scope)
     }
 
     private(set) var calls = [Call]()
@@ -28,7 +28,7 @@ final class KeychainLocatorStub: KeychainLocator {
         return "located.group"
     }
 
-    func account(forKey key: String, in scope: KeychainStorage.Scope) -> String {
+    func account(forKey key: KeychainStorage.Key, in scope: KeychainStorage.Scope) -> String {
         calls.append(.account(key, scope))
         return "located-\(key)"
     }

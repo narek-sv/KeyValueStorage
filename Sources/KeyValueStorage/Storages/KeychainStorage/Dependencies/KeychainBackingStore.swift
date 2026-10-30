@@ -55,7 +55,7 @@ public struct KeychainQuery: Sendable, Equatable {
     public let account: String?
     public let accessGroup: String?
     public let synchronizable: Synchronizable?
-    public let accessibility: KeychainStorage.Key.Accessibility?
+    public let accessibility: Accessibility?
     public let useDataProtectionKeychain: Bool?
     public let returnData: Bool?
     public let matchLimit: MatchLimit?
@@ -67,7 +67,7 @@ public struct KeychainQuery: Sendable, Equatable {
         account: String? = nil,
         accessGroup: String? = nil,
         synchronizable: Synchronizable? = nil,
-        accessibility: KeychainStorage.Key.Accessibility? = nil,
+        accessibility: Accessibility? = nil,
         useDataProtectionKeychain: Bool? = nil,
         returnData: Bool? = nil,
         matchLimit: MatchLimit? = nil,
@@ -117,13 +117,30 @@ public extension KeychainQuery {
     enum Synchronizable: Sendable {
         case yes
         case no
-        case any
         
-        fileprivate var value: CFTypeRef {
+        fileprivate var value: CFBoolean {
             switch self {
             case .yes:  return kCFBooleanTrue
             case .no:   return kCFBooleanFalse
-            case .any:  return kSecAttrSynchronizableAny
+            }
+        }
+    }
+    
+    /// `kSecAttrAccessible`.
+    enum Accessibility: Sendable {
+        case afterFirstUnlock
+        case afterFirstUnlockThisDeviceOnly
+        case whenPasscodeSetThisDeviceOnly
+        case whenUnlocked
+        case whenUnlockedThisDeviceOnly
+        
+        fileprivate var value: CFString {
+            switch self {
+            case .afterFirstUnlock:                 return kSecAttrAccessibleAfterFirstUnlock
+            case .afterFirstUnlockThisDeviceOnly:   return kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            case .whenPasscodeSetThisDeviceOnly:    return kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly
+            case .whenUnlocked:                     return kSecAttrAccessibleWhenUnlocked
+            case .whenUnlockedThisDeviceOnly:       return kSecAttrAccessibleWhenUnlockedThisDeviceOnly
             }
         }
     }
@@ -135,20 +152,6 @@ public extension KeychainQuery {
             switch self {
             case .one:  return kSecMatchLimitOne
             }
-        }
-    }
-}
-
-// MARK: - KeychainStorage.Key.Accessibility + Value
-
-extension KeychainStorage.Key.Accessibility {
-    fileprivate var value: CFString {
-        switch self {
-        case .afterFirstUnlock:                 return kSecAttrAccessibleAfterFirstUnlock
-        case .afterFirstUnlockThisDeviceOnly:   return kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        case .whenPasscodeSetThisDeviceOnly:    return kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly
-        case .whenUnlocked:                     return kSecAttrAccessibleWhenUnlocked
-        case .whenUnlockedThisDeviceOnly:       return kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         }
     }
 }

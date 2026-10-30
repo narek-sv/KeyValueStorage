@@ -10,7 +10,7 @@ import Security
 @testable import KeyValueStorage
 
 /// An in-memory keychain that matches queries as the real one does: a query without an access group or account
-/// matches every group or account, `.any` matches both kinds of synchronizable items, and an item can have no data.
+/// matches every group or account, one without `synchronizable` matches only local items, and an item can have no data.
 /// Saves without an access group go to `defaultGroup`. Records every call, and answers a failing operation with its status.
 final class KeychainBackingStoreMock: KeychainBackingStore {
     enum Call: Equatable {
@@ -29,7 +29,7 @@ final class KeychainBackingStoreMock: KeychainBackingStore {
         var account: String
         var accessGroup: String
         var synchronizable: Bool
-        var accessibility: KeychainStorage.Key.Accessibility?
+        var accessibility: KeychainQuery.Accessibility?
         var data: Data?
     }
 
@@ -106,7 +106,7 @@ final class KeychainBackingStoreMock: KeychainBackingStore {
         query.service.map { $0 == item.service } ?? true
             && query.account.map { $0 == item.account } ?? true
             && query.accessGroup.map { $0 == item.accessGroup } ?? true
-            && (query.synchronizable == .any || (query.synchronizable == .yes) == item.synchronizable)
+            && (query.synchronizable == .yes) == item.synchronizable
     }
 
     private func identity(_ item: Item) -> [String] {

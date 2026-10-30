@@ -16,7 +16,7 @@ final class KeychainStorageTests: XCTestCase {
 
     private let backingStore = KeychainBackingStoreMock()
     private let locator = KeychainLocatorStub()
-    private let scope = KeychainStorage.Scope.app(namespace: .service(named: "name"))
+    private let scope = KeychainStorage.Scope.own(namespace: "name")
     private let data = Data([0xAA, 0xBB])
 
     // MARK: Locator
@@ -26,7 +26,7 @@ final class KeychainStorageTests: XCTestCase {
         try makeStorage().save(data, forKey: "key")
 
         // Then
-        XCTAssertEqual(locator.calls.prefix(2), [.service(scope), .accessGroup(scope)])
+        XCTAssertEqual(locator.calls, [.service(scope), .accessGroup(scope), .account("key", scope)])
         XCTAssertEqual(backingStore.items, [item("key", data: data, accessibility: .whenUnlocked)])
     }
 
@@ -38,12 +38,11 @@ final class KeychainStorageTests: XCTestCase {
 
     func testSaveUpdatesTheKeysItemAndAddsItOnlyIfThereIsNone() throws {
         // Given
-        let storage = makeStorage()
-        let key = KeychainStorage.Key(name: "key", accessibility: .afterFirstUnlock, isSynchronizable: true)
+        let storage = makeStorage(.iCloud(.own, protection: .untilFirstUnlock, namespace: "name"))
 
         // When
-        try storage.save(data, forKey: key)
-        try storage.save(Data([1]), forKey: key)
+        try storage.save(data, forKey: "key")
+        try storage.save(Data([1]), forKey: "key")
 
         // Then: no read first, and accessibility only in what's written
         let item = query(account: "located-key", synchronizable: .yes)
@@ -68,21 +67,52 @@ final class KeychainStorageTests: XCTestCase {
         XCTAssertEqual(backingStore.calls, [
             .read(query(account: "located-key", synchronizable: .no, returnData: true, matchLimit: .one)),
             .remove(query(account: "located-key", synchronizable: .no)),
-            .remove(query(account: nil, synchronizable: .any))
+            .remove(query(account: nil, synchronizable: .no))
         ])
     }
 
-    func testSynchronizableKeysAreItemsOfTheirOwn() throws {
-        // Given
-        let storage = makeStorage()
+    func testTheScopesProtectionSetsTheItemsAccessibilityAndSync() throws {
+        let scopes: [(KeychainStorage.Scope, KeychainQuery.Accessibility, KeychainQuery.Synchronizable)] = [
+            (.own(protection: .untilFirstUnlock, namespace: "name"), .afterFirstUnlock, .no),
+            (.own(protection: .untilFirstUnlockThisDeviceOnly, namespace: "name"), .afterFirstUnlockThisDeviceOnly, .no),
+            (.own(protection: .whileLocked, namespace: "name"), .whenUnlocked, .no),
+            (.own(protection: .whileLockedThisDeviceOnly, namespace: "name"), .whenUnlockedThisDeviceOnly, .no),
+            (.appGroup(id: "group", protection: .whileLockedOrWithoutPasscode, namespace: "name"), .whenPasscodeSetThisDeviceOnly, .no),
+            (.iCloud(.own, protection: .untilFirstUnlock, namespace: "name"), .afterFirstUnlock, .yes),
+            (.iCloud(.appGroup(id: "group"), protection: .whileLocked, namespace: "name"), .whenUnlocked, .yes)
+        ]
+
+        for (scope, accessibility, synchronizable) in scopes {
+            // Given
+            let backingStore = KeychainBackingStoreMock()
+
+            // When
+            try KeychainStorage(scope: scope, backingStore: backingStore, locator: locator).save(data, forKey: "key")
+
+            // Then
+            XCTAssertEqual(backingStore.calls.last, .add(query(account: "located-key", synchronizable: synchronizable, accessibility: accessibility, valueData: data)), "\(scope)")
+        }
+    }
+
+    func testSyncedScopesNeverReachTheLocalItemsOfTheirService() throws {
+        // Given: two scopes with one service, told apart by sync alone
+        let local = makeStorage(.own(namespace: "name"))
+        let synced = makeStorage(.iCloud(.own, namespace: "name"))
 
         // When
-        try storage.save(Data([1]), forKey: .init(name: "key", isSynchronizable: true))
-        try storage.save(Data([2]), forKey: .init(name: "key"))
+        try synced.save(Data([1]), forKey: "key")
+        try local.save(Data([2]), forKey: "key")
 
         // Then
-        XCTAssertEqual(try storage.fetch(forKey: .init(name: "key", isSynchronizable: true)), Data([1]))
-        XCTAssertEqual(try storage.fetch(forKey: .init(name: "key")), Data([2]))
+        XCTAssertEqual(try synced.fetch(forKey: "key"), Data([1]))
+        XCTAssertEqual(try local.fetch(forKey: "key"), Data([2]))
+
+        // When
+        try local.clear()
+
+        // Then
+        XCTAssertEqual(try synced.fetch(forKey: "key"), Data([1]))
+        XCTAssertNil(try local.fetch(forKey: "key"))
     }
 
     // MARK: Values
@@ -131,15 +161,16 @@ final class KeychainStorageTests: XCTestCase {
     // MARK: Clear
 
     func testClearRemovesEveryItemOfTheScopeAndNothingElse() throws {
-        // Given: the scope's items, synchronizable or not and one without data, next to another service's
+        // Given: the scope's items, one without data, next to a synced item of its service and another service's item
+        let synced = item("b", data: data, synchronizable: true)
         let other = Item(service: "other", account: "located-key", accessGroup: "located.group", synchronizable: false, data: data)
-        backingStore.items = [item("a", data: data), item("b", data: data, synchronizable: true), item("empty", data: nil), other]
+        backingStore.items = [item("a", data: data), synced, item("empty", data: nil), other]
 
         // When
         try makeStorage().clear()
 
         // Then
-        XCTAssertEqual(backingStore.items, [other])
+        XCTAssertEqual(backingStore.items, [synced, other])
     }
 
     func testClearWithoutItemsSucceeds() throws {
@@ -201,14 +232,16 @@ final class KeychainStorageTests: XCTestCase {
     // MARK: Scopes
 
     func testScopesNeverReachEachOthersItems() throws {
-        // Given: the root, a namespace, and App Groups, one of them the app's default access group,
-        // whose items an app scope's queries reach
+        // Given: one namespace in every kind of scope, App Groups among them the app's default access group,
+        // whose items `.own` queries reach, next to another namespace and another protection
         let scopes: [KeychainStorage.Scope] = [
-            .app(),
-            .app(namespace: .service(named: "auth")),
-            .appGroup(groupId: "group.com.app", namespace: .service(named: "auth")),
-            .appGroup(groupId: backingStore.defaultGroup, namespace: .service(named: "auth")),
-            .appGroup(groupId: backingStore.defaultGroup)
+            .own(namespace: "auth"),
+            .own(namespace: "other"),
+            .own(protection: .untilFirstUnlock, namespace: "auth"),
+            .appGroup(id: "group.com.app", namespace: "auth"),
+            .appGroup(id: backingStore.defaultGroup, namespace: "auth"),
+            .iCloud(.own, namespace: "auth"),
+            .iCloud(.appGroup(id: backingStore.defaultGroup), namespace: "auth")
         ]
         let storages = scopes.map { KeychainStorage(scope: $0, backingStore: backingStore, locator: DefaultKeychainLocator()) }
 
@@ -223,24 +256,24 @@ final class KeychainStorageTests: XCTestCase {
         }
 
         // When
-        try storages[1].clear()
+        try storages[0].clear()
 
         // Then
-        XCTAssertNil(try storages[1].fetch(forKey: "token"))
+        XCTAssertNil(try storages[0].fetch(forKey: "token"))
         XCTAssertEqual(backingStore.items.count, scopes.count - 1)
     }
 
     // MARK: Helpers
 
-    private func makeStorage() -> KeychainStorage {
-        KeychainStorage(scope: scope, backingStore: backingStore, locator: locator)
+    private func makeStorage(_ scope: KeychainStorage.Scope? = nil) -> KeychainStorage {
+        KeychainStorage(scope: scope ?? self.scope, backingStore: backingStore, locator: locator)
     }
 
     private func item(
         _ key: String,
         data: Data?,
         synchronizable: Bool = false,
-        accessibility: KeychainStorage.Key.Accessibility? = nil
+        accessibility: KeychainQuery.Accessibility? = nil
     ) -> Item {
         Item(service: "located-service", account: "located-\(key)", accessGroup: "located.group", synchronizable: synchronizable,
              accessibility: accessibility, data: data)
@@ -249,7 +282,7 @@ final class KeychainStorageTests: XCTestCase {
     private func query(
         account: String?,
         synchronizable: KeychainQuery.Synchronizable,
-        accessibility: KeychainStorage.Key.Accessibility? = nil,
+        accessibility: KeychainQuery.Accessibility? = nil,
         returnData: Bool? = nil,
         matchLimit: KeychainQuery.MatchLimit? = nil,
         valueData: Data? = nil
