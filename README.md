@@ -19,21 +19,23 @@ Enhance your development with the state-of-the-art key-value storage framework, 
 | **iOS** | **macOS** | **watchOS** | **tvOS** | **visionOS** | **Swift** |
 | 13.0+ | 10.15+ | 6.0+ | 13.0+ | 1.0+ | 6.0+ (Xcode 16+) |
 
+`UbiquitousStorage` needs watchOS 9.0+, like `NSUbiquitousKeyValueStore`.
+
 ## Choosing a Storage
 
-Every storage works through the same API: declare a typed key, then save, fetch, delete and observe its value with `UnifiedStorage`. Five storages are built in: In Memory, User Defaults, Keychain, File System and SQLite. You can add your own storage by conforming to `KeyValueDataStorage` (see [Custom Storages](#custom-storages)), and your own encoding by conforming to `DataCoder` (see [Coding](#coding)). Values can be shared with your app's extensions and your other apps (see [Setup](#setup)), and observed for changes (see [Observation](#observation)).
+Every storage works through the same API: declare a typed key, then save, fetch, delete and observe its value with `UnifiedStorage`. Six storages are built in: In Memory, User Defaults, Keychain, File System, SQLite and iCloud Key-Value Store. You can add your own storage by conforming to `KeyValueDataStorage` (see [Custom Storages](#custom-storages)), and your own encoding by conforming to `DataCoder` (see [Coding](#coding)). Values can be shared with your app's extensions and your other apps (see [Setup](#setup)), and observed for changes (see [Observation](#observation)).
 
 Here's how the built-in storages compare:
 
-| | In Memory | User Defaults | Keychain | File System | SQLite |
-| --- | --- | --- | --- | --- | --- |
-| **Survives app restart** | ❌ | ✅ | ✅ (usually reinstalls too) | ✅ | ✅ |
-| **Suitable for secrets** | ❌ | ❌ | ✅ | ❌ | ❌ |
-| **Shared with your other apps and extensions** | ❌ | ✅ App Group | ✅ App Group or Keychain Sharing group | ✅ App Group | ✅ App Group |
-| **Syncs across the user's devices** | ❌ | ❌ | ✅ iCloud Keychain (`isSynchronizable`) | ❌ | ❌ |
-| **Best value size** | Any | Small | Small | Large | Small to medium |
-| **Speed** | Fastest | Very fast | Slowest | Slow for small values, fastest for large ones | Fast for small values |
-| **Across processes** | – | Last write wins per key | Last write wins per item | Atomic replace per file | Transaction per operation |
+| | In Memory | User Defaults | Keychain | File System | SQLite | iCloud Key-Value Store |
+| --- | --- | --- | --- | --- | --- | --- |
+| **Survives app restart** | ❌ | ✅ | ✅ (usually reinstalls too) | ✅ | ✅ | ✅ |
+| **Suitable for secrets** | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| **Shared with your other apps and extensions** | ❌ | ✅ App Group | ✅ App Group or Keychain Sharing group | ✅ App Group | ✅ App Group | ✅ Same store identifier |
+| **Syncs across the user's devices** | ❌ | ❌ | ✅ iCloud Keychain (`isSynchronizable`) | ❌ | ❌ | ✅ iCloud |
+| **Best value size** | Any | Small | Small | Large | Small to medium | Small, 1 MB in all |
+| **Speed** | Fastest | Very fast | Slowest | Slow for small values, fastest for large ones | Fast for small values | Very fast locally, syncs in the background |
+| **Across processes** | – | Last write wins per key | Last write wins per item | Atomic replace per file | Transaction per operation | Last write wins per key, also across devices |
 
 **In Memory** - temporary state, caches and tests.
 * The fastest storage: no disk access at all.
@@ -69,6 +71,14 @@ Here's how the built-in storages compare:
 * Deleted values free space inside the database for reuse, but the database file itself doesn't shrink.
 * A single value can't exceed SQLite's size limit, so very large values belong in files.
 
+**iCloud Key-Value Store** - small preferences and state that follow the user to their other devices.
+* Synced through iCloud by the system, with a local copy that's read and written without waiting for the network.
+* The whole store holds at most 1 MB and 1024 keys. A value over 1 MiB throws `valueTooLarge`, and a key that's too long throws `invalidKey`, but going over the store's total limits fails silently.
+* Values stay on the device while the user is signed out of iCloud, and sync once they sign in.
+* Not for sensitive data, and needs the iCloud capability (see [iCloud Key-Value Store](#icloud-key-value-store)): without it, the store silently keeps nothing.
+* Changes that arrive from the user's other devices aren't published to observers.
+* Clearing removes only the values saved through `KeyValueStorage` in the scope's namespace.
+
 Quick guide:
 * Secrets → `KeychainKey`
 * Settings and flags → `UserDefaultsKey`
@@ -76,6 +86,7 @@ Quick guide:
 * Many small and medium values, such as records → `SQLiteKey`
 * Data written by both the app and its extensions → `SQLiteKey`
 * Temporary state and tests → `InMemoryKey`
+* Small preferences that follow the user across devices → `UbiquitousKey`
 
 ---
 ## Setup
@@ -85,6 +96,7 @@ Quick guide:
 * [App Groups](#app-groups) - share values of any storage with your extensions and your other apps.
 * [Keychain Sharing](#keychain-sharing) - share keychain items through a keychain access group instead of an App Group.
 * [iCloud Keychain](#icloud-keychain) - sync keychain items across the user's devices.
+* [iCloud Key-Value Store](#icloud-key-value-store) - sync small values across the user's devices, and share them with your extensions and other apps.
 * [macOS](#macos) - use the keychain storage in a macOS app.
 * [Privacy Manifest](#privacy-manifest) - nothing to do: what the library declares for the App Store review.
 
@@ -113,6 +125,7 @@ Here is what a `scope` means for each built-in storage:
 | `SQLiteKey` | App Group ID | `<group container>/KeyValueStorage/SQLite/KeyValueStorage.sqlite` |
 | `KeychainKey` | `.init(accessGroup: "group.com.company.app")` for an App Group, or `.init(groupId: "com.company.shared", teamId: "ABCDE12345")` for a Keychain Sharing group | That access group, with the service `KeyValueStorage.<access group>` |
 | `InMemoryKey` | Any string | A separate namespace in the current process |
+| `UbiquitousKey` | — | App Groups have no effect; see [iCloud Key-Value Store](#icloud-key-value-store) |
 
 None of these locations depend on the bundle identifier, so your app and its extensions read and write the same values. File and SQLite storage each use their own folder in `KeyValueStorage`, so clearing one never touches the other's data.
 
@@ -130,6 +143,21 @@ You need this to make keychain items available on all the user's devices. Create
 * Items sync only for users who turned on iCloud Keychain on their devices.
 * Synchronizable items can't use the accessibility options that end in `ThisDeviceOnly`.
 * Deleting a synchronizable item, or clearing the storage, removes it from all the user's devices.
+
+### iCloud Key-Value Store
+
+You need this to use `UbiquitousKey`. Without it, the store keeps nothing, and nothing reports it.
+
+1. Add the **iCloud** capability to your app target and select **Key-value storage**. Xcode names the app's store `$(TeamIdentifierPrefix)$(CFBundleIdentifier)` in the `com.apple.developer.ubiquity-kvstore-identifier` entitlement.
+2. To share the store with your extensions or your other apps of the same team, add the capability to each of them and set the entitlement to the same identifier in every target. An extension that keeps its default identifier silently gets a store of its own.
+
+```swift
+let theme = UbiquitousKey<String>(key: "theme")
+// or in a namespace of its own
+let layout = UbiquitousKey<String>(key: "layout", scope: .iCloud(.own, namespace: "editor"))
+```
+
+Every app that names the same store can read, change and delete its values.
 
 ### macOS
 
@@ -161,6 +189,7 @@ First, you need to declare the key. You can use one of the built-in types:
 * `InMemoryKey`
 * `FileKey`
 * `SQLiteKey`
+* `UbiquitousKey`
 
 or you can define your own ones. [See how to do that](#custom-storages)
 
@@ -222,11 +251,12 @@ try await storage.save(/* accepts only MyType*/, forKey: key)
 ---
 ## Custom Storages
 
-`UnifiedStorage` has 5 built-in storage types:
+`UnifiedStorage` has 6 built-in storage types:
 * `In-memory` - This storage type persists the items only within an app session.
 * `User-Defaults` - This storage type persists the items within the app's lifetime.
 * `File-System` -  This storage saves every value as a separate file in the scope's folder, `Application Support/<app>/<namespace>!/<protection>` for `.own` scopes (`Caches` or `tmp` for the other retentions), or in the App Group container. The file is replaced atomically, so a crash never leaves a value half-written or missing. Any string is a valid key: its file name keeps `a`–`z`, `0`–`9`, `_` and `-`, writes a capital as `!` and its lowercase letter, and every other byte as `%` and two hex digits. So `Key` is saved as `!key` and never shares a file with `key`, even on a case-insensitive disk. A file name can be at most 255 bytes, so longer keys throw `FileStorage.Error.invalidKey`.
 * `Keychain` - This storage type keeps the items in secure storage and persists even after app re-installations. Supports `iCloud` synchronization.
+* `Ubiquitous` - This storage keeps the values in the iCloud key-value store, under `<namespace>!/<key>`, and syncs them across the user's devices. A value can be at most 1 MiB, and a stored key at most 128 UTF-16 code units.
 * `SQLite` - This storage keeps all values of a scope in one SQLite database, the hidden `.KeyValueStorage.sqlite` in the same folder as the `File-System` storage of the scope. Any string is a valid key, and all storages of a scope, in your app and its extensions, share the same database at the same time. Each operation is atomic across processes, but a fetch followed by a save is not: another process can save in between.
 
 You can also define your own storage, and it will work with it seamlessly with `UnifiedStorage` out of the box.
