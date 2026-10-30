@@ -36,8 +36,6 @@ final class KeychainBackingStoreMock: KeychainBackingStore {
     let defaultGroup = "default.group"
     var items = [Item]()
     var failures = [Operation: KeychainOperationStatus]()
-    /// What a listing returns instead of the matching items, as the keychain could return anything.
-    var listing: AnyObject?
     private(set) var calls = [Call]()
 
     func read(_ query: KeychainQuery) -> (KeychainOperationStatus, AnyObject?) {
@@ -46,26 +44,11 @@ final class KeychainBackingStoreMock: KeychainBackingStore {
             return (failure, nil)
         }
 
-        let matching = items.filter { matches($0, query) }
-        guard let first = matching.first else {
+        guard let item = items.first(where: { matches($0, query) }) else {
             return (.notFound, nil)
         }
 
-        guard query.matchLimit == .all else {
-            return (.success, first.data as NSData?)
-        }
-
-        if let listing {
-            return (.success, listing)
-        }
-
-        let attributes = matching.map { item -> [String: Any] in
-            var attributes: [String: Any] = [kSecAttrAccount as String: item.account, kSecAttrSynchronizable as String: item.synchronizable]
-            attributes[kSecValueData as String] = item.data
-            return attributes
-        }
-
-        return (.success, attributes as NSArray)
+        return (.success, item.data as NSData?)
     }
 
     func add(_ attributes: KeychainQuery) -> KeychainOperationStatus {

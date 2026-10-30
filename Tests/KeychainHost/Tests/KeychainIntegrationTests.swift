@@ -142,25 +142,24 @@ final class KeychainIntegrationTests: XCTestCase {
 
     // MARK: Other Code's Items
 
-    func testAnItemWithoutDataIsNeverAValueAndNeverReplacedOrRemoved() throws {
-        // Given: another app's item, at a key's service and account, without data
+    func testAnItemWithoutDataFetchesAsNilAndIsReplacedAndRemovedLikeAValue() throws {
+        // Given: items without data at two of the scope's accounts
         let storage = storage(.app(namespace: namespace()))
-        XCTAssertEqual(SecItemAdd(query([kSecAttrService: tag!, kSecAttrAccount: "key"]), nil), errSecSuccess)
-
-        // When
-        let fetched = try storage.fetch(forKey: "key")
-        try storage.delete(forKey: "key")
-        try storage.clear()
-
-        // Then
-        XCTAssertNil(fetched)
-        XCTAssertThrowsError(try storage.save(Data([1]), forKey: "key")) { error in
-            guard case .keyOccupied("key")? = error as? KeychainStorage.Error else {
-                return XCTFail("Unexpected \(error)")
-            }
+        for account in ["key", "other"] {
+            XCTAssertEqual(SecItemAdd(query([kSecAttrService: tag!, kSecAttrAccount: account]), nil), errSecSuccess)
         }
 
-        XCTAssertEqual(SecItemCopyMatching(query([kSecAttrService: tag!, kSecAttrAccount: "key"]), nil), errSecSuccess)
+        // When - Then
+        XCTAssertNil(try storage.fetch(forKey: "key"))
+
+        try storage.save(Data([1]), forKey: "key")
+        XCTAssertEqual(try storage.fetch(forKey: "key"), Data([1]))
+
+        try storage.delete(forKey: "key")
+        XCTAssertEqual(SecItemCopyMatching(query([kSecAttrService: tag!, kSecAttrAccount: "key"]), nil), errSecItemNotFound)
+
+        try storage.clear()
+        XCTAssertEqual(SecItemCopyMatching(query([kSecAttrService: tag!, kSecAttrAccount: "other"]), nil), errSecItemNotFound)
     }
 
     func testItemsWithoutAServiceShareTheRoot() throws {

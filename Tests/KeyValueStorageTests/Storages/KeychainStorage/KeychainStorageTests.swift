@@ -36,7 +36,7 @@ final class KeychainStorageTests: XCTestCase {
 
     // MARK: Queries
 
-    func testQueriesAskForTheKeysItemAndSetItsAccessibilityOnlyWhenWriting() throws {
+    func testSaveUpdatesTheKeysItemAndAddsItOnlyIfThereIsNone() throws {
         // Given
         let storage = makeStorage()
         let key = KeychainStorage.Key(name: "key", accessibility: .afterFirstUnlock, isSynchronizable: true)
@@ -45,13 +45,30 @@ final class KeychainStorageTests: XCTestCase {
         try storage.save(data, forKey: key)
         try storage.save(Data([1]), forKey: key)
 
-        // Then
+        // Then: no read first, and accessibility only in what's written
         let item = query(account: "located-key", synchronizable: .yes)
         XCTAssertEqual(backingStore.calls, [
-            .read(query(account: "located-key", synchronizable: .yes, returnData: true, matchLimit: .one)),
+            .update(item, KeychainQuery(accessibility: .afterFirstUnlock, valueData: data)),
             .add(query(account: "located-key", synchronizable: .yes, accessibility: .afterFirstUnlock, valueData: data)),
-            .read(query(account: "located-key", synchronizable: .yes, returnData: true, matchLimit: .one)),
             .update(item, KeychainQuery(accessibility: .afterFirstUnlock, valueData: Data([1])))
+        ])
+    }
+
+    func testFetchDeleteAndClearAreOneCallEach() throws {
+        // Given
+        backingStore.items = [item("key", data: data)]
+        let storage = makeStorage()
+
+        // When
+        _ = try storage.fetch(forKey: "key")
+        try storage.delete(forKey: "key")
+        try storage.clear()
+
+        // Then: delete and clear never read first
+        XCTAssertEqual(backingStore.calls, [
+            .read(query(account: "located-key", synchronizable: .no, returnData: true, matchLimit: .one)),
+            .remove(query(account: "located-key", synchronizable: .no)),
+            .remove(query(account: nil, synchronizable: .any))
         ])
     }
 
@@ -68,7 +85,7 @@ final class KeychainStorageTests: XCTestCase {
         XCTAssertEqual(try storage.fetch(forKey: .init(name: "key")), Data([2]))
     }
 
-    // MARK: Only Data Is A Value
+    // MARK: Values
 
     func testFetchReturnsTheKeysData() throws {
         // Given
@@ -80,20 +97,22 @@ final class KeychainStorageTests: XCTestCase {
         XCTAssertNil(try storage.fetch(forKey: "other"))
     }
 
-    func testAnItemWithoutDataIsNeverAValueAndNeverReplacedOrRemoved() throws {
+    func testAnItemWithoutDataFetchesAsNilAndIsReplacedAndRemovedLikeAValue() throws {
         // Given
-        backingStore.items = [item("key", data: nil)]
+        backingStore.items = [item("key", data: nil), item("other", data: nil)]
         let storage = makeStorage()
 
-        // When
-        let fetched = try storage.fetch(forKey: "key")
-        try storage.delete(forKey: "key")
-        try storage.clear()
+        // When - Then
+        XCTAssertNil(try storage.fetch(forKey: "key"))
 
-        // Then
-        XCTAssertNil(fetched)
-        assertThrows(KeychainStorage.Error.keyOccupied("located-key")) { try storage.save(data, forKey: "key") }
-        XCTAssertEqual(backingStore.items, [item("key", data: nil)])
+        try storage.save(data, forKey: "key")
+        XCTAssertEqual(backingStore.items, [item("key", data: data, accessibility: .whenUnlocked), item("other", data: nil)])
+
+        try storage.delete(forKey: "key")
+        XCTAssertEqual(backingStore.items, [item("other", data: nil)])
+
+        try storage.clear()
+        XCTAssertEqual(backingStore.items, [])
     }
 
     func testDeleteRemovesTheKeysItem() throws {
@@ -111,8 +130,8 @@ final class KeychainStorageTests: XCTestCase {
 
     // MARK: Clear
 
-    func testClearRemovesOnlyTheScopesItemsWithData() throws {
-        // Given: the scope's items, synchronizable or not, next to one without data and another service's
+    func testClearRemovesEveryItemOfTheScopeAndNothingElse() throws {
+        // Given: the scope's items, synchronizable or not and one without data, next to another service's
         let other = Item(service: "other", account: "located-key", accessGroup: "located.group", synchronizable: false, data: data)
         backingStore.items = [item("a", data: data), item("b", data: data, synchronizable: true), item("empty", data: nil), other]
 
@@ -120,27 +139,10 @@ final class KeychainStorageTests: XCTestCase {
         try makeStorage().clear()
 
         // Then
-        XCTAssertEqual(backingStore.items, [item("empty", data: nil), other])
-        XCTAssertEqual(backingStore.calls.first, .read(query(account: nil, synchronizable: .any, returnAttributes: true, returnData: true, matchLimit: .all)))
+        XCTAssertEqual(backingStore.items, [other])
     }
 
-    func testClearRemovesNothingItCantIdentify() throws {
-        // Given: a listing that isn't items, and an item without an account
-        for listing in ["unexpected" as NSString, [[kSecValueData as String: data]] as NSArray] {
-            let backingStore = KeychainBackingStoreMock()
-            backingStore.items = [item("key", data: data)]
-            backingStore.listing = listing
-
-            // When
-            try KeychainStorage(scope: scope, backingStore: backingStore, locator: locator).clear()
-
-            // Then
-            XCTAssertEqual(backingStore.items, [item("key", data: data)])
-            XCTAssertEqual(backingStore.calls.count, 1)
-        }
-    }
-
-    func testClearWithoutItemsDoesNothing() throws {
+    func testClearWithoutItemsSucceeds() throws {
         // When
         try makeStorage().clear()
 
@@ -153,11 +155,8 @@ final class KeychainStorageTests: XCTestCase {
     func testEveryKeychainFailureIsReported() throws {
         let operations: [(KeychainBackingStoreMock.Operation, (KeychainStorage) throws -> Void)] = [
             (.read, { _ = try $0.fetch(forKey: "key") }),
-            (.read, { try $0.save(Data([1]), forKey: "key") }),
-            (.read, { try $0.delete(forKey: "key") }),
-            (.read, { try $0.clear() }),
-            (.add, { try $0.save(Data([1]), forKey: "new") }),
             (.update, { try $0.save(Data([1]), forKey: "key") }),
+            (.add, { try $0.save(Data([1]), forKey: "new") }),
             (.remove, { try $0.delete(forKey: "key") }),
             (.remove, { try $0.clear() })
         ]
@@ -173,6 +172,14 @@ final class KeychainStorageTests: XCTestCase {
             assertThrows(KeychainStorage.Error.os(errSecInteractionNotAllowed)) { try body(storage) }
             XCTAssertEqual(backingStore.items, [item("key", data: data)])
         }
+    }
+
+    func testAnItemAddedBetweenSavesUpdateAndAddIsReported() {
+        // Given: another process adds the item after the update found none
+        backingStore.failures[.add] = .duplicate
+
+        // When - Then
+        assertThrows(KeychainStorage.Error.os(errSecDuplicateItem)) { try makeStorage().save(data, forKey: "key") }
     }
 
     // MARK: Set
@@ -243,7 +250,6 @@ final class KeychainStorageTests: XCTestCase {
         account: String?,
         synchronizable: KeychainQuery.Synchronizable,
         accessibility: KeychainStorage.Key.Accessibility? = nil,
-        returnAttributes: Bool? = nil,
         returnData: Bool? = nil,
         matchLimit: KeychainQuery.MatchLimit? = nil,
         valueData: Data? = nil
@@ -256,7 +262,6 @@ final class KeychainStorageTests: XCTestCase {
             synchronizable: synchronizable,
             accessibility: accessibility,
             useDataProtectionKeychain: true,
-            returnAttributes: returnAttributes,
             returnData: returnData,
             matchLimit: matchLimit,
             valueData: valueData

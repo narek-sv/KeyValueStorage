@@ -39,7 +39,8 @@ This file is the source of truth for the 4.0 refactor, written so that anyone, h
   - **Done: InMemory** (§5.5): the default store keys buckets and values by bytes, so every storage keeps keys exact (§4.3); locator and storage tests. Gated files at 100%.
   - **Deferred: locked-device errors** (§13, item 7), which need a real iPhone and a device signing setup for KeychainHost.
   - **Decided: the sealed scopes** (§S, D21), which settle the clash audit (§4.5). To implement, with the planned items below.
-  - **Planned: Keychain without reads before its calls** (§5.2), so `delete` no longer fails while locked, and app-scope services that carry the app's identifier, so two apps' app scopes never meet.
+  - **Done: Keychain without reads before its calls** (§5.2, 2026-10-30), so `delete` no longer fails while locked; an item without data is a value like any other.
+  - **Planned: Keychain app-scope services that carry the app's identifier** (§5.2), so two apps' app scopes never meet.
   - **Planned: app-scope paths carry the app's identifier** (§4, D9).
   - **Planned: UserDefaults' app scope gets a suite of its own, and UserDefaults and Ubiquitous keys carry the library's mark** (§5.4, §5.7).
   - **Locators are done for all six storages.** What's left of `Tests/Legacy3x/` belongs to the coding, observation and unified layers.
@@ -269,7 +270,7 @@ What stays in the storages: system calls and their retries (File's `createDirect
 - **E7 Every case is documented, and every throw site is tested.**
 - **E8 Partial failure is documented:** `clear()` stops at the first failure, and a failed init leaves nothing open.
 - **Planned: refactor the errors with the sealed scopes** (2026-10-30, §13 item 8), against E1–E8:
-  - drop the cases the redesign removes: `.invalidDirectory` (no `.directory(at:)`), Keychain's `.keyOccupied` (no reads before calls, §5.2);
+  - drop the cases the redesign removes: `.invalidDirectory` (no `.directory(at:)`), Keychain's `.keyOccupied` (gone already, §5.2);
   - one name for one meaning across storages: a group the app isn't in (`.groupDirectoryNotFound`, `.invalidSuiteName`, `.os(errSecMissingEntitlement)` today), an occupied place (`.pathOccupied`, `.keyOccupied`), and a locked device (`.protectedDataUnavailable` for File today; SQLite's and Keychain's locked results once the device test names them, §13 item 7);
   - cases carry `ExactString` keys and namespaces, the failing input as the caller passed it (E5);
   - every case documented and every throw site tested again (E7).
@@ -295,17 +296,17 @@ What stays in the storages: system calls and their retries (File's `createDirect
 
 ### 4.6 Only the storage's own values
 
-One rule in every storage: an entry is a value only if it has the storage's value type. Anything else at a key's place is other code's. `fetch` returns `nil`, `delete` and `clear()` never remove it, and `save` throws the storage's "occupied" error instead of replacing it.
+One rule in every storage: the library never replaces or removes other code's data. In File, UserDefaults and Ubiquitous, an entry is a value only if it has the storage's value type, and anything else at a key's place is other code's: `fetch` returns `nil`, `delete` and `clear()` never remove it, and `save` throws the storage's "occupied" error instead of replacing it. Keychain needs no check (§5.2).
 
 | Storage | A value is | Otherwise |
 |---|---|---|
 | File | a regular file, never a folder or a link | `.pathOccupied(URL)` |
 | UserDefaults | a `Data` object; registered defaults count, process-wide | `.keyOccupied(storedKey)` |
 | Ubiquitous | a `Data` object | `.keyOccupied(storedKey)` |
-| Keychain | a generic password whose data reads as `Data` (an item can have none) | `.keyOccupied(account)` |
+| Keychain | any generic password at the scope's service and account, one without data included (it fetches as `nil`) | — (§5.2: under the scope's own names, an item holds nothing of other code's to keep) |
 | SQLite, InMemory | — | exclusive locations: the database file and the bucket are the scope's alone, and their values are typed (`BLOB`, `Data`), so there is no other code's entry to keep |
 
-- **Planned: Keychain drops its check** (§5.2). The rule narrows to "never destroy other code's data": File keeps protecting folders and links, and UserDefaults and Ubiquitous keep their type check, which reads memory, not encrypted data. Under sealed names, an item without data at a Keychain scope's names is the library's and holds nothing to lose.
+- **Done: Keychain has no check** (§5.2, 2026-10-30). The rule is "never destroy other code's data": File keeps protecting folders and links, and UserDefaults and Ubiquitous keep their type check, which reads memory, not encrypted data. Keychain's check decrypted the item, which fails while locked, and an item without data at the scope's names holds nothing to lose.
 
 ## 5. Storages
 
@@ -357,17 +358,15 @@ The root encodings (§4.5) and the Keychain services are done.
 
 ### 5.2 KeychainStorage (done)
 
-**Backing store:** `KeychainBackingStore`, one Security call per member: `read` (`SecItemCopyMatching`), `add`, `update` and `remove` (`SecItemDelete`, every item the query matches), each taking a `KeychainQuery`. `KeychainQuery` gained `returnAttributes`.
+**Backing store:** `KeychainBackingStore`, one Security call per member: `read` (`SecItemCopyMatching`), `add`, `update` and `remove` (`SecItemDelete`, every item the query matches), each taking a `KeychainQuery`. No call lists items, so `KeychainQuery` has no `returnAttributes` and its only match limit is `.one`.
 
 **Locator:** `service(for:)` is the namespace, `""` at the root and `%` for an empty name; an App Group's is `<group>/<namespace>`, with `%` and `/` escaped byte by byte in both. `accessGroup(for:)` is `nil` for an app scope, so saves go to the app's default group, and the App Group's ID otherwise. `account(forKey:in:)` keeps the key's exact bytes.
 
-**Storage:** only an item whose data is `Data` is a value (§4.6); an item can exist without data. `fetch` returns `nil` for it, `save` throws `.keyOccupied(account)` instead of updating it (replacing `.unexpectedItemData`), and `delete` and `clear()` never remove it. `save` reads first, then adds or updates. `clear()` lists the scope's items with their data and removes each `Data` item by account and synchronizability, because a query can't match on data; an item it can't identify is left alone. Any other status → `.os(status)`. If another process changes an item between the check and the call, the call's status is thrown.
-- **Planned: no reads before calls** (2026-10-30, with the sealed scopes, §13 item 8). The read before `save`, `delete` and `clear()` only tells an item without data from a value, and it decrypts the item, so a `.whenUnlocked` item can't even be deleted while the device is locked. Under sealed names, anything at the scope's service and account is the library's, and an item without data holds nothing to lose. So:
-  - `fetch` reads, as today; an item without data → `nil`;
-  - `save` updates, and adds if the item isn't found;
-  - `delete` deletes directly;
-  - `clear()` is one delete for the scope's service, access group and sync flag;
-  - the internal `Item` enum, its `.other` case and Keychain's `.keyOccupied` go.
+**Storage:** no call reads an item first (done 2026-10-30). Reading decrypts the item, so a `.whenUnlocked` item couldn't even be deleted while the device was locked; and the read only told an item without data from a value. Anything at the scope's service and account is the scope's, and an item without data holds nothing to lose (§4.6).
+  - `fetch` reads with `returnData` and `.one`; an item without data → `nil`;
+  - `save` updates the item's data and accessibility, and adds the item if the update finds none. If another process adds it in between, the add's `errSecDuplicateItem` is thrown;
+  - `delete` removes the key's item, and `clear()` every item of the scope's service and access group, synchronizable or not, in one call each; "not found" is no error;
+  - the internal `Item` enum, its `.other` case and Keychain's `.keyOccupied` are gone. Any other status → `.os(status)`.
 - **Planned: the app scope's service carries the app's identifier** (2026-10-30): `<identifier>:<namespace>`, where the identifier is the bundle ID, or the process name without one, escaped like the namespace, `:` included.
   - Why: saves without an access group go to the first Keychain Sharing entry. When a developer lists a shared group first, two apps' app-scope items land in one group, and the same namespace made them the same items. With the identifier in the service they stay apart, and an extension's are its own.
   - Bundle IDs have no `/`, and the namespace's is escaped, so app services still never contain `/`, unlike App Group services (§4.5).
@@ -618,10 +617,11 @@ Tests/
 
 **KeychainStorage** (`KeychainStorageTests`; `KeychainBackingStoreMock`, an in-memory keychain with the real query rules, and `KeychainLocatorStub`)
 - queries use exactly the locator's names; `scope` is the one given;
-- the exact queries: the item read with `returnData` and `.one`, then added with accessibility and data, or updated with a query without them; synchronizable keys are items of their own;
-- only `Data` is a value: an item without data is never fetched, replaced or removed, and `save` throws `.keyOccupied`;
-- delete; `clear()` removes only the scope's `Data` items, synchronizable or not, and nothing it can't identify; without items it only lists;
-- every failing read, add, update and remove → `.os(status)`, and nothing changes;
+- the exact queries: `fetch` reads with `returnData` and `.one`; `save` updates with a query without accessibility and data, then adds with them; synchronizable keys are items of their own;
+- no read before a call: `save` updates, then adds only if there's no item; `fetch`, `delete` and `clear()` are one call each;
+- an item without data fetches as `nil`, and `save`, `delete` and `clear()` replace and remove it like a value;
+- delete; `clear()` removes every item of the scope, synchronizable or not and without data included, and nothing else; without items it succeeds;
+- every failing read, add, update and remove → `.os(status)`, and nothing changes; an item added between `save`'s update and add → `.os(errSecDuplicateItem)`;
 - `set`; the root, an app namespace and App Groups (one of them the default access group) never reach each other's items.
 
 **DefaultFileLocator** (`DefaultFileLocatorTests`, no mocks)
@@ -769,7 +769,7 @@ Tests/
   - values round-trip and persist; accessibility is set on add and on update; synchronizable keys are items of their own;
   - the root never reaches namespaced items; an app scope and App Groups, one of them the default group, never reach each other's items;
   - a group the app isn't entitled to → `.os(errSecMissingEntitlement)`;
-  - another app's item without data is never replaced or removed; items without a service share the root, as documented.
+  - an item without data fetches as `nil`, and `save`, `delete` and `clear()` replace and remove it; items without a service share the root, as documented.
 - **End-to-end:** one save/fetch/clear per storage through `UnifiedStorage` with real backings in temporary scopes.
 - **To add: the system behavior the scope docs state** (2026-10-30), so no comment rests on reasoning alone:
   - iOS Simulator: a UserDefaults suite named after an App Group the app isn't entitled to works and reports nothing, and its plist lands in the app's own container;
@@ -828,7 +828,7 @@ Each phase ends with: the library builds on every CI toolchain, the phase's test
 6. **watchOS minimum 6 → 9.** That's what `UbiquitousStorage` needs; it would remove its `@available(watchOS 9.0, *)` annotations.
 7. **Locked-device errors (deferred: needs a real iPhone).** `ProtectedDataTests` in KeychainHost records what SQLite (each protection class, on an open and on a new connection) and a `.complete` file do while the device is locked, and that both recover after unlocking. It skips on the Simulator and unless `KVS_LOCK_TEST=1`.
    - From its report: map SQLite's locked-database result code to a `.protectedDataUnavailable` case, like `FileStorage`'s, and confirm File's `EPERM` mapping on a device.
-   - Also confirm, once Keychain no longer reads before its calls (§5.2): that the keychain deletes a `.whenUnlocked` item while locked, and that saves at `.complete` and `.whenUnlocked` fail while locked.
+   - Also confirm, now that Keychain no longer reads before its calls (§5.2): that the keychain deletes a `.whenUnlocked` item while locked, and that saves at `.complete` and `.whenUnlocked` fail while locked.
    - And, for the sealed scopes (§S): what each protection level does while locked; whether the system deletes a database's files one at a time in `.cache` and `.temporary`; which file protection classes macOS enforces.
    - **Keychain `.iCloud(.appGroup(id:))` with an App Group id**, not a Keychain Sharing group: whether synced items in an App Group access group sync to the user's other devices.
    - **The same key written on two devices before they sync**, for Keychain's and Ubiquitous's `.iCloud` scopes: which value wins. Last writer is likely but not measured; the result becomes a doc line on each `.iCloud` case.

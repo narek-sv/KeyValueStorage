@@ -33,21 +33,11 @@ final class InMemoryKeychain: KeychainBackingStore {
     }
 
     func read(_ query: KeychainQuery) -> (KeychainOperationStatus, AnyObject?) {
-        let matching = items.filter { matches($0, query) }
-        guard let first = matching.first else {
+        guard let item = items.first(where: { matches($0, query) }) else {
             return (.notFound, nil)
         }
 
-        guard query.matchLimit == .all else {
-            return (.success, first.data as NSData?)
-        }
-
-        // What `clear()` lists: each item's account, synchronizability and data
-        return (.success, matching.map { item -> [String: Any] in
-            var attributes: [String: Any] = [kSecAttrAccount as String: item.account ?? "", kSecAttrSynchronizable as String: item.synchronizable]
-            attributes[kSecValueData as String] = item.data
-            return attributes
-        } as NSArray)
+        return (.success, item.data as NSData?)
     }
 
     func update(_ query: KeychainQuery, with attributes: KeychainQuery) -> KeychainOperationStatus {

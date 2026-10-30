@@ -11,9 +11,9 @@ import Security
 // MARK: - KeychainStorage
 
 /// Values in generic password items, one per key, in the scope's service and access group.
-/// - Note: Only an item whose data is `Data` is a value. Any other item at a key's account is never fetched, updated
-///   or removed, and `save` throws `.keyOccupied`.
-/// - Warning: If another process changes an item between the storage's check and its call, the call's error is thrown.
+/// - Note: `save`, `delete` and `clear()` never read an item first: reading decrypts it, which fails while the device is locked.
+///   An item without data fetches as `nil`, and is replaced and removed like any value.
+/// - Warning: If another process adds the key's item between `save`'s update and its add, the add's error is thrown.
 public final class KeychainStorage: KeyValueDataStorage {
 
     // MARK: Properties
@@ -46,66 +46,40 @@ public final class KeychainStorage: KeyValueDataStorage {
     // MARK: Main Functionality
 
     public func fetch(forKey key: Key) throws(Error) -> Data? {
-        guard case let .value(data) = try item(forKey: key) else {
-            return nil
+        let (status, result) = backingStore.read(query(for: key, returnData: true, matchLimit: .one))
+        switch status {
+        case .success:  return result as? Data
+        case .notFound: return nil
+        default:        throw .os(status.code)
         }
-
-        return data
     }
 
     public func save(_ value: Data, forKey key: Key) throws(Error) {
-        switch try item(forKey: key) {
-        case .none:
-            try check(backingStore.add(query(for: key, accessibility: key.accessibility, valueData: value)))
-        case .value:
-            try check(backingStore.update(query(for: key), with: KeychainQuery(accessibility: key.accessibility, valueData: value)))
-        case .other:
-            throw .keyOccupied(account(for: key))
+        let status = backingStore.update(query(for: key), with: KeychainQuery(accessibility: key.accessibility, valueData: value))
+        guard status == .notFound else {
+            return try check(status)
         }
+
+        try check(backingStore.add(query(for: key, accessibility: key.accessibility, valueData: value)))
     }
 
     public func delete(forKey key: Key) throws(Error) {
-        guard case .value = try item(forKey: key) else {
-            return
-        }
-
-        try check(backingStore.remove(query(for: key)))
+        try remove(query(for: key))
     }
 
     public func clear() throws(Error) {
-        let (status, result) = backingStore.read(query(account: nil, synchronizable: .any, returnAttributes: true, returnData: true, matchLimit: .all))
-        switch status {
-        case .success:  break
-        case .notFound: return
-        default:        throw .os(status.code)
-        }
-
-        // One by one, because a query that matches the scope's items also matches the ones whose data isn't `Data`
-        for item in result as? [[String: Any]] ?? [] where item[kSecValueData as String] is Data {
-            guard let account = item[kSecAttrAccount as String] as? String else {
-                continue
-            }
-
-            let synchronizable: KeychainQuery.Synchronizable = item[kSecAttrSynchronizable as String] as? Bool == true ? .yes : .no
-            try check(backingStore.remove(query(account: account, synchronizable: synchronizable)))
-        }
+        try remove(query(account: nil, synchronizable: .any))
     }
 
     // MARK: Helpers
 
-    private enum Item {
-        case none
-        case value(Data)
-        case other
-    }
-
-    private func item(forKey key: Key) throws(Error) -> Item {
-        let (status, result) = backingStore.read(query(for: key, returnData: true, matchLimit: .one))
-        switch status {
-        case .success:  return (result as? Data).map(Item.value) ?? .other
-        case .notFound: return .none
-        default:        throw .os(status.code)
+    private func remove(_ query: KeychainQuery) throws(Error) {
+        let status = backingStore.remove(query)
+        guard status != .notFound else {
+            return
         }
+
+        try check(status)
     }
 
     private func check(_ status: KeychainOperationStatus) throws(Error) {
@@ -139,7 +113,6 @@ public final class KeychainStorage: KeyValueDataStorage {
         account: String?,
         synchronizable: KeychainQuery.Synchronizable,
         accessibility: Key.Accessibility? = nil,
-        returnAttributes: Bool? = nil,
         returnData: Bool? = nil,
         matchLimit: KeychainQuery.MatchLimit? = nil,
         valueData: Data? = nil
@@ -152,7 +125,6 @@ public final class KeychainStorage: KeyValueDataStorage {
             synchronizable: synchronizable,
             accessibility: accessibility,
             useDataProtectionKeychain: true,
-            returnAttributes: returnAttributes,
             returnData: returnData,
             matchLimit: matchLimit,
             valueData: valueData
