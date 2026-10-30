@@ -225,9 +225,9 @@ try await storage.save(/* accepts only MyType*/, forKey: key)
 `UnifiedStorage` has 5 built-in storage types:
 * `In-memory` - This storage type persists the items only within an app session.
 * `User-Defaults` - This storage type persists the items within the app's lifetime.
-* `File-System` -  This storage saves every value as a separate file in `Application Support/<bundle identifier>/KeyValueStorage/Files`, or in the App Group container. The file is replaced atomically, so a crash never leaves a value half-written or missing. Since the key is used as the file name, it must be a single path component: an empty key, `.`, `..` and keys containing `/` throw `FileStorage.Error.invalidKey`. Uppercase letters, other characters that change with case, and `%` are percent-encoded in the file name, so `Key` is saved as `%4Bey` and never shares a file with `key`, even on a case-insensitive disk. A file name can be at most 255 bytes, and an encoded character takes three bytes for each of its UTF-8 bytes, so longer keys throw `invalidKey` too.
+* `File-System` -  This storage saves every value as a separate file in the scope's folder, `Application Support/<app>/<namespace>!/<protection>` for `.own` scopes (`Caches` or `tmp` for the other retentions), or in the App Group container. The file is replaced atomically, so a crash never leaves a value half-written or missing. Any string is a valid key: its file name keeps `a`–`z`, `0`–`9`, `_` and `-`, writes a capital as `!` and its lowercase letter, and every other byte as `%` and two hex digits. So `Key` is saved as `!key` and never shares a file with `key`, even on a case-insensitive disk. A file name can be at most 255 bytes, so longer keys throw `FileStorage.Error.invalidKey`.
 * `Keychain` - This storage type keeps the items in secure storage and persists even after app re-installations. Supports `iCloud` synchronization.
-* `SQLite` - This storage keeps all values of a scope in one SQLite database, `Application Support/<bundle identifier>/KeyValueStorage/SQLite/KeyValueStorage.sqlite`, or in the App Group container. Any string is a valid key, and all storages of a scope, in your app and its extensions, share the same database at the same time. Each operation is atomic across processes, but a fetch followed by a save is not: another process can save in between.
+* `SQLite` - This storage keeps all values of a scope in one SQLite database, the hidden `.KeyValueStorage.sqlite` in the same folder as the `File-System` storage of the scope. Any string is a valid key, and all storages of a scope, in your app and its extensions, share the same database at the same time. Each operation is atomic across processes, but a fetch followed by a save is not: another process can save in between.
 
 You can also define your own storage, and it will work with it seamlessly with `UnifiedStorage` out of the box.
 All you need to do is:
@@ -386,13 +386,30 @@ However, it's important to note that only the changes made through observable st
 ---
 ## Error handling
 
-All the methods of the `UnifiedStorage` are throwing. Even with a correct setup, some errors can't be avoided and are worth handling:
-* `KeychainStorage.Error.os` - for example, `errSecInteractionNotAllowed` while the device is locked and the item is only accessible `.whenUnlocked`, or `errSecMissingEntitlement` when the scope's access group isn't in the app's entitlements.
-* `FileStorage.Error` - an invalid key, missing permissions, or a file that is protected while the device is locked.
-* `SQLiteStorage.Error.sqlite` - the database file is damaged, or another process kept it busy for longer than a second.
-* `DecodingError` - the stored data doesn't match the key's value type, for example after changing the type of an existing key.
-* `FileStorage.Error.failedToInitSharedDirectory` and `SQLiteStorage.Error.failedToInitSharedDirectory` - the system has no container for the App Group, for example when the target isn't in the group.
-* `UserDefaultsStorage.Error` - the scope is a name `UserDefaults` doesn't allow: your app's own bundle identifier, or `NSGlobalDomain`.
+`UnifiedStorage` and `KeyValueCodingStorage` throw `KeyValueCodingStorage<Storage>.Error`:
+* `.storage(error)` - the storage failed; `error` is the storage's own `Error`, listed below.
+* `.coding(error)` - the coder couldn't encode or decode the value, for example a `DecodingError` after the type of an existing key changed.
+
+Even with a correct setup, some errors can't be avoided and are worth handling:
+* `.protectedDataUnavailable` (`FileStorage`, `KeychainStorage`) - the value is protected while the device is locked; try again once it's unlocked. `FileStorage` also throws it when the sandbox denies access.
+* `KeychainStorage.Error.keychain(status:)` - any other Security framework status, such as `errSecMissingEntitlement` when the scope's access group isn't in the app's entitlements.
+* `SQLiteStorage.Error.sqlite(code:message:)` - the database is damaged, or another process kept it busy for longer than a second. A database protected while the device is locked fails here too, with SQLite's own code.
+
+Setup mistakes:
+* `.groupDirectoryNotFound(id)` (`FileStorage`, `SQLiteStorage`) - the system has no container for the App Group, usually because the target isn't in the group, or the id is empty.
+* `.directoryNotFound(directory)` (`FileStorage`, `SQLiteStorage`) - the system has no Application Support or Caches directory for the user.
+* `UserDefaultsStorage.Error.invalidSuiteName(name)` - the App Group id is empty, the global domain or your app's own suite, or `UserDefaults` rejects it.
+
+Keys, namespaces and values over a storage's limits:
+* `.invalidKey(key)` - `FileStorage`: its encoded file name is over 255 bytes; `UbiquitousStorage`: its stored key, with the namespace, is over 128 UTF-16 code units.
+* `.invalidNamespace(namespace)` (`FileStorage`, `SQLiteStorage`) - its encoded folder name is over 255 bytes.
+* `UbiquitousStorage.Error.valueTooLarge(key:size:)` - the value is over 1 MiB.
+
+Something that isn't a value where a value goes. It's never replaced or removed:
+* `FileStorage.Error.pathOccupied(url)` - for example a folder at a key's file, or a file where the scope's folder goes.
+* `.keyOccupied(storedKey)` (`UserDefaultsStorage`, `UbiquitousStorage`) - a value that isn't `Data` is under the key. In `UserDefaults`, registered defaults count.
+
+`FileStorage` and `SQLiteStorage` wrap any other failure in `.other(error)`, keeping the original error. `InMemoryStorage` never throws.
 
 ---
 ## Thread Safety

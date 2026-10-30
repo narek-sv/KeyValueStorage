@@ -10,6 +10,7 @@ import Foundation
 // MARK: - KeychainStorage + Error
 
 public extension KeychainStorage {
+    /// The errors a `KeychainStorage` throws.
     enum Error: Swift.Error, Sendable {
         /// `errSecInteractionNotAllowed`: the item is protected while the device is locked, or needs user interaction.
         case protectedDataUnavailable
@@ -21,7 +22,7 @@ public extension KeychainStorage {
 // MARK: - Internal
 
 extension KeychainStorage.Error {
-    /// For a status that failed the operation.
+    /// The error for a status that failed the operation.
     init(_ status: KeychainOperationStatus) {
         switch status {
         case .interactionNotAllowed:    self = .protectedDataUnavailable

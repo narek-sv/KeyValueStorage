@@ -8,6 +8,6 @@
 // MARK: - InMemoryStorage + Error
 
 public extension InMemoryStorage {
-    /// Never thrown.
+    /// `InMemoryStorage` never throws.
     typealias Error = Never
 }
