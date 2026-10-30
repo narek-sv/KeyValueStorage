@@ -15,7 +15,7 @@ import os
 /// Internal mutual-exclusion lock.
 /// Uses OSAllocatedUnfairLock where available, otherwise falls back to NSLock.
 final class Lock: @unchecked Sendable {
-    private let backend: LockBackend
+    private let backend: any LockBackend
     
     init() {
         #if canImport(os)

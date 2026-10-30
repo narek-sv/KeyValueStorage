@@ -17,11 +17,11 @@ import Foundation
 public struct RawDataCoder: DataCoder {
     // MARK: Properties
 
-    private let fallback: DataCoder
+    private let fallback: any DataCoder
     
     // MARK: Initializers
 
-    public init(fallback: DataCoder = JSONDataCoder()) {
+    public init(fallback: any DataCoder = JSONDataCoder()) {
         self.fallback = fallback
     }
     

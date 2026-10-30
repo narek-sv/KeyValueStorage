@@ -117,7 +117,7 @@ final class RawDataCoderTests: XCTestCase {
     
     // MARK: Helpers
     
-    private func assertUsesFallback<Value: CodingValue & Equatable>(_ value: Value, _ coder: RawDataCoder, _ fallback: DataCoder, line: UInt = #line) async throws {
+    private func assertUsesFallback<Value: CodingValue & Equatable>(_ value: Value, _ coder: RawDataCoder, _ fallback: any DataCoder, line: UInt = #line) async throws {
         let encoded = try await coder.encode(value)
         let expected = try await fallback.encode(value)
         let decoded = try await coder.decode(encoded) as Value

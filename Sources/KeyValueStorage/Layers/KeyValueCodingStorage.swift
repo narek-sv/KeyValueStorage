@@ -46,7 +46,7 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
     
     // MARK: Properties
 
-    private let coder: DataCoder
+    private let coder: any DataCoder
     private let storage: Storage
     
     public var scope: Storage.Scope {
@@ -55,7 +55,7 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
     
     // MARK: Initializers
     
-    public init(storage: Storage, coder: DataCoder = RawDataCoder()) {
+    public init(storage: Storage, coder: any DataCoder = RawDataCoder()) {
         self.coder = coder
         self.storage = storage
     }

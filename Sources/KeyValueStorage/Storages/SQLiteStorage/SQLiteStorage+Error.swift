@@ -18,14 +18,14 @@ public extension SQLiteStorage {
         /// Its encoded folder name exceeds 255 bytes.
         case invalidNamespace(Namespace)
         case sqlite(code: Int32, message: String)
-        case other(Swift.Error)
+        case other(any Swift.Error)
     }
 }
 
 // MARK: - Internal
 
 extension SQLiteStorage.Error {
-    init(_ error: Swift.Error) {
+    init(_ error: any Swift.Error) {
         if let error = error as? SQLiteError {
             self = .sqlite(code: error.code, message: error.message)
         } else {

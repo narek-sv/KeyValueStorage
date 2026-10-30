@@ -49,10 +49,10 @@ public protocol UnifiedStorageFactory: Sendable {
 // MARK: - DefaultUnifiedStorageFactory
 
 open class DefaultUnifiedStorageFactory: UnifiedStorageFactory, @unchecked Sendable {
-    let coder: DataCoder
+    let coder: any DataCoder
     
     /// - Parameter coder: Encodes the values of every storage the factory creates.
-    public init(coder: DataCoder = RawDataCoder()) {
+    public init(coder: any DataCoder = RawDataCoder()) {
         self.coder = coder
     }
     
@@ -86,11 +86,11 @@ public actor UnifiedStorage {
     // MARK: Properties
     
     private var storages = [AnyHashable: Any]()
-    private let factory: UnifiedStorageFactory
+    private let factory: any UnifiedStorageFactory
 
     // MARK: Initializers
 
-    public init(factory: UnifiedStorageFactory) {
+    public init(factory: any UnifiedStorageFactory) {
         self.factory = factory
     }
     

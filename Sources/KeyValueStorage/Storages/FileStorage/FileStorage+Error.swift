@@ -23,14 +23,14 @@ public extension FileStorage {
         case pathOccupied(URL)
         /// `EPERM`: the file is protected while the device is locked, or the sandbox denied access.
         case protectedDataUnavailable
-        case other(Swift.Error)
+        case other(any Swift.Error)
     }
 }
 
 // MARK: - Internal
 
 extension FileStorage.Error {
-    init(_ error: Swift.Error) {
+    init(_ error: any Swift.Error) {
         let nsError = error as NSError
         let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError
 
