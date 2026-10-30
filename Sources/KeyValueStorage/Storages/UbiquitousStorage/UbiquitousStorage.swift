@@ -9,6 +9,9 @@ import Foundation
 
 // MARK: - UbiquitousStorage
 
+/// Values in the iCloud key-value store, one per stored key, of up to 1 MiB each.
+/// - Note: Only `Data` at a stored key is a value. Anything else there fetches as `nil`, is never removed, and makes `save`
+///   throw `.keyOccupied`.
 @available(watchOS 9.0, *)
 public final class UbiquitousStorage: KeyValueDataStorage {
 
@@ -18,6 +21,7 @@ public final class UbiquitousStorage: KeyValueDataStorage {
 
     private let backingStore: any UbiquitousBackingStore
     private let locator: any UbiquitousLocator
+
     public let scope: Scope
 
     // MARK: Initializers
@@ -91,7 +95,7 @@ public final class UbiquitousStorage: KeyValueDataStorage {
               let encoded = try? locator.storedKey(forKey: key, in: scope) else {
             return false
         }
-        
+
         return Key(encoded) == Key(storedKey)
     }
 }

@@ -9,12 +9,16 @@ import Foundation
 
 // MARK: - UserDefaultsStorage
 
+/// Values in a `UserDefaults` suite, one per stored key.
+/// - Note: Only `Data` at a stored key is a value. Anything else there fetches as `nil`, is never removed, and makes `save`
+///   throw `.keyOccupied`.
 public final class UserDefaultsStorage: KeyValueDataStorage {
 
     // MARK: Properties
 
     private let suite: any UserDefaultsSuite
     private let locator: any UserDefaultsLocator
+
     public let scope: Scope
 
     // MARK: Initializers
@@ -80,6 +84,7 @@ public final class UserDefaultsStorage: KeyValueDataStorage {
             return false
         }
 
-        return Key(locator.storedKey(forKey: key, in: scope)) == Key(storedKey)
+        let encoded = locator.storedKey(forKey: key, in: scope)
+        return Key(encoded) == Key(storedKey)
     }
 }

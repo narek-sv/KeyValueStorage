@@ -9,6 +9,7 @@ import Foundation
 
 // MARK: - InMemoryStorage
 
+/// Values in the process's memory, shared by every storage of the scope; they last until the process exits.
 public final class InMemoryStorage: KeyValueDataStorage {
 
     // MARK: Properties
@@ -16,6 +17,7 @@ public final class InMemoryStorage: KeyValueDataStorage {
     private let backingStore: any InMemoryBackingStore
     private let locator: any InMemoryLocator
     private let bucket: String
+
     public let scope: Scope
 
     // MARK: Initializers

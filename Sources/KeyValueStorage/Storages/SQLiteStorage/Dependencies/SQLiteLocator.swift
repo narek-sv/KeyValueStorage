@@ -48,6 +48,8 @@ open class DefaultSQLiteLocator: SQLiteLocator {
         fileManager.containerURL(forSecurityApplicationGroupIdentifier: groupId)
     }
 
+    // MARK: App Identifier
+
     /// `OwnIdentity.identifier`.
     open var ownIdentifier: String {
         OwnIdentity.identifier

@@ -69,16 +69,16 @@ public final class KeychainStorage: KeyValueDataStorage {
     }
 
     public func delete(forKey key: Key) throws(Error) {
-        try remove(query(account: account(for: key)))
+        try removeValue(matching: query(account: account(for: key)))
     }
 
     public func clear() throws(Error) {
-        try remove(query(account: nil))
+        try removeValue(matching: query(account: nil))
     }
 
     // MARK: Helpers
 
-    private func remove(_ query: KeychainQuery) throws(Error) {
+    private func removeValue(matching query: KeychainQuery) throws(Error) {
         let status = backingStore.remove(query)
         guard status != .notFound else {
             return

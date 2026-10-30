@@ -9,12 +9,14 @@ import Foundation
 
 // MARK: - SQLiteStorage
 
+/// Values in a SQLite database, one row per key; `clear()` empties the whole database.
 public final class SQLiteStorage: KeyValueDataStorage {
 
     // MARK: Properties
 
     private let database: any SQLiteDatabase
     private let locator: any SQLiteLocator
+
     public let scope: Scope
 
     // MARK: Initializers

@@ -47,7 +47,7 @@ open class DefaultUbiquitousLocator: UbiquitousLocator {
     }
 
     open func key(forStoredKey storedKey: String, in scope: UbiquitousStorage.Scope) -> UbiquitousStorage.Key? {
-        storedKey.droppingExactPrefix(Self.prefix(for: scope)).map { .init($0) }
+        storedKey.droppingExactPrefix(Self.prefix(for: scope)).map { UbiquitousStorage.Key($0) }
     }
 
     // MARK: Helpers

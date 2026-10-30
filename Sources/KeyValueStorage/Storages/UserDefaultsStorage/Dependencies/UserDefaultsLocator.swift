@@ -63,7 +63,7 @@ open class DefaultUserDefaultsLocator: UserDefaultsLocator {
     }
 
     open func key(forStoredKey storedKey: String, in scope: UserDefaultsStorage.Scope) -> UserDefaultsStorage.Key? {
-        storedKey.droppingExactPrefix(Self.prefix(for: scope)).map { .init($0) }
+        storedKey.droppingExactPrefix(Self.prefix(for: scope)).map { UserDefaultsStorage.Key($0) }
     }
 
     // MARK: Helpers

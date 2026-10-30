@@ -46,14 +46,14 @@ public final class FileStorage: KeyValueDataStorage {
             return nil
         }
 
-        return try execute { try backingStore.read(at: url) }
+        return try Self.execute { try backingStore.read(at: url) }
     }
 
     public func save(_ value: Data, forKey key: Key) throws(Error) {
         let url = try url(for: key)
         switch try itemType(at: root) {
         case .typeDirectory?:   break
-        case nil:               try execute { try backingStore.createDirectory(at: root) }
+        case nil:               try Self.execute { try backingStore.createDirectory(at: root) }
         default:                throw .pathOccupied(root)
         }
 
@@ -62,7 +62,7 @@ public final class FileStorage: KeyValueDataStorage {
         default:                    throw .pathOccupied(url)
         }
 
-        try execute { try backingStore.write(value, at: url, options: writingOptions) }
+        try Self.execute { try backingStore.write(value, at: url, options: writingOptions) }
     }
 
     public func delete(forKey key: Key) throws(Error) {
@@ -75,7 +75,7 @@ public final class FileStorage: KeyValueDataStorage {
         }
 
         // The folder can also hold SQLite's files and other code's
-        let names = try execute { try backingStore.itemNames(at: root) }
+        let names = try Self.execute { try backingStore.itemNames(at: root) }
         for name in names where isValueName(name) {
             try removeValue(at: root.appendingPathComponent(name, isDirectory: false))
         }
@@ -98,7 +98,7 @@ public final class FileStorage: KeyValueDataStorage {
             return
         }
 
-        try execute { try backingStore.remove(at: url) }
+        try Self.execute { try backingStore.remove(at: url) }
     }
 
     /// Only names this storage writes, byte for byte: a locator's reverse mapping can accept more.
@@ -117,7 +117,7 @@ public final class FileStorage: KeyValueDataStorage {
 
     /// `nil` only if nothing is there, so an unreadable path never passes for an empty one.
     private func itemType(at url: URL) throws(Error) -> FileAttributeType? {
-        try execute {
+        try Self.execute {
             do {
                 return try backingStore.itemType(at: url)
             } catch CocoaError.fileReadNoSuchFile {
@@ -137,7 +137,7 @@ public final class FileStorage: KeyValueDataStorage {
         }
     }
 
-    private func execute<T>(_ body: () throws -> T) throws(Error) -> T {
+    private static func execute<T>(_ body: () throws -> T) throws(Error) -> T {
         do {
             return try body()
         } catch {

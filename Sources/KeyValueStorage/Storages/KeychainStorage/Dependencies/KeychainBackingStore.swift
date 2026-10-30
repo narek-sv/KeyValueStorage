@@ -33,9 +33,8 @@ open class DefaultKeychainBackingStoreWrapper: KeychainBackingStore {
         return (status, result)
     }
     
-    open func add(_ query: KeychainQuery) -> KeychainOperationStatus {
-        let query = query.dictionary
-        return KeychainOperationStatus(status: SecItemAdd(query as CFDictionary, nil))
+    open func add(_ attributes: KeychainQuery) -> KeychainOperationStatus {
+        KeychainOperationStatus(status: SecItemAdd(attributes.dictionary, nil))
     }
     
     open func update(_ query: KeychainQuery, with attributes: KeychainQuery) -> KeychainOperationStatus {

@@ -11,16 +11,22 @@ import SQLite3
 // MARK: - SQLiteBackingStore
 
 public protocol SQLiteBackingStore {
+    /// `FileManager.createDirectory(atPath:withIntermediateDirectories: true)`.
     func createDirectory(at url: URL) throws
+    /// `sqlite3_open_v2`, creating the database and its table if needed.
     func open(at url: URL, protection: FileProtectionType?) throws -> any SQLiteDatabase
 }
 
 // MARK: - SQLiteDatabase
 
 public protocol SQLiteDatabase: AnyObject {
+    /// `SELECT value … WHERE key = ?`.
     func read(forKey key: String) throws -> Data?
+    /// `INSERT OR REPLACE`.
     func write(_ data: Data, forKey key: String) throws
+    /// `DELETE … WHERE key = ?`.
     func remove(forKey key: String) throws
+    /// `DELETE` of every row.
     func removeAll() throws
 }
 
