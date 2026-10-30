@@ -1,6 +1,32 @@
 # KeyValueStorage 4.0 — Refactor Plan
 
-## Status (2026-10-29)
+## 0. How to work on this plan
+
+This file is the source of truth for the 4.0 refactor, written so that anyone, human or AI, can continue from it alone. The Status below can lag `git log`, so check the log first. Then read §S, which changes every storage and overrides what §4 and §5 say about scopes, keys and places. Work on branch `4.0.0-experiments`.
+
+**Working rules** (the maintainer's):
+- **Commits** only when the maintainer asks, one per step.
+- **Pilot, then roll out:** plan a change fully, adopt it on one storage, stop for review, then apply the settled pattern to the other five. Audit errors and clashes along the way.
+- **Simple, bulletproof, sound:** the simplest rule that holds for every input.
+  - No logic in wrappers (E0): a default backing store is one system call per member.
+  - All naming lives in the locators. No shared helper that a dependency only forwards to.
+  - No parameters or properties for demonstration only.
+  - Never swallow a "can't tell": throw instead.
+- **Consistency:** a rule decided for one storage applies to all six, Keychain included. Keep the per-storage tables in this plan current.
+- **Names** are exact bytes everywhere (§4.3, `ExactString` in §S). Encode, don't reject: any string is a valid key or namespace, and only system limits throw.
+- **System and SDK gotchas** get a doc comment on the case they affect, not a workaround, unless they'd let two scopes reach each other's values (§S).
+- **Comments** hold only essentials, gotchas and warnings, one line where possible, with no narration. API docs use `///`, `- Note:` and `- Warning:`.
+- **Tests** use XCTest, with `// Given`, `// When`, `// Then` and mocks that record their calls. The gated files keep 100% region and line coverage (§11.1). Every behavior the docs state is either measured by a test or listed as "to verify" (§11.3, §13 item 7).
+- **When asked whether anything is left open,** do one complete pass, and say "none" when nothing is.
+
+**Commands:**
+- macOS: `swift build --build-tests`, with no warnings, and `swift test`.
+- iOS Simulator: `xcodebuild test -scheme KeyValueStorage -destination "platform=iOS Simulator,name=<an installed iPhone>"`.
+- KeychainHost, for the real keychain on the Simulator: `xcodebuild test -project Tests/KeychainHost/KeychainHost.xcodeproj -scheme KeychainHost -destination "platform=iOS Simulator,name=<an installed iPhone>"`.
+- Coverage: §11.4.
+- Test runs take minutes, so run them in the background rather than with a short timeout.
+
+## Status (2026-10-30)
 
 - **Done: locators (§4.3).** Naming moved out of the storages into one locator per storage. Each step also applies the error contract (§4.4) and the clash rules (§4.5), and writes the storage's mock-based unit tests.
   - **Done, in review: FileStorage**, the pilot (§5.3). Its tests pass on macOS and the iOS Simulator. The gated files have 100% coverage, except the `#available(macOS 11)` fallback.
@@ -12,11 +38,75 @@
   - **Done: Keychain** (§5.2): the root uses service `""` and App Group services carry the group, so no scope reaches another's items; only `Data` items are values; KeychainHost runs again, with real-keychain tests. Gated files at 100%.
   - **Done: InMemory** (§5.5): the default store keys buckets and values by bytes, so every storage keeps keys exact (§4.3); locator and storage tests. Gated files at 100%.
   - **Deferred: locked-device errors** (§13, item 7), which need a real iPhone and a device signing setup for KeychainHost.
+  - **Decided: the sealed scopes** (§S, D21), which settle the clash audit (§4.5). To implement, with the planned items below.
+  - **Planned: Keychain without reads before its calls** (§5.2), so `delete` no longer fails while locked, and app-scope services that carry the app's identifier, so two apps' app scopes never meet.
+  - **Planned: app-scope paths carry the app's identifier** (§4, D9).
+  - **Planned: UserDefaults' app scope gets a suite of its own, and UserDefaults and Ubiquitous keys carry the library's mark** (§5.4, §5.7).
   - **Locators are done for all six storages.** What's left of `Tests/Legacy3x/` belongs to the coding, observation and unified layers.
 - **Done: phases 0–6, the source side.** The synchronous `KeyValueDataStorage` with `init(scope:backingStore:)`, typed throws, scopes with namespaces, every storage on its backing store, the global actors removed, and `KeychainWrapper.swift` deleted.
 - **Added: `UbiquitousStorage`** (§5.7), on the same pattern.
 - **Tests:** the public API target and the coder tests are on the 4.0 API and pass. The 3.x unit tests live in `Tests/Legacy3x/` (not a target) as the porting reference; each storage's locator step ports and deletes its file.
-- **Next: phases 7–9**, the coding, isolation and facade layers. The observation and unified layers still emit isolated-conformance warnings on Swift 6.2+ compilers, because the storage protocol is no longer `Sendable`.
+- **Next: the sealed scopes** (§S, Appendix A, phase 6b). Pilot on FileStorage and stop for review, then SQLite, UserDefaults, Ubiquitous, Keychain and InMemory. Each step brings that storage's planned items (§5.2–5.7), its part of the error refactor (§4.4) and its test revisit (§11.3).
+- **Then: phases 7–9**, the coding, isolation and facade layers. The observation and unified layers still emit isolated-conformance warnings on Swift 6.2+ compilers, because the storage protocol is no longer `Sendable`.
+
+## S. Sealed scopes and keys (decided 2026-10-30; next, and it changes every storage)
+
+Read this first. It replaces the scope, key and place rules that §4 and §5 describe for today's code: where they differ, this section wins. Phase 6b implements it (§12), and Appendix A holds the agreed enums and docs.
+
+**Rule:** the user says what they mean, and the library picks the place and owns every name inside it. A scope says who sees the values, on which devices, how long the system keeps them and how they're protected. It never names a system location. Interop with other code's files, items or keys goes through a custom locator, which then owns the guarantees (§13, item 8; D21).
+
+**Shared types** (`Layers/KeyValueDataStorage.swift`):
+- `ExactString`: a string compared and hashed by its exact UTF-8 bytes (`String`'s `==` takes `"é"` and `"e\u{301}"` for one); `ExpressibleByStringInterpolation` and `CustomStringConvertible`. Every storage has `typealias Namespace = ExactString` and `typealias Key = ExactString`, so the layers (`UnifiedStorage`'s cache, observation) compare names the way the storages store them. One type for both is fine: it carries no meaning of its own.
+- `KeyValueDataStorageScope` requires only `Hashable & Sendable` and `static var default`. `defaultNamespace` (`"KeyValueStorage"`) replaces `defaultName`. Scopes have no `namespace` property: locators read it from the cases.
+- The protocol keeps `associatedtype Key: KeyValueDataStorageKey` (`Hashable & Sendable`) generic, so custom storages can bring their own key types. `KeyValueDataStorageNamespace` goes.
+
+**Scopes.** The place comes first and the namespace last. Every namespace is required, never optional or defaulted, so there's no root.
+
+```swift
+// FileStorage, SQLiteStorage
+case own(_ retention: Retention = .persistent, protection: Protection = .inherited, namespace: Namespace)
+case appGroup(id: String, protection: Protection = .inherited, namespace: Namespace)
+// UserDefaultsStorage
+case own(namespace: Namespace)
+case appGroup(id: String, namespace: Namespace)
+// KeychainStorage
+case own(protection: Protection = .whileLocked, namespace: Namespace)
+case appGroup(id: String, protection: Protection = .whileLocked, namespace: Namespace)
+case iCloud(Owner, protection: SyncedProtection = .whileLocked, namespace: Namespace)   // Owner: .own, .appGroup(id:)
+// InMemoryStorage
+case own(namespace: Namespace)
+// UbiquitousStorage
+case iCloud(Owner, namespace: Namespace)   // Owner: .own
+```
+
+- **Who and where:** `own` is the running app's or extension's own, never its containing app's: they share only through `appGroup`. `appGroup` is the group's apps and extensions. `iCloud` syncs to the user's other devices, and its `Owner`, never optional, says which apps, spelled like the device cases.
+- **Retention** (File, SQLite): `.persistent` (Application Support), `.cache` (Caches: the system can delete it when storage runs low) and `.temporary` (tmp: the system can delete it while the app isn't running). App Groups take none: `containerURL(forSecurityApplicationGroupIdentifier:)` gives one folder, with no defined caches, support or temporary folder, so a group's values live at its root.
+- **Protection** is part of the place, like retention: scopes that differ only in protection never share values. One vocabulary for File, SQLite and Keychain, each listing its system's levels: `.inherited` and `.none` (File, SQLite), `.untilFirstUnlock`, `.whileLocked`, `.whileLockedUnlessOpen` (File, SQLite), and Keychain's `…ThisDeviceOnly` levels and `.whileLockedOrWithoutPasscode`. Keychain's `.iCloud` takes `SyncedProtection` (`.untilFirstUnlock`, `.whileLocked`), so a synced item with a device-only level can't be written. The defaults are each system's: `.inherited`, and Keychain's `.whileLocked`.
+- **Keys are names only** in every storage: protection, accessibility and sync moved into the scopes. File's `Key` loses `protection`; Keychain's loses `accessibility` and `isSynchronizable`.
+
+**Places** (the default locators):
+
+| Scope | File, SQLite | UserDefaults | Keychain | InMemory | Ubiquitous |
+|---|---|---|---|---|---|
+| `.own` | `<Application Support, Caches or tmp>/<encoded bundle ID>/`, a folder per namespace and protection; SQLite's `.KeyValueStorage.sqlite` in it | suite `<encoded bundle ID>.KeyValueStorage` | service `<bundle ID>:<namespace>` with the protection, the default access group, local items | the process's bucket | — |
+| `.appGroup(id)` | the group container's root, a folder per namespace and protection | the group's suite, `id` | service `<group>/<namespace>` with the protection, access group `id`, local items | — | — |
+| `.iCloud(owner)` | — | — | the owner's service and group, synchronizable items | — | the store |
+
+- The protection level goes into the folder, database file or service name in a form no namespace encodes to. The obvious `name!code` would collide with File's capital marker, where `!c` is `C`.
+- **Every `.own` place carries the app's identifier** (D9), so two apps' `.own` scopes never meet, also on macOS without App Sandbox and when Keychain Sharing lists a shared group first (§5.2). InMemory needs none (per process); Ubiquitous's store is per app unless entitlements share it.
+  - Where the identifier becomes a file name (File and SQLite paths, UserDefaults' suite), it's written in File's lossless encoding. Bundle IDs that differ only in case then never share a file on macOS, the process-name fallback needs no rules of its own, the folder never meets the conventional `Application Support/<bundle ID>` other code uses, and the suite name never starts with `group.`. Keychain services keep it as is, because the keychain compares exactly.
+  - The one limit: a bundle ID longer than about 120 characters, with many capitals or dots, could pass 255 bytes once encoded, and the storage would throw. Real bundle IDs are far shorter.
+- **Marks:** UserDefaults and Ubiquitous store keys as `<namespace>!/<key>`, because other code writes to App Group suites and to the store (§5.4, §5.7). File folders keep their `!`. Keychain needs none: its services start with the bundle ID or the group.
+- **Rejected:** every `.appGroup`, and Keychain's `Owner.appGroup`, throws for an empty id. UserDefaults' `.appGroup` also throws for the global domain's names and for `.own`'s suite name (§4.5, item 1).
+- **System and SDK gotchas are documented on the case they affect, not worked around**, unless they'd let two scopes reach each other's values, as with the rejection above. The docs cover `.own` belonging to the bundle ID (builds that share one share values, and unit tests hosted in an app use the app's, so tests take a namespace of their own); macOS without App Sandbox; File and SQLite paths longer than 1024 bytes in all, which the system refuses even when every name fits in 255; Keychain's default access group; keychain items outliving the app; unentitled App Groups (macOS gives any id a folder, UserDefaults stays in the app without an error, Keychain fails with `errSecMissingEntitlement`); macOS group ids that differ only in case; launch arguments and registered defaults; Ubiquitous's quota and its missing entitlement; iCloud being off or signed out; and the passcode level.
+
+**Gone:** `AppScope`, `.documents`, `.directory(at:)` (a custom place goes through a locator), `.suite(named:)`, `.standard`, the root and its rules (root-key escaping, Keychain's service `""`, InMemory's unnamed bucket), and the per-storage namespace cases (`.directory(named:)`, `.keyPrefix(named:)`, `.service(named:)`, `.bucket(named:)`).
+
+**Settles:** the §4.5 audit (items 2–5 by construction, item 1 by the rejection), URL aliasing, and the default suite that apps shared on macOS.
+
+**Costs:** keys that need different protection or retention need a scope each; changing either later starts an empty set; a forgotten parameter reads another set and gets `nil`; a custom place, or interop, needs a custom locator.
+
+**Reference:** Appendix A holds the full enums with their agreed doc comments. Implement from it.
 
 ## 1. Context
 
@@ -53,6 +143,7 @@ The library offers one consistent way to work with storages of very different na
 | D18 | **System limits are enforced in the locator only**, and the protocol documents them. A custom locator must uphold them. | All naming in one place; the same trust model as a custom backing store, which can already crash or write anywhere. |
 | D19 | **Errors are typed end to end and carry what failed** (§4.4); invalid keys and namespaces carry the rule they break. | Errors are actionable without reading the code; no error is re-mapped or swallowed silently. |
 | D20 | **Stored names are disjoint across scopes, and `clear()` is scope-exact** (§4.5). | Root values and namespaced values can share one folder, suite or store without one scope's `clear()` deleting another's values. |
+| D21 | **Sealed scopes** (§S): a scope says who sees the values, on which devices, how long they're kept and how they're protected; the library picks the place and owns every name in it. | Every input is a valid name, no two scopes or keys clash, and the storages stay interchangeable. Interop is a custom locator's job. |
 
 ## 3. Target architecture
 
@@ -123,7 +214,9 @@ public extension KeyValueDataStorage {
 - No `IsolatedKeyValueDataStorage` typealias, no `async` in requirements or initializers, no `Sendable` on the protocol.
 - `KeyValueDataStorageScope.defaultName = "KeyValueStorage"`: every `default` scope's suite, directory, service, key prefix or bucket.
 - Every scope has an optional `namespace` that separates sets of values within it: a folder (File, SQLite), a key prefix (UserDefaults, Ubiquitous), a service (Keychain) or a bucket (InMemory). `nil` is the scope's root.
+  - **Planned:** every scope names a namespace, there's no root, and `defaultNamespace` replaces `defaultName` (§S).
 - No app identifier in paths or suite names: the namespace separates apps' values where the system doesn't.
+  - **Planned, reversing this for app scopes** (2026-10-30, D9): File and SQLite paths and Keychain services (§5.2) carry the app's identifier, because two apps that pick the same namespace would otherwise share values. UserDefaults' app scope moves to a suite of its own, `<encoded bundle ID>.KeyValueStorage` (§5.4). Paths and the suite name carry the identifier encoded (§S).
 - Neither backing stores nor locators are part of the protocol. Each storage's `init(scope:backingStore:locator:)` takes existentials (`any FileBackingStore`, `any FileLocator`, …), so the storages stay non-generic.
 
 ### 4.2 System directories (File and SQLite)
@@ -175,6 +268,11 @@ What stays in the storages: system calls and their retries (File's `createDirect
 - **E6 No traps:** no `try!`, no force unwraps of system results, no `fatalError`, and no reachable Objective-C exceptions.
 - **E7 Every case is documented, and every throw site is tested.**
 - **E8 Partial failure is documented:** `clear()` stops at the first failure, and a failed init leaves nothing open.
+- **Planned: refactor the errors with the sealed scopes** (2026-10-30, §13 item 8), against E1–E8:
+  - drop the cases the redesign removes: `.invalidDirectory` (no `.directory(at:)`), Keychain's `.keyOccupied` (no reads before calls, §5.2);
+  - one name for one meaning across storages: a group the app isn't in (`.groupDirectoryNotFound`, `.invalidSuiteName`, `.os(errSecMissingEntitlement)` today), an occupied place (`.pathOccupied`, `.keyOccupied`), and a locked device (`.protectedDataUnavailable` for File today; SQLite's and Keychain's locked results once the device test names them, §13 item 7);
+  - cases carry `ExactString` keys and namespaces, the failing input as the caller passed it (E5);
+  - every case documented and every throw site tested again (E7).
 
 ### 4.5 Key clashes and scope-exact `clear()`
 
@@ -188,6 +286,12 @@ What stays in the storages: system calls and their retries (File's `createDirect
   - Keychain's root uses service `""`, so it no longer matches every service. An app scope's queries search every access group the app has, so App Group services are `<group>/<namespace>` (escaped): an app scope's service never contains `/`, and no two scopes share a service. Verified in KeychainHost, also when the app's default access group is the App Group.
 - **Not fixable without marking stored names:** in a space shared with other code's entries (a folder the user picked, `UserDefaults.standard`), the root `clear()` also removes entries that a key could have produced, such as `notes` or `AppleLanguages`. A namespace never does. Each scope's docs say so.
 - **Laws** run against every default locator: round trip; no collisions within a namespace (File: also case-insensitively and canonically, as on APFS, with keys compared by their exact scalars); no collisions across namespaces, including the root; and no claiming of names that another scope or no key produces.
+- **Clashes outside the locators, settled by the sealed scopes (§S)** (audit of 2026-10-30, through the public API with the default locators). The storages' own names never clash: not within `.app`, not between `.app` and `.appGroup`, not between the root and namespaces, and not where File and SQLite share a folder. What does clash, most severe first:
+  1. **UserDefaults suites that are the global domain.** `UserDefaults(suiteName:)` rejects `NSGlobalDomain`, but accepts `.GlobalPreferences`, `kCFPreferencesAnyApplication` and `Apple Global Domain`, and writes through them land in the global domain (measured on the Simulator). `.standard`, every suite and every App Group then fetch the value, and their `delete` and `clear()` most likely can't remove it (not measured). Fix: `.invalidSuiteName` for these names, and for the app scope's own suite name (§5.4). Documented on UserDefaults' group scope. It's the one system gotcha with a check, because it lets two scopes reach each other's values.
+  2. **The layers merge names the storages keep apart.** Swift's `==` is canonical, so scopes or keys that differ only in Unicode form (`"é"`, `"e\u{301}"`) are one entry in `UnifiedStorage`'s storage cache and in the observation registry (measured). The scope used first gets both scopes' values, and an observer of `"é"` receives a value saved under `"e\u{301}"`. Fix: compare names by bytes in the layers too (§4.3). The `String` keys of SQLite, UserDefaults, Ubiquitous and InMemory can't change `==`, so either they become `Key` structs like File's and Keychain's, or the layers compare bytes themselves.
+  3. **Observation misses changes between keys that reach one value:** File keys that differ in `protection`, Keychain keys that differ in `accessibility`, different value types (§6.3 already plans this one), and the scope pairs in items 4 and 5.
+  4. **SQLite scopes that differ only in `protection` share one database.** Each `clear()` empties both, and each open re-applies its class, so opening the `.none` scope downgrades the `.complete` one's files. Fix: move protection out of the scope, into an init parameter, so a scope only names a place.
+  5. **UserDefaults `.app(.suite(named: g))` is `.appGroup(groupId: g)`**, because the group's suite is the suite named after it. Fix: document it.
 
 ### 4.6 Only the storage's own values
 
@@ -200,6 +304,8 @@ One rule in every storage: an entry is a value only if it has the storage's valu
 | Ubiquitous | a `Data` object | `.keyOccupied(storedKey)` |
 | Keychain | a generic password whose data reads as `Data` (an item can have none) | `.keyOccupied(account)` |
 | SQLite, InMemory | — | exclusive locations: the database file and the bucket are the scope's alone, and their values are typed (`BLOB`, `Data`), so there is no other code's entry to keep |
+
+- **Planned: Keychain drops its check** (§5.2). The rule narrows to "never destroy other code's data": File keeps protecting folders and links, and UserDefaults and Ubiquitous keep their type check, which reads memory, not encrypted data. Under sealed names, an item without data at a Keychain scope's names is the library's and holds nothing to lose.
 
 ## 5. Storages
 
@@ -229,6 +335,8 @@ The setup members are `createDirectory(at:)` (always creates intermediate direct
 
 ### 5.1 Scope → location (the default locators)
 
+**Planned:** §S's places replace this table.
+
 | Storage | Scope | Resolves to |
 |---|---|---|
 | File | `.app(.applicationSupport/.cache/.documents/.temporary/.directory(at: u), namespace: n)` | `<base or u>[/<n>]/<encoded key>` |
@@ -254,6 +362,17 @@ The root encodings (§4.5) and the Keychain services are done.
 **Locator:** `service(for:)` is the namespace, `""` at the root and `%` for an empty name; an App Group's is `<group>/<namespace>`, with `%` and `/` escaped byte by byte in both. `accessGroup(for:)` is `nil` for an app scope, so saves go to the app's default group, and the App Group's ID otherwise. `account(forKey:in:)` keeps the key's exact bytes.
 
 **Storage:** only an item whose data is `Data` is a value (§4.6); an item can exist without data. `fetch` returns `nil` for it, `save` throws `.keyOccupied(account)` instead of updating it (replacing `.unexpectedItemData`), and `delete` and `clear()` never remove it. `save` reads first, then adds or updates. `clear()` lists the scope's items with their data and removes each `Data` item by account and synchronizability, because a query can't match on data; an item it can't identify is left alone. Any other status → `.os(status)`. If another process changes an item between the check and the call, the call's status is thrown.
+- **Planned: no reads before calls** (2026-10-30, with the sealed scopes, §13 item 8). The read before `save`, `delete` and `clear()` only tells an item without data from a value, and it decrypts the item, so a `.whenUnlocked` item can't even be deleted while the device is locked. Under sealed names, anything at the scope's service and account is the library's, and an item without data holds nothing to lose. So:
+  - `fetch` reads, as today; an item without data → `nil`;
+  - `save` updates, and adds if the item isn't found;
+  - `delete` deletes directly;
+  - `clear()` is one delete for the scope's service, access group and sync flag;
+  - the internal `Item` enum, its `.other` case and Keychain's `.keyOccupied` go.
+- **Planned: the app scope's service carries the app's identifier** (2026-10-30): `<identifier>:<namespace>`, where the identifier is the bundle ID, or the process name without one, escaped like the namespace, `:` included.
+  - Why: saves without an access group go to the first Keychain Sharing entry. When a developer lists a shared group first, two apps' app-scope items land in one group, and the same namespace made them the same items. With the identifier in the service they stay apart, and an extension's are its own.
+  - Bundle IDs have no `/`, and the namespace's is escaped, so app services still never contain `/`, unlike App Group services (§4.5).
+  - Same rule as File and SQLite paths (D9): every app-scope place carries the app's identifier.
+  - Remains: apps that share the default access group can read, change and delete the items with their own keychain code, never through the library's app scopes. That's the first Keychain Sharing group if the app lists any, otherwise the app's own identifier, which another app of the team can list on purpose. The docs of `.own` and of `.iCloud`'s `.own` say so.
 - **Interop:** App Group items move to service `<group>/<namespace>`; an app scope's service changes only for a namespace with `%` or `/`; the root's queries now name service `""`, which items saved without a service also have. Reading items written before needs a custom locator. A CHANGELOG note.
 
 **Measured in KeychainHost (iOS Simulator):**
@@ -302,6 +421,10 @@ The root encodings (§4.5) and the Keychain services are done.
 - Registered defaults are process-wide, so a registered non-`Data` default under a stored key makes `save` throw in every suite.
 - `keys()` lists the global domain's keys too, but removing one only touches the suite's own domain, so a root `clear()` never changes the global domain.
 - **Interop:** root keys containing `%` or `/` are stored escaped (`a/b` → `a%2Fb`); other keys are unchanged. A CHANGELOG note.
+- **Planned with the sealed scopes** (2026-10-30, §13 item 8):
+  - The app scope uses a suite of the library's own, `<encoded bundle ID>.KeyValueStorage` (the identifier in File's lossless encoding, §S), never `.standard`. Only the library writes there, so other code's keys never meet ours; the common reset call `UserDefaults.standard.removePersistentDomain(forName: bundleID)` can't wipe our values; and `.standard`, which loads at launch, stays small. A custom locator can still map a scope to `.standard`.
+  - Stored keys are `<namespace>!/<key>`, the namespace escaped as today. The `!` marks the library's entries in App Group suites, which must be named after the group, so other code in the group writes there too. One format in every suite.
+  - `.appGroup` rejects an empty id, the global domain's names and the app scope's suite name as group ids (§4.5, item 1).
 
 ### 5.5 InMemoryStorage (done)
 
@@ -336,6 +459,7 @@ The root encodings (§4.5) and the Keychain services are done.
   - an app and its extensions, or apps of one team, set the same value in every target's entitlements;
   - an extension that keeps its default identifier silently gets its own store.
 - **Limits it documents but can't enforce:** 1024 keys and 1 MB in total. Exceeding them fails silently and is reported only through `didChangeExternallyNotification` with `NSUbiquitousKeyValueStoreQuotaViolationChange`.
+- **Planned with the sealed scopes:** stored keys are `<namespace>!/<key>`, as in UserDefaults (§5.4). The store is shared with the app's other code and its SDKs, and the `!` marks the library's entries; it counts toward the 128-unit limit.
 - **Without the entitlement** (test bundles, unsigned builds) the store keeps nothing, lists nothing, never raises, and `synchronize()` returns `false`. So the default adapter has no integration tests; covering it needs a signed host app with the entitlement and an Apple Account.
 - **Not observed yet:** external changes, `didChangeExternallyNotification`, aren't published to observers. That's a candidate for the observation work in §6.3.
 
@@ -384,6 +508,7 @@ public final class KeyValueCodingStorage<Storage: KeyValueDataStorage> {
 - **Current value:** register first, then read synchronously, then emit the value read unless a change came in meanwhile. Keep one version counter for writes from other instances. Most of today's async seeding complexity goes away.
 - **API:** keep `KeyValuePublisher` (a `Sendable` wrapper, needed when returning from the actor) and `AsyncStream`.
 - **Limits** (document them): changes from other processes (extensions), or written directly to the system (UserDefaults, keychain, files), aren't observed. Ordering across *different* instances on *different* actors isn't guaranteed.
+  - Also not observed, with the sealed scopes (§S): changes from the user's other devices, which `.iCloud` scopes receive through sync; the system emptying `.cache` and `.temporary`; and the keychain deleting `.whileLockedOrWithoutPasscode` items when the passcode is removed. Observers keep showing values that are gone or stale until the next change made through the library.
 
 ## 7. Isolation layer
 
@@ -646,6 +771,18 @@ Tests/
   - a group the app isn't entitled to → `.os(errSecMissingEntitlement)`;
   - another app's item without data is never replaced or removed; items without a service share the root, as documented.
 - **End-to-end:** one save/fetch/clear per storage through `UnifiedStorage` with real backings in temporary scopes.
+- **To add: the system behavior the scope docs state** (2026-10-30), so no comment rests on reasoning alone:
+  - iOS Simulator: a UserDefaults suite named after an App Group the app isn't entitled to works and reports nothing, and its plist lands in the app's own container;
+  - macOS: `containerURL(forSecurityApplicationGroupIdentifier:)` returns a path for any id, and two ids that differ only in case get paths that differ only in case, on a volume that ignores case. The test checks paths and the volume, without creating folders in `~/Library/Group Containers`;
+  - macOS: whether two UserDefaults suites whose names differ only in case share values in the process, and on disk;
+  - the docs are then worded after what these tests measure.
+- **To add: a test for every behavior the plan or the docs assume without a measurement** (2026-10-30). Known so far, besides the system behavior above:
+  - a NUL in UserDefaults, Ubiquitous and Keychain names: whether the system keeps the whole string. If one cuts at the NUL, two keys would merge, so that storage escapes NUL like `%` and `/`;
+  - an empty key and an empty namespace in every storage, and an empty Keychain account in particular;
+  - the encoded app identifier in paths and in UserDefaults' suite name, including bundle IDs that differ only in case;
+  - an empty group id throwing in every storage.
+- **To do with the sealed scopes: revisit every test suite** and cover every reachable edge case. That means each scope case and parameter, each retention and protection level, empty names, NUL, emoji, both spellings of `é`, maximum lengths (including a whole File or SQLite path at the system's 1024-byte limit), case-only differences, the marks, the rejected names, and two scopes or two storages that share a place. The gated files stay at 100%.
+- **To fix: UserDefaults tests leave empty plists behind.** `removePersistentDomain(forName:)` empties a suite but keeps its file: 41 empty `UserDefaultsIntegrationTests-*.plist` were found in `~/Library/Preferences` (2026-10-30). Teardown also deletes the file.
 
 ### 11.4 CI
 
@@ -674,6 +811,7 @@ Each phase ends with: the library builds on every CI toolchain, the phase's test
 | 4 | UserDefaultsStorage: backing + `UserDefaultsSuite`; mock tests | UserDefaults inventory covered |
 | 5 | InMemoryStorage: `DefaultInMemoryBackingStoreWrapper`; mock tests | InMemory inventory covered |
 | 6 | SQLiteStorage: extract `DefaultSQLiteBackingStoreWrapper`/`DefaultSQLiteDatabase`; mock tests; move the SQLite integration tests | SQLite inventory covered |
+| 6b | **Sealed scopes** (§S, Appendix A): `ExactString`, the new scopes, places and marks, the planned items of §5.2–5.7, the error refactor (§4.4) and the test revisit (§11.3). Pilot on File, then the other five | §S in all six storages; gated files 100%; macOS, iOS Simulator and KeychainHost green |
 | 7 | Synchronous coders; `KeyValueCodingStorage` with `update` and built-in observation; delete `KeyValueObservableStorage` | Coding inventory covered |
 | 8 | `IsolatedKeyValueStorage` + tests | Isolation inventory covered |
 | 9 | `UnifiedStorage`, `IsolatedUnifiedStorage`, factory protocol + tests | Facade inventory covered |
@@ -690,7 +828,15 @@ Each phase ends with: the library builds on every CI toolchain, the phase's test
 6. **watchOS minimum 6 → 9.** That's what `UbiquitousStorage` needs; it would remove its `@available(watchOS 9.0, *)` annotations.
 7. **Locked-device errors (deferred: needs a real iPhone).** `ProtectedDataTests` in KeychainHost records what SQLite (each protection class, on an open and on a new connection) and a `.complete` file do while the device is locked, and that both recover after unlocking. It skips on the Simulator and unless `KVS_LOCK_TEST=1`.
    - From its report: map SQLite's locked-database result code to a `.protectedDataUnavailable` case, like `FileStorage`'s, and confirm File's `EPERM` mapping on a device.
+   - Also confirm, once Keychain no longer reads before its calls (§5.2): that the keychain deletes a `.whenUnlocked` item while locked, and that saves at `.complete` and `.whenUnlocked` fail while locked.
+   - And, for the sealed scopes (§S): what each protection level does while locked; whether the system deletes a database's files one at a time in `.cache` and `.temporary`; which file protection classes macOS enforces.
+   - **Keychain `.iCloud(.appGroup(id:))` with an App Group id**, not a Keychain Sharing group: whether synced items in an App Group access group sync to the user's other devices.
+   - **The same key written on two devices before they sync**, for Keychain's and Ubiquitous's `.iCloud` scopes: which value wins. Last writer is likely but not measured; the result becomes a doc line on each `.iCloud` case.
+   - **Ubiquitous, in the same device-only run:** a signed host with the iCloud key-value store entitlement and an Apple Account, ideally with a second device to see values sync. Check the key-length limit (128 UTF-16 code units per Apple's docs, 64 UTF-8 bytes per older forum and blog posts), the default adapter's integration tests, the quota, signed-out behavior, and what an unentitled build does (keeps nothing, `synchronize()` returns `false`).
    - Blocker: KeychainHost is ad-hoc signed, and its entitlements hardcode a placeholder team (`ABCDE12345`). Running it on a device needs a signing setup that leaves the committed project alone, such as a local, git-ignored xcconfig with the team and bundle ID, and entitlements built from `$(AppIdentifierPrefix)`.
+8. **Who owns the names: the library or the system.** Decided 2026-10-30: **sealed** (§S, D21). The user says what they mean, the library picks the place and owns every name inside it, and interop goes through a custom locator.
+   - Rejected, **faithful:** names one to one with the system's, in its terms. Each system's rules would become key rules (`/`, `..`, case, length), the clashes would come back, and `clear()` couldn't tell the scope's entries from other code's.
+   - Also rejected: places the user names (`.directory(at:)`, `.suite(named:)`). They make the guarantees depend on the input: URL aliases, global-domain suite names, folders other code writes to.
 
 ## 14. Risks and notes
 
@@ -698,3 +844,308 @@ Each phase ends with: the library builds on every CI toolchain, the phase's test
 - **iOS group containers:** the system terminates a suspended app that holds a file lock in a group container (`0xdead10cc`). SQLite in an App Group scope should finish its work before suspension. This is already in the scope docs.
 - **Observation across instances on different actors** has no ordering guarantee; in-process users should go through one facade.
 - **Actor I/O on the concurrency pool**, see §7.
+
+## Appendix A. Sealed scopes: the agreed enums and docs
+
+The full public shape of §S, with the doc comments as agreed on 2026-10-30. Implement from this: the `Elsewhere` notes at its end are design notes, not code.
+
+```swift
+//
+//  KeyValueStorageScopes.swift
+//  KeyValueStorage
+//
+//  Created by Narek Sahakyan on 30.10.26.
+//
+
+import Foundation
+
+// MARK: - KeyValueDataStorageScope
+
+/// - Warning: `.own` belongs to the bundle ID: builds that share one share values, and unit tests hosted in an app use the app's,
+///   so a test's `clear()` empties the app's data on that device. Give tests a namespace of their own.
+public protocol KeyValueDataStorageScope: Hashable, Sendable {
+    static var `default`: Self { get }
+}
+
+public extension KeyValueDataStorageScope {
+    /// Every `default` scope's namespace.
+    /// - Warning: Shared by everything in the app that uses a `default` scope.
+    static var defaultNamespace: ExactString {
+        "KeyValueStorage"
+    }
+}
+
+// MARK: - ExactString
+
+/// A string compared by its exact UTF-8 bytes; `String`'s `==` takes `"é"` and `"e\u{301}"` for one.
+public struct ExactString: Hashable, Sendable, ExpressibleByStringInterpolation, CustomStringConvertible {
+    public let string: String
+
+    public var description: String {
+        string
+    }
+
+    public init(_ string: String) {
+        self.string = string
+    }
+
+    public init(stringLiteral string: String) {
+        self.init(string)
+    }
+
+    public static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.string.utf8.elementsEqual(rhs.string.utf8)
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(Array(string.utf8))
+    }
+}
+
+// MARK: - FileStorage
+
+public extension FileStorage {
+    typealias Namespace = ExactString
+    typealias Key = ExactString
+
+    enum Retention: Hashable, Sendable {
+        /// Kept until deleted.
+        case persistent
+        /// The system can delete it when storage runs low.
+        case cache
+        /// The system can delete it while the app isn't running.
+        case temporary
+    }
+
+    /// Applies to every file the scope writes.
+    /// - Note: Part of the place: scopes that differ only in protection never share values.
+    enum Protection: Hashable, Sendable {
+        /// No explicit class: the files get their folder's class or the app's default.
+        case inherited
+        /// Usable at any time, even before the first unlock after a restart (`none`).
+        case none
+        /// Usable once the user has unlocked the device after a restart, then also while locked (`completeUntilFirstUserAuthentication`).
+        case untilFirstUnlock
+        /// Usable only while the device is unlocked (`complete`).
+        case whileLocked
+        /// Saves work while locked; reads only while unlocked (`completeUnlessOpen`).
+        case whileLockedUnlessOpen
+    }
+
+    enum Scope: KeyValueDataStorageScope {
+        /// The running app's or extension's own.
+        /// - Warning: On macOS without App Sandbox, the user's other apps can read it.
+        case own(_ retention: Retention = .persistent, protection: Protection = .inherited, namespace: Namespace)
+        /// Shared by the apps and extensions in the App Group.
+        /// - Note: An empty id throws.
+        /// - Note: On macOS, every id gets a folder, even one the app isn't entitled to, and ids that differ only in case share one.
+        case appGroup(id: String, protection: Protection = .inherited, namespace: Namespace)
+
+        public static var `default`: Self {
+            .own(namespace: defaultNamespace)
+        }
+    }
+}
+
+// MARK: - SQLiteStorage
+
+public extension SQLiteStorage {
+    typealias Namespace = ExactString
+    typealias Key = ExactString
+
+    enum Retention: Hashable, Sendable {
+        /// Kept until deleted.
+        case persistent
+        /// The system can delete it when storage runs low.
+        case cache
+        /// The system can delete it while the app isn't running.
+        case temporary
+    }
+
+    /// Applies to the database and its `-wal` and `-shm` files.
+    /// - Note: Part of the place: scopes that differ only in protection never share values.
+    enum Protection: Hashable, Sendable {
+        /// No explicit class: the files get their folder's class or the app's default.
+        case inherited
+        /// Usable at any time, even before the first unlock after a restart (`none`).
+        case none
+        /// Usable once the user has unlocked the device after a restart, then also while locked (`completeUntilFirstUserAuthentication`).
+        case untilFirstUnlock
+        /// Usable only while the device is unlocked, even by an open database (`complete`).
+        case whileLocked
+        /// While locked, usable only by a storage created before locking, which keeps the database open (`completeUnlessOpen`).
+        case whileLockedUnlessOpen
+    }
+
+    enum Scope: KeyValueDataStorageScope {
+        /// The running app's or extension's own.
+        /// - Warning: On macOS without App Sandbox, the user's other apps can read it.
+        case own(_ retention: Retention = .persistent, protection: Protection = .inherited, namespace: Namespace)
+        /// Shared by the apps and extensions in the App Group.
+        /// - Note: An empty id throws.
+        /// - Note: On macOS, every id gets a folder, even one the app isn't entitled to, and ids that differ only in case share one.
+        case appGroup(id: String, protection: Protection = .inherited, namespace: Namespace)
+
+        public static var `default`: Self {
+            .own(namespace: defaultNamespace)
+        }
+    }
+}
+
+// MARK: - UserDefaultsStorage
+
+public extension UserDefaultsStorage {
+    typealias Namespace = ExactString
+    typealias Key = ExactString
+
+    /// - Note: Launch arguments and registered defaults under a stored key's name read as that key's value, in every suite.
+    enum Scope: KeyValueDataStorageScope {
+        /// The running app's or extension's own.
+        /// - Note: A suite of the library's own, not `UserDefaults.standard`.
+        /// - Warning: On macOS without App Sandbox, the user's other apps can read it.
+        case own(namespace: Namespace)
+        /// Shared by the apps and extensions in the App Group.
+        /// - Warning: Without the App Group entitlement, values stay in this app, and nothing reports it.
+        /// - Note: An empty id, the global domain's names (`NSGlobalDomain`, `.GlobalPreferences`, `kCFPreferencesAnyApplication`,
+        ///   `Apple Global Domain`) and `.own`'s suite name throw `.invalidSuiteName`: every suite reads the global domain, and `.own`'s suite is `.own`'s alone.
+        /// - Note: On macOS, ids that differ only in case share one suite.
+        case appGroup(id: String, namespace: Namespace)
+
+        public static var `default`: Self {
+            .own(namespace: defaultNamespace)
+        }
+    }
+}
+
+// MARK: - KeychainStorage
+
+public extension KeychainStorage {
+    typealias Namespace = ExactString
+    typealias Key = ExactString
+
+    /// Which apps see an iCloud scope's items.
+    enum Owner: Hashable, Sendable {
+        /// The running app or extension.
+        /// - Warning: Items go to the app's default access group, its first Keychain Sharing group if it lists any; apps sharing that group can read, change and delete them.
+        case own
+        /// The group's apps and extensions: an App Group, or a Keychain Sharing group with its team ID prefix.
+        /// - Note: An empty id throws; a group the app isn't entitled to fails with `errSecMissingEntitlement`.
+        case appGroup(id: String)
+    }
+
+    /// When the scope's items are usable, and whether they may move to another device.
+    /// - Note: Part of the place: scopes that differ only in protection never share items.
+    enum Protection: Hashable, Sendable {
+        /// Usable once the user has unlocked the device after a restart, then also while locked (`afterFirstUnlock`).
+        case untilFirstUnlock
+        /// As `untilFirstUnlock`, and never moves to another device (`afterFirstUnlockThisDeviceOnly`).
+        case untilFirstUnlockThisDeviceOnly
+        /// Usable only while the device is unlocked (`whenUnlocked`).
+        /// - Warning: Background work can't use it while the device is locked.
+        case whileLocked
+        /// As `whileLocked`, and never moves to another device (`whenUnlockedThisDeviceOnly`).
+        case whileLockedThisDeviceOnly
+        /// As `whileLockedThisDeviceOnly`, and only while a passcode is set (`whenPasscodeSetThisDeviceOnly`).
+        /// - Warning: Saving fails without a passcode, and removing the passcode deletes the items.
+        case whileLockedOrWithoutPasscode
+    }
+
+    /// When the scope's items are usable; only the levels iCloud Keychain can sync.
+    /// - Note: Part of the place: scopes that differ only in protection never share items.
+    enum SyncedProtection: Hashable, Sendable {
+        /// Usable once the user has unlocked the device after a restart, then also while locked (`afterFirstUnlock`).
+        case untilFirstUnlock
+        /// Usable only while the device is unlocked (`whenUnlocked`).
+        /// - Warning: Background work can't use it while the device is locked.
+        case whileLocked
+    }
+
+    /// - Warning: Items outlive the app: deleting it leaves them in the keychain, and a reinstall finds them.
+    enum Scope: KeyValueDataStorageScope {
+        /// The running app's or extension's own.
+        /// - Warning: Items go to the app's default access group, its first Keychain Sharing group if it lists any; apps sharing that group can read, change and delete them.
+        case own(protection: Protection = .whileLocked, namespace: Namespace)
+        /// Shared by the group's apps and extensions: an App Group, or a Keychain Sharing group with its team ID prefix.
+        /// - Note: An empty id throws; a group the app isn't entitled to fails with `errSecMissingEntitlement`.
+        case appGroup(id: String, protection: Protection = .whileLocked, namespace: Namespace)
+        /// Synced to the user's other devices through iCloud Keychain; separate from the `.own` and `.appGroup` items of the same namespace.
+        /// - Note: Items stay on this device while iCloud Keychain is off. With `.own`, only the app with the same bundle ID sees them on the other devices.
+        case iCloud(Owner, protection: SyncedProtection = .whileLocked, namespace: Namespace)
+
+        public static var `default`: Self {
+            .own(namespace: defaultNamespace)
+        }
+    }
+}
+
+// MARK: - InMemoryStorage
+
+public extension InMemoryStorage {
+    typealias Namespace = ExactString
+    typealias Key = ExactString
+
+    /// Values live until the process exits.
+    enum Scope: KeyValueDataStorageScope {
+        /// This process's own memory.
+        case own(namespace: Namespace)
+
+        public static var `default`: Self {
+            .own(namespace: defaultNamespace)
+        }
+    }
+}
+
+// MARK: - UbiquitousStorage
+
+@available(watchOS 9.0, *)
+public extension UbiquitousStorage {
+    typealias Namespace = ExactString
+    typealias Key = ExactString
+
+    /// Which apps see the values.
+    enum Owner: Hashable, Sendable {
+        /// The running app or extension.
+        /// - Warning: Apps whose entitlements name the same key-value store can read, change and delete its values.
+        case own
+    }
+
+    enum Scope: KeyValueDataStorageScope {
+        /// Synced to the user's other devices through iCloud.
+        /// - Note: Values stay on this device while the user is signed out of iCloud.
+        /// - Note: The store holds at most 1 MB and 1024 keys in all.
+        /// - Warning: Without the iCloud key-value store entitlement, the store keeps nothing, and nothing reports it.
+        case iCloud(Owner, namespace: Namespace)
+
+        public static var `default`: Self {
+            .iCloud(.own, namespace: defaultNamespace)
+        }
+    }
+}
+
+// MARK: - Elsewhere
+
+// - Locators read the namespace, retention and protection from the scope's cases; no scope has properties.
+// - Retention and protection are part of the place. The locator puts protection into the place's name (the SQLite
+//   database file, the File folder, the Keychain service) in a form no namespace encodes to, so scopes that differ
+//   only in protection never share values.
+// - UserDefaults, Ubiquitous and InMemory take no protection: the system sets it, and memory has none.
+// - Each storage's default protection is its system's: `.inherited` for File and SQLite, `.whileLocked` for Keychain.
+// - Keys are names only in every storage: protection, accessibility and sync moved into the scopes.
+// - Every `.own` place carries the app's identifier, so two apps' `.own` scopes never meet. File and SQLite paths (D9) and
+//   UserDefaults' suite (`<encoded bundle ID>.KeyValueStorage`) carry it in File's lossless encoding, so bundle IDs that differ
+//   only in case never share a file on macOS. Keychain services (`<bundle ID>:<namespace>`) carry it as is: the keychain
+//   compares exactly. InMemory is per process, and Ubiquitous's store is per app unless entitlements share it.
+// - App Group values live at the root of the group's container, which has no defined caches or temporary folder, so groups
+//   take no retention. Every `.appGroup` rejects an empty id.
+// - UserDefaults and Ubiquitous store keys as `<namespace>!/<key>`: the `!` marks the library's entries where other code also
+//   writes (App Group suites, the Ubiquitous store). Keychain services need no mark: they start with the bundle ID or the group.
+// - One `ExactString` for namespaces and keys in the six storages. The protocol keeps `associatedtype Key: KeyValueDataStorageKey`
+//   (`Hashable & Sendable`) generic, so custom storages can bring their own key types; `KeyValueDataStorageNamespace` goes.
+// - Each storage's `Namespace` and `Key` are typealiases, so no top-level name clashes with SwiftUI's `Namespace`.
+// - `KeyValueDataStorageScope.defaultName` becomes `defaultNamespace`.
+// - Group ids stay `String`: they're the entitlements' ASCII identifiers.
+// - System and SDK gotchas are documented on the case they affect, not worked around, unless they'd let two scopes reach
+//   each other's values: UserDefaults rejects the global domain's names and `.own`'s suite name as group ids.
+// - To verify on a device: what each protection level does while locked; whether the system deletes a database's files
+//   one at a time in `.cache` and `.temporary`; which file protection classes macOS enforces.
+```
