@@ -54,7 +54,7 @@ public final class KeychainStorage: KeyValueDataStorage {
         switch status {
         case .success:  return result as? Data
         case .notFound: return nil
-        default:        throw .os(status.code)
+        default:        throw Error(status)
         }
     }
 
@@ -89,7 +89,7 @@ public final class KeychainStorage: KeyValueDataStorage {
 
     private func check(_ status: KeychainOperationStatus) throws(Error) {
         guard status == .success else {
-            throw .os(status.code)
+            throw Error(status)
         }
     }
 

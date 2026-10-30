@@ -79,10 +79,8 @@ public final class SQLiteStorage: KeyValueDataStorage {
     private static func execute<T>(_ body: () throws -> T) throws(Error) -> T {
         do {
             return try body()
-        } catch let error as SQLiteError {
-            throw .sqlite(code: error.code, message: error.message)
         } catch {
-            throw .other(error)
+            throw Error(error)
         }
     }
 }

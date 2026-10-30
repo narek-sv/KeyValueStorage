@@ -15,3 +15,12 @@ public extension KeychainStorage {
         case os(OSStatus)
     }
 }
+
+// MARK: - Internal
+
+extension KeychainStorage.Error {
+    /// For a status that failed the operation.
+    init(_ status: KeychainOperationStatus) {
+        self = .os(status.code)
+    }
+}

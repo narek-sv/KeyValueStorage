@@ -13,6 +13,7 @@ public extension FileStorage {
     enum Error: Swift.Error, Sendable {
         /// Usually the app isn't in the group; also an empty id.
         case groupDirectoryNotFound(String)
+        /// The system has no such user directory, the base of `.own` scopes with its retention.
         case directoryNotFound(FileManager.SearchPathDirectory)
         /// Its encoded folder name exceeds 255 bytes.
         case invalidNamespace(Namespace)
