@@ -111,12 +111,6 @@ final class DefaultKeychainLocatorTests: XCTestCase {
             assertBytes(locator.account(forKey: .init(key), in: .default), key)
         }
     }
-
-    // MARK: Helpers
-
-    private func assertBytes(_ name: String, _ expected: String, file: StaticString = #filePath, line: UInt = #line) {
-        XCTAssertTrue(name.utf8.elementsEqual(expected.utf8), "\(name.debugDescription) isn't \(expected.debugDescription)", file: file, line: line)
-    }
 }
 
 /// The default locator with the app's identifier fixed.

@@ -28,6 +28,8 @@ public protocol KeychainLocator {
 /// scopes share a service, which matters because `.own` queries reach every access group the app has, and apps can share one.
 /// `.iCloud` uses its owner's services, for synced items, which the other scopes' queries never match.
 open class DefaultKeychainLocator: KeychainLocator {
+    private static let reservedBytes: Set = [UInt8(ascii: "%"), UInt8(ascii: "/"), UInt8(ascii: ":")]
+
     public init() { }
 
     // MARK: App Identifier
@@ -68,11 +70,11 @@ open class DefaultKeychainLocator: KeychainLocator {
     // MARK: Helpers
 
     private func ownService(_ namespace: KeychainStorage.Namespace, _ protection: String) -> String {
-        Self.escaped(ownIdentifier) + ":" + Self.escaped(namespace.string) + ":" + protection
+        ownIdentifier.percentEscaping(Self.reservedBytes) + ":" + namespace.string.percentEscaping(Self.reservedBytes) + ":" + protection
     }
 
     private static func groupService(_ groupId: String, _ namespace: KeychainStorage.Namespace, _ protection: String) -> String {
-        escaped(groupId) + "/" + escaped(namespace.string) + "/" + protection
+        groupId.percentEscaping(reservedBytes) + "/" + namespace.string.percentEscaping(reservedBytes) + "/" + protection
     }
 
     private static func name(for protection: KeychainStorage.Protection) -> String {
@@ -91,20 +93,5 @@ open class DefaultKeychainLocator: KeychainLocator {
         case .untilFirstUnlock: return "u"
         case .whileLocked:      return "w"
         }
-    }
-
-    // Bytes, because Foundation's `replacingOccurrences` skips a `/` that carries a combining mark
-    private static func escaped(_ name: String) -> String {
-        var escaped = [UInt8]()
-        for byte in name.utf8 {
-            switch byte {
-            case UInt8(ascii: "%"): escaped += Array("%25".utf8)
-            case UInt8(ascii: "/"): escaped += Array("%2F".utf8)
-            case UInt8(ascii: ":"): escaped += Array("%3A".utf8)
-            default:                escaped.append(byte)
-            }
-        }
-
-        return String(decoding: escaped, as: UTF8.self)
     }
 }

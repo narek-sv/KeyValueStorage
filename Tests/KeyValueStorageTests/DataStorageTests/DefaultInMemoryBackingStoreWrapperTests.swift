@@ -78,4 +78,37 @@ final class DefaultInMemoryBackingStoreWrapperTests: XCTestCase {
         XCTAssertEqual(containers.read(forKey: "released-2", in: log), Data([2]))
         XCTAssertEqual(containers.read(forKey: "released-3", in: log), Data([3]))
     }
+
+    func testCanonicallyEquivalentKeysAndContainersAreDistinct() {
+        // Given
+        let containers = DefaultInMemoryBackingStoreWrapper()
+        let precomposed = "\(run)-\u{E9}"
+        let decomposed = "\(run)-e\u{301}"
+
+        // When
+        containers.write(Data([1]), forKey: "\u{E9}", in: precomposed)
+        containers.write(Data([2]), forKey: "e\u{301}", in: precomposed)
+        containers.write(Data([3]), forKey: "\u{E9}", in: decomposed)
+
+        // Then
+        XCTAssertEqual(containers.read(forKey: "\u{E9}", in: precomposed), Data([1]))
+        XCTAssertEqual(containers.read(forKey: "e\u{301}", in: precomposed), Data([2]))
+        XCTAssertEqual(containers.read(forKey: "\u{E9}", in: decomposed), Data([3]))
+        XCTAssertNil(containers.read(forKey: "e\u{301}", in: decomposed))
+
+        containers.remove(forKey: "e\u{301}", in: precomposed)
+        XCTAssertEqual(containers.read(forKey: "\u{E9}", in: precomposed), Data([1]))
+        XCTAssertNil(containers.read(forKey: "e\u{301}", in: precomposed))
+
+        containers.removeAll(in: decomposed)
+        XCTAssertEqual(containers.read(forKey: "\u{E9}", in: precomposed), Data([1]))
+        XCTAssertNil(containers.read(forKey: "\u{E9}", in: decomposed))
+    }
+
+    func testBridgedStringsReachTheSameValues() {
+        let containers = DefaultInMemoryBackingStoreWrapper()
+        let container = "\(run)-bridged"
+        containers.write(Data([1]), forKey: "Caf\u{E9}", in: container)
+        XCTAssertEqual(containers.read(forKey: NSString(string: "Caf\u{E9}") as String, in: NSString(string: container) as String), Data([1]))
+    }
 }

@@ -33,10 +33,6 @@ public protocol FileLocator {
 /// - Note: A subclass that changes names overrides both name methods.
 open class DefaultFileLocator: FileLocator {
     private static let maximumNameLength = 255
-    private static let keptBytes = Set("abcdefghijklmnopqrstuvwxyz0123456789_-".utf8)
-    private static let capitals = UInt8(ascii: "A")...UInt8(ascii: "Z")
-    private static let lowercaseLetters = UInt8(ascii: "a")...UInt8(ascii: "z")
-    private static let hexDigits = Array("0123456789abcdef".utf8)
 
     private var fileManager: FileManager { .default }
 
@@ -71,7 +67,7 @@ open class DefaultFileLocator: FileLocator {
         case let .own(retention, protection, namespace):
             // Before the lookups, so the namespace's error doesn't depend on the system
             let namespaceFolder = try Self.folderName(for: namespace)
-            let app = try baseDirectory(for: retention).appendingPathComponent(Self.encoded(ownIdentifier), isDirectory: true)
+            let app = try baseDirectory(for: retention).appendingPathComponent(ownIdentifier.portableName, isDirectory: true)
             return Self.directory(in: app, namespaceFolder: namespaceFolder, protection: protection)
         case let .appGroup(groupId, protection, namespace):
             let namespaceFolder = try Self.folderName(for: namespace)
@@ -89,7 +85,7 @@ open class DefaultFileLocator: FileLocator {
 
     open func key(forFileName fileName: String, in scope: FileStorage.Scope) -> FileStorage.Key? {
         // Decoding alone also accepts names the encoding never writes, such as `%41` for `A`
-        guard let key = Self.decoded(fileName).map({ FileStorage.Key($0) }), (try? Self.fileName(forKey: key)) == fileName else {
+        guard let key = String(portableName: fileName).map({ FileStorage.Key($0) }), (try? Self.fileName(forKey: key)) == fileName else {
             return nil
         }
 
@@ -119,7 +115,7 @@ open class DefaultFileLocator: FileLocator {
     }
 
     private static func folderName(for namespace: FileStorage.Namespace) throws(FileStorage.Error) -> String {
-        let folderName = encoded(namespace.string) + "!"
+        let folderName = namespace.string.portableName + "!"
         guard folderName.utf8.count <= maximumNameLength else {
             throw .invalidNamespace(namespace)
         }
@@ -139,54 +135,11 @@ open class DefaultFileLocator: FileLocator {
     }
 
     private static func fileName(forKey key: FileStorage.Key) throws(FileStorage.Error) -> String {
-        let fileName = encoded(key.string)
+        let fileName = key.string.portableName
         guard fileName.utf8.count <= maximumNameLength else {
             throw .invalidKey(key)
         }
 
         return fileName
-    }
-
-    private static func encoded(_ name: String) -> String {
-        guard !name.isEmpty else {
-            return "%"
-        }
-
-        var encoded = [UInt8]()
-        for byte in name.utf8 {
-            if keptBytes.contains(byte) {
-                encoded.append(byte)
-            } else if capitals.contains(byte) {
-                encoded += [UInt8(ascii: "!"), byte - capitals.lowerBound + lowercaseLetters.lowerBound]
-            } else {
-                encoded += [UInt8(ascii: "%"), hexDigits[Int(byte >> 4)], hexDigits[Int(byte & 0x0F)]]
-            }
-        }
-
-        return String(decoding: encoded, as: UTF8.self)
-    }
-
-    private static func decoded(_ name: String) -> String? {
-        guard name != "%" else {
-            return ""
-        }
-
-        var bytes = [UInt8]()
-        var rest = Substring(name).utf8
-        while let byte = rest.popFirst() {
-            if keptBytes.contains(byte) {
-                bytes.append(byte)
-            } else if byte == UInt8(ascii: "!"), let letter = rest.popFirst(), lowercaseLetters.contains(letter) {
-                bytes.append(letter - lowercaseLetters.lowerBound + capitals.lowerBound)
-            } else if byte == UInt8(ascii: "%"),
-                      let high = rest.popFirst().flatMap(hexDigits.firstIndex),
-                      let low = rest.popFirst().flatMap(hexDigits.firstIndex) {
-                bytes.append(UInt8(high << 4 | low))
-            } else {
-                return nil
-            }
-        }
-
-        return String(decoding: bytes, as: UTF8.self)
     }
 }

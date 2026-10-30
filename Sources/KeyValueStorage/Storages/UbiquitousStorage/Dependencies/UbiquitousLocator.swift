@@ -29,6 +29,7 @@ public protocol UbiquitousLocator {
 @available(watchOS 9.0, *)
 open class DefaultUbiquitousLocator: UbiquitousLocator {
     private static let maximumKeyLength = 128
+    private static let reservedBytes: Set = [UInt8(ascii: "%"), UInt8(ascii: "/")]
 
     public init() { }
 
@@ -42,13 +43,7 @@ open class DefaultUbiquitousLocator: UbiquitousLocator {
     }
 
     open func key(forStoredKey storedKey: String, in scope: UbiquitousStorage.Scope) -> UbiquitousStorage.Key? {
-        let prefix = Self.prefix(for: scope)
-        // Bytes, not characters: a key can start with a combining mark, which joins the `/` before it
-        guard storedKey.utf8.starts(with: prefix.utf8) else {
-            return nil
-        }
-
-        return .init(String(decoding: storedKey.utf8.dropFirst(prefix.utf8.count), as: UTF8.self))
+        storedKey.droppingExactPrefix(Self.prefix(for: scope)).map { .init($0) }
     }
 
     // MARK: Helpers
@@ -57,21 +52,7 @@ open class DefaultUbiquitousLocator: UbiquitousLocator {
     private static func prefix(for scope: UbiquitousStorage.Scope) -> String {
         switch scope {
         case let .iCloud(_, namespace):
-            return escaped(namespace.string) + "!/"
+            return namespace.string.percentEscaping(reservedBytes) + "!/"
         }
-    }
-
-    // Bytes, because Foundation's `replacingOccurrences` skips a `/` that carries a combining mark
-    private static func escaped(_ name: String) -> String {
-        var escaped = [UInt8]()
-        for byte in name.utf8 {
-            switch byte {
-            case UInt8(ascii: "%"): escaped += Array("%25".utf8)
-            case UInt8(ascii: "/"): escaped += Array("%2F".utf8)
-            default:                escaped.append(byte)
-            }
-        }
-
-        return String(decoding: escaped, as: UTF8.self)
     }
 }

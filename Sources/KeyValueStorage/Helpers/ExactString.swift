@@ -28,6 +28,12 @@ public struct ExactString: Hashable, Sendable, ExpressibleByStringInterpolation,
     }
 
     public func hash(into hasher: inout Hasher) {
-        hasher.combine(Array(string.utf8))
+        // The bytes in one buffer: hashing runs on every dictionary lookup.
+        // The count first, as `Array` does, so values hashing several strings don't collide on where one ends
+        var string = string
+        string.withUTF8 { bytes in
+            hasher.combine(bytes.count)
+            hasher.combine(bytes: UnsafeRawBufferPointer(bytes))
+        }
     }
 }

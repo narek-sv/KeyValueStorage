@@ -23,36 +23,31 @@ public protocol InMemoryBackingStore {
 /// - Warning: Subclasses inherit `Sendable`: their own state must be thread-safe too.
 open class DefaultInMemoryBackingStoreWrapper: InMemoryBackingStore, @unchecked Sendable {
     private static let lock = Lock()
-    // Bytes, not `String`: Swift's `==` takes `"é"` and `"e\u{301}"` for one key
-    nonisolated(unsafe) private static var buckets = [Data: [Data: Data]]()
+    nonisolated(unsafe) private static var buckets = [ExactString: [ExactString: Data]]()
     
     public init() { }
     
     open func read(forKey key: String, in bucket: String) -> Data? {
         Self.lock.withLock {
-            Self.buckets[Self.bytes(bucket)]?[Self.bytes(key)]
+            Self.buckets[ExactString(bucket)]?[ExactString(key)]
         }
     }
     
     open func write(_ data: Data, forKey key: String, in bucket: String) {
         _ = Self.lock.withLock {
-            Self.buckets[Self.bytes(bucket), default: [:]].updateValue(data, forKey: Self.bytes(key))
+            Self.buckets[ExactString(bucket), default: [:]].updateValue(data, forKey: ExactString(key))
         } // old value freed after unlock
     }
 
     open func remove(forKey key: String, in bucket: String) {
         _ = Self.lock.withLock {
-            Self.buckets[Self.bytes(bucket)]?.removeValue(forKey: Self.bytes(key))
+            Self.buckets[ExactString(bucket)]?.removeValue(forKey: ExactString(key))
         } // old value freed after unlock
     }
 
     open func removeAll(in bucket: String) {
         _ = Self.lock.withLock {
-            Self.buckets.removeValue(forKey: Self.bytes(bucket))
+            Self.buckets.removeValue(forKey: ExactString(bucket))
         } // old value freed after unlock
-    }
-
-    private static func bytes(_ name: String) -> Data {
-        Data(name.utf8)
     }
 }

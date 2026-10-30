@@ -100,12 +100,6 @@ final class DefaultUserDefaultsLocatorTests: XCTestCase {
             }
         }
     }
-
-    // MARK: Helpers
-
-    private func assertBytes(_ storedKey: String, _ expected: String, file: StaticString = #filePath, line: UInt = #line) {
-        XCTAssertTrue(storedKey.utf8.elementsEqual(expected.utf8), "\(storedKey.debugDescription) isn't \(expected.debugDescription)", file: file, line: line)
-    }
 }
 
 /// The default locator with the app's identifier fixed.

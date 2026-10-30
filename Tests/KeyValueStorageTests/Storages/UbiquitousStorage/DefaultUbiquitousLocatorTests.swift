@@ -93,8 +93,4 @@ final class DefaultUbiquitousLocatorTests: XCTestCase {
     private func scope(_ namespace: String) -> UbiquitousStorage.Scope {
         .iCloud(.own, namespace: .init(namespace))
     }
-
-    private func assertBytes(_ storedKey: String, _ expected: String, file: StaticString = #filePath, line: UInt = #line) {
-        XCTAssertTrue(storedKey.utf8.elementsEqual(expected.utf8), "\(storedKey.debugDescription) isn't \(expected.debugDescription)", file: file, line: line)
-    }
 }

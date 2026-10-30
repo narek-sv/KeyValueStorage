@@ -24,10 +24,6 @@ public protocol SQLiteLocator {
 open class DefaultSQLiteLocator: SQLiteLocator {
     private static let databaseName = ".KeyValueStorage.sqlite"
     private static let maximumNameLength = 255
-    private static let keptBytes = Set("abcdefghijklmnopqrstuvwxyz0123456789_-".utf8)
-    private static let capitals = UInt8(ascii: "A")...UInt8(ascii: "Z")
-    private static let lowercaseLetters = UInt8(ascii: "a")...UInt8(ascii: "z")
-    private static let hexDigits = Array("0123456789abcdef".utf8)
 
     private var fileManager: FileManager { .default }
 
@@ -63,7 +59,7 @@ open class DefaultSQLiteLocator: SQLiteLocator {
         case let .own(retention, protection, namespace):
             // Before the lookups, so the namespace's error doesn't depend on the system
             let namespaceFolder = try Self.folderName(for: namespace)
-            let app = try baseDirectory(for: retention).appendingPathComponent(Self.encoded(ownIdentifier), isDirectory: true)
+            let app = try baseDirectory(for: retention).appendingPathComponent(ownIdentifier.portableName, isDirectory: true)
             folder = Self.directory(in: app, namespaceFolder: namespaceFolder, protection: protection)
         case let .appGroup(groupId, protection, namespace):
             let namespaceFolder = try Self.folderName(for: namespace)
@@ -104,7 +100,7 @@ open class DefaultSQLiteLocator: SQLiteLocator {
     }
 
     private static func folderName(for namespace: SQLiteStorage.Namespace) throws(SQLiteStorage.Error) -> String {
-        let folderName = encoded(namespace.string) + "!"
+        let folderName = namespace.string.portableName + "!"
         guard folderName.utf8.count <= maximumNameLength else {
             throw .invalidNamespace(namespace)
         }
@@ -121,24 +117,5 @@ open class DefaultSQLiteLocator: SQLiteLocator {
         case .whileLocked:              return "w"
         case .whileLockedUnlessOpen:    return "o"
         }
-    }
-
-    private static func encoded(_ name: String) -> String {
-        guard !name.isEmpty else {
-            return "%"
-        }
-
-        var encoded = [UInt8]()
-        for byte in name.utf8 {
-            if keptBytes.contains(byte) {
-                encoded.append(byte)
-            } else if capitals.contains(byte) {
-                encoded += [UInt8(ascii: "!"), byte - capitals.lowerBound + lowercaseLetters.lowerBound]
-            } else {
-                encoded += [UInt8(ascii: "%"), hexDigits[Int(byte >> 4)], hexDigits[Int(byte & 0x0F)]]
-            }
-        }
-
-        return String(decoding: encoded, as: UTF8.self)
     }
 }
