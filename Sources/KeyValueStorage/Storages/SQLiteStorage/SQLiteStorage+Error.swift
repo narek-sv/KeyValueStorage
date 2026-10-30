@@ -21,7 +21,7 @@ public extension SQLiteStorage {
         /// A SQLite result code and its message, such as `SQLITE_CORRUPT` for a damaged database, or `SQLITE_BUSY` after
         /// waiting a second for another process.
         case sqlite(code: Int32, message: String)
-        /// Any other failure, such as creating the database's folder, with the original error.
+        /// Creating the database's folder failed, with the original error.
         case other(any Swift.Error)
     }
 }
@@ -29,12 +29,8 @@ public extension SQLiteStorage {
 // MARK: - Internal
 
 extension SQLiteStorage.Error {
-    /// The error for a failed SQLite or file system call.
-    init(_ error: any Swift.Error) {
-        if let error = error as? SQLiteError {
-            self = .sqlite(code: error.code, message: error.message)
-        } else {
-            self = .other(error)
-        }
+    /// The error for a failed SQLite call.
+    init(_ error: SQLiteError) {
+        self = .sqlite(code: error.code, message: error.message)
     }
 }

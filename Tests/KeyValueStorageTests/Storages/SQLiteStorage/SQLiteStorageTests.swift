@@ -52,18 +52,10 @@ final class SQLiteStorageTests: XCTestCase {
 
     func testInitReportsOpenErrors() {
         // Given
-        let other = NSError(domain: "test", code: 1)
-        let errors: [(any Error, SQLiteStorage.Error)] = [
-            (SQLiteError(code: SQLITE_NOTADB, message: "file is not a database"), .sqlite(code: SQLITE_NOTADB, message: "file is not a database")),
-            (other, .other(other))
-        ]
+        backingStore.openError = SQLiteError(code: SQLITE_NOTADB, message: "file is not a database")
 
-        for (error, expected) in errors {
-            backingStore.openError = error
-
-            // When - Then
-            assertThrows(expected) { try makeStorage() }
-        }
+        // When - Then
+        assertThrows(SQLiteStorage.Error.sqlite(code: SQLITE_NOTADB, message: "file is not a database")) { try makeStorage() }
     }
 
     func testEachProtectionReachesOpen() throws {
@@ -128,21 +120,14 @@ final class SQLiteStorageTests: XCTestCase {
     func testDatabaseErrorsAreReported() throws {
         // Given
         let storage = try makeStorage()
-        let other = NSError(domain: "test", code: 1)
-        let errors: [(any Error, SQLiteStorage.Error)] = [
-            (SQLiteError(code: SQLITE_BUSY, message: "database is locked"), .sqlite(code: SQLITE_BUSY, message: "database is locked")),
-            (other, .other(other))
-        ]
+        backingStore.database.error = SQLiteError(code: SQLITE_BUSY, message: "database is locked")
+        let expected = SQLiteStorage.Error.sqlite(code: SQLITE_BUSY, message: "database is locked")
 
-        for (error, expected) in errors {
-            backingStore.database.error = error
-
-            // When - Then
-            assertThrows(expected) { try storage.fetch(forKey: "key") }
-            assertThrows(expected) { try storage.save(data, forKey: "key") }
-            assertThrows(expected) { try storage.delete(forKey: "key") }
-            assertThrows(expected) { try storage.clear() }
-        }
+        // When - Then
+        assertThrows(expected) { try storage.fetch(forKey: "key") }
+        assertThrows(expected) { try storage.save(data, forKey: "key") }
+        assertThrows(expected) { try storage.delete(forKey: "key") }
+        assertThrows(expected) { try storage.clear() }
     }
 
     // MARK: Helpers

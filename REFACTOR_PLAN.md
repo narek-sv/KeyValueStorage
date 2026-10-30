@@ -268,7 +268,7 @@ What stays in the storages: system calls and their retries (File's `createDirect
 
 - **E1 Typed end to end.** A storage and its locator throw `<Storage>.Error`. An error is constructed once and never re-mapped, with no `as? <Storage>.Error` casts.
 - **E0 No logic in wrappers.** A default backing store is one system call per member, with no catches, translations or path rewriting. Every rule, including what an error means, lives in the storage, where the unit tests reach it.
-- **E2 Only backing-store calls are wrapped.** Their untyped errors map to specific cases where the meaning is known (`.protectedDataUnavailable`, `.sqlite(code:message:)`, `.keychain(status:)`), or else to `.other(underlying)`, which keeps the original error. A rule the storage checks before acting, such as File's `.pathOccupied`, is thrown by the storage itself, never read from an error code.
+- **E2 Only backing-store calls are wrapped.** A backing store whose failures have one type throws it typed (SQLite's `SQLiteError`); system wrappers that pass on Foundation's errors (`FileBackingStore`, folder creation) stay untyped. Their untyped errors map to specific cases where the meaning is known (`.protectedDataUnavailable`, `.sqlite(code:message:)`, `.keychain(status:)`), or else to `.other(underlying)`, which keeps the original error. A rule the storage checks before acting, such as File's `.pathOccupied`, is thrown by the storage itself, never read from an error code.
 - **E3 Absence isn't an error, and nothing else is swallowed.** A missing value is `nil` on fetch and a no-op on delete and clear. Storages check what is there before acting; "nothing there" is the one error a check translates (File: `fileReadNoSuchFile` → `nil`), and every other error is thrown, so an unreadable location never passes for an empty one.
 - **E4 Validation before side effects.** Invalid keys, namespaces and values throw before any backing-store call.
 - **E5 Errors carry the failing input:** the key, namespace, group ID, directory, URL or size, and nothing derived from it.
@@ -429,11 +429,11 @@ The setup members are `createDirectory(at:)` (always creates intermediate direct
 
 ### 5.6 SQLiteStorage (done)
 
-**Backing store:** `SQLiteBackingStore` (`createDirectory(at:)` with intermediates, `open(at:protection:)`) opens an `SQLiteDatabase` (`read`, `write`, `remove`, `removeAll`), whose errors are `SQLiteError(code:message:)`. `DefaultSQLiteDatabase` is the connection: `FULLMUTEX`, WAL, a 1 s busy timeout, one `WITHOUT ROWID` table, four prepared statements, NUL-safe key binding and `zeroblob` for empty values. The prepared statements make an instance unsafe to share between threads (D2); two instances have separate connections. A failed open closes what it opened, and nothing traps.
+**Backing store:** `SQLiteBackingStore` (`createDirectory(at:)` with intermediates, `open(at:protection:)`) opens an `SQLiteDatabase` (`read`, `write`, `remove`, `removeAll`); `open` and the database throw only `SQLiteError(code:message:)`, typed. `DefaultSQLiteDatabase` is the connection: `FULLMUTEX`, WAL, a 1 s busy timeout, one `WITHOUT ROWID` table, four prepared statements, NUL-safe key binding and `zeroblob` for empty values. The prepared statements make an instance unsafe to share between threads (D2); two instances have separate connections. A failed open closes what it opened, and nothing traps.
 
 **Locator:** `databaseURL(for:)` is the scope's folder, named as `DefaultFileLocator` names it (§5.3: the app's folder, the namespace's with its `!`, and the protection level's letter), so file and SQLite storages of one scope share it, plus the hidden `.KeyValueStorage.sqlite`. `storedKey(forKey:in:)` keeps the key's exact bytes. The locator looks up its system directories itself (§4.2).
 
-**Storage:** resolves the URL, creates its folder, and opens the database with the scope's protection. `clear()` empties the database, which is the scope's alone. `SQLiteError` → `.sqlite(code:message:)`, anything else → `.other`.
+**Storage:** resolves the URL, creates its folder, and opens the database with the scope's protection. `clear()` empties the database, which is the scope's alone. `SQLiteError` → `.sqlite(code:message:)`; a folder that can't be created → `.other`.
 - Nothing that isn't the storage's is removed or replaced: a file where the folder goes → `.other` (the `createDirectory` error); a folder at the database path → `.sqlite(SQLITE_CANTOPEN)`; a corrupt file → `.sqlite(SQLITE_NOTADB)`; another app's `KeyValueStorage` view → `.sqlite(SQLITE_ERROR)`.
 - **Links are followed**, unlike `FileStorage`: `SQLITE_OPEN_NOFOLLOW` rejects a link anywhere in the path, including `/var` → `/private/var` above every temporary and app-container path, so it can't be used.
 - **Protection** (`SQLiteStorage.Protection`, part of the scope, default `.inherited`) is part of the place (§S): each level is a database of its own, in the level's folder. It maps to a `SQLITE_OPEN_FILEPROTECTION_*` flag, which also covers `-wal` and `-shm`. Verified on macOS for `.whileLocked`, `.whileLockedUnlessOpen` and `.untilFirstUnlock`; macOS reports the default class for `.none`.
@@ -705,9 +705,9 @@ Tests/
 - keys are stored as their exact scalars.
 
 **SQLiteStorage** (`SQLiteStorageTests`; `SQLiteBackingStoreMock`, `SQLiteLocatorStub`)
-- init: creates the folder of the locator's URL, then opens the URL; a locator error stops before any call; a folder that can't be created → `.other`, and nothing is opened; `open` → `.sqlite` for an `SQLiteError`, `.other` otherwise;
+- init: creates the folder of the locator's URL, then opens the URL; a locator error stops before any call; a folder that can't be created → `.other`, and nothing is opened; `open`'s `SQLiteError` → `.sqlite`;
 - protection: each of the 5 cases, for `.own` and `.appGroup`, reaches `open` as the matching `FileProtectionType?` (`.inherited` → `nil`);
-- fetch, save, delete and clear use exactly the locator's stored keys; `set`; every operation reports an `SQLiteError` as `.sqlite` and anything else as `.other`;
+- fetch, save, delete and clear use exactly the locator's stored keys; `set`; every operation reports its `SQLiteError` as `.sqlite`;
 - `scope` is the one given.
 
 **DefaultUbiquitousLocator** (`DefaultUbiquitousLocatorTests`, no mocks)

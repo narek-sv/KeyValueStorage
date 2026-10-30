@@ -24,9 +24,14 @@ public final class SQLiteStorage: KeyValueDataStorage {
     public init(scope: Scope, backingStore: any SQLiteBackingStore, locator: any SQLiteLocator) throws(Error) {
         let databaseURL = try locator.databaseURL(for: scope)
         let protection = Self.fileProtection(for: scope)
-        self.database = try Self.execute {
+        do {
             try backingStore.createDirectory(at: databaseURL.deletingLastPathComponent())
-            return try backingStore.open(at: databaseURL, protection: protection)
+        } catch {
+            throw .other(error)
+        }
+
+        self.database = try Self.execute { () throws(SQLiteError) in
+            try backingStore.open(at: databaseURL, protection: protection)
         }
 
         self.scope = scope
@@ -40,25 +45,25 @@ public final class SQLiteStorage: KeyValueDataStorage {
     // MARK: Main Functionality
 
     public func fetch(forKey key: Key) throws(Error) -> Data? {
-        try Self.execute {
+        try Self.execute { () throws(SQLiteError) in
             try database.read(forKey: storedKey(for: key))
         }
     }
 
     public func save(_ value: Data, forKey key: Key) throws(Error) {
-        try Self.execute {
+        try Self.execute { () throws(SQLiteError) in
             try database.write(value, forKey: storedKey(for: key))
         }
     }
 
     public func delete(forKey key: Key) throws(Error) {
-        try Self.execute {
+        try Self.execute { () throws(SQLiteError) in
             try database.remove(forKey: storedKey(for: key))
         }
     }
 
     public func clear() throws(Error) {
-        try Self.execute {
+        try Self.execute { () throws(SQLiteError) in
             try database.removeAll()
         }
     }
@@ -76,8 +81,8 @@ public final class SQLiteStorage: KeyValueDataStorage {
         }
     }
 
-    private static func execute<T>(_ body: () throws -> T) throws(Error) -> T {
-        do {
+    private static func execute<T>(_ body: () throws(SQLiteError) -> T) throws(Error) -> T {
+        do throws(SQLiteError) {
             return try body()
         } catch {
             throw Error(error)

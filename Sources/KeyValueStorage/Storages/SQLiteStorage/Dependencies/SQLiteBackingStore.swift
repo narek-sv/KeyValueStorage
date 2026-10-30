@@ -14,20 +14,20 @@ public protocol SQLiteBackingStore {
     /// `FileManager.createDirectory(atPath:withIntermediateDirectories: true)`.
     func createDirectory(at url: URL) throws
     /// `sqlite3_open_v2`, creating the database and its table if needed.
-    func open(at url: URL, protection: FileProtectionType?) throws -> any SQLiteDatabase
+    func open(at url: URL, protection: FileProtectionType?) throws(SQLiteError) -> any SQLiteDatabase
 }
 
 // MARK: - SQLiteDatabase
 
 public protocol SQLiteDatabase: AnyObject {
     /// `SELECT value … WHERE key = ?`.
-    func read(forKey key: String) throws -> Data?
+    func read(forKey key: String) throws(SQLiteError) -> Data?
     /// `INSERT OR REPLACE`.
-    func write(_ data: Data, forKey key: String) throws
+    func write(_ data: Data, forKey key: String) throws(SQLiteError)
     /// `DELETE … WHERE key = ?`.
-    func remove(forKey key: String) throws
+    func remove(forKey key: String) throws(SQLiteError)
     /// `DELETE` of every row.
-    func removeAll() throws
+    func removeAll() throws(SQLiteError)
 }
 
 // MARK: - SQLiteError
@@ -54,7 +54,7 @@ open class DefaultSQLiteBackingStoreWrapper: SQLiteBackingStore {
         try fileManager.createDirectory(atPath: url.path, withIntermediateDirectories: true)
     }
 
-    open func open(at url: URL, protection: FileProtectionType?) throws -> any SQLiteDatabase {
+    open func open(at url: URL, protection: FileProtectionType?) throws(SQLiteError) -> any SQLiteDatabase {
         try DefaultSQLiteDatabase(url: url, protection: protection)
     }
 }
@@ -74,7 +74,7 @@ final class DefaultSQLiteDatabase: SQLiteDatabase {
 
     // MARK: Initializers
 
-    init(url: URL, protection: FileProtectionType?) throws {
+    init(url: URL, protection: FileProtectionType?) throws(SQLiteError) {
         var database: OpaquePointer?
         let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX | Self.flag(for: protection)
         let code = sqlite3_open_v2(url.path, &database, flags, nil)
@@ -85,7 +85,7 @@ final class DefaultSQLiteDatabase: SQLiteDatabase {
         }
 
         var statements = [OpaquePointer]()
-        do {
+        do throws(SQLiteError) {
             sqlite3_busy_timeout(database, 1000)
             try Self.check(sqlite3_exec(database, "PRAGMA journal_mode = WAL", nil, nil, nil), database)
             try Self.check(sqlite3_exec(database, """
@@ -120,8 +120,8 @@ final class DefaultSQLiteDatabase: SQLiteDatabase {
 
     // MARK: Main Functionality
 
-    func read(forKey key: String) throws -> Data? {
-        try run(readStatement) { statement in
+    func read(forKey key: String) throws(SQLiteError) -> Data? {
+        try run(readStatement) { (statement) throws(SQLiteError) in
             try check(bind(key, to: statement, index: 1))
 
             switch sqlite3_step(statement) {
@@ -135,23 +135,23 @@ final class DefaultSQLiteDatabase: SQLiteDatabase {
         }
     }
 
-    func write(_ data: Data, forKey key: String) throws {
-        try run(writeStatement) { statement in
+    func write(_ data: Data, forKey key: String) throws(SQLiteError) {
+        try run(writeStatement) { (statement) throws(SQLiteError) in
             try check(bind(key, to: statement, index: 1))
             try check(bind(data, to: statement, index: 2))
             try check(sqlite3_step(statement), expected: SQLITE_DONE)
         }
     }
 
-    func remove(forKey key: String) throws {
-        try run(removeStatement) { statement in
+    func remove(forKey key: String) throws(SQLiteError) {
+        try run(removeStatement) { (statement) throws(SQLiteError) in
             try check(bind(key, to: statement, index: 1))
             try check(sqlite3_step(statement), expected: SQLITE_DONE)
         }
     }
 
-    func removeAll() throws {
-        try run(removeAllStatement) { statement in
+    func removeAll() throws(SQLiteError) {
+        try run(removeAllStatement) { (statement) throws(SQLiteError) in
             try check(sqlite3_step(statement), expected: SQLITE_DONE)
         }
     }
@@ -168,7 +168,7 @@ final class DefaultSQLiteDatabase: SQLiteDatabase {
         }
     }
 
-    private func run<T>(_ statement: OpaquePointer, _ body: (OpaquePointer) throws -> T) throws -> T {
+    private func run<T>(_ statement: OpaquePointer, _ body: (OpaquePointer) throws(SQLiteError) -> T) throws(SQLiteError) -> T {
         defer {
             sqlite3_reset(statement)
             sqlite3_clear_bindings(statement)
@@ -193,7 +193,7 @@ final class DefaultSQLiteDatabase: SQLiteDatabase {
         }
     }
 
-    private func blob(_ statement: OpaquePointer, column: Int32) throws -> Data {
+    private func blob(_ statement: OpaquePointer, column: Int32) throws(SQLiteError) -> Data {
         guard let bytes = sqlite3_column_blob(statement, column) else {
             let code = sqlite3_errcode(database) // NULL also means out of memory
             guard code != SQLITE_NOMEM else {
@@ -206,7 +206,7 @@ final class DefaultSQLiteDatabase: SQLiteDatabase {
         return Data(bytes: bytes, count: Int(sqlite3_column_bytes(statement, column)))
     }
 
-    private func check(_ code: Int32, expected: Int32 = SQLITE_OK) throws {
+    private func check(_ code: Int32, expected: Int32 = SQLITE_OK) throws(SQLiteError) {
         guard code == expected else {
             throw error(code)
         }
@@ -216,13 +216,13 @@ final class DefaultSQLiteDatabase: SQLiteDatabase {
         SQLiteError(code: code, message: String(cString: sqlite3_errmsg(database)))
     }
 
-    private static func check(_ code: Int32, _ database: OpaquePointer) throws {
+    private static func check(_ code: Int32, _ database: OpaquePointer) throws(SQLiteError) {
         guard code == SQLITE_OK else {
             throw SQLiteError(code: code, message: String(cString: sqlite3_errmsg(database)))
         }
     }
 
-    private static func prepare(_ sql: String, in database: OpaquePointer) throws -> OpaquePointer {
+    private static func prepare(_ sql: String, in database: OpaquePointer) throws(SQLiteError) -> OpaquePointer {
         var statement: OpaquePointer?
         let code = sqlite3_prepare_v2(database, sql, -1, &statement, nil)
         guard code == SQLITE_OK, let statement else {

@@ -17,7 +17,7 @@ final class SQLiteBackingStoreMock: SQLiteBackingStore {
 
     let database = SQLiteDatabaseMock()
     var createDirectoryError: (any Error)?
-    var openError: (any Error)?
+    var openError: SQLiteError?
     private(set) var calls = [Call]()
 
     func createDirectory(at url: URL) throws {
@@ -27,7 +27,7 @@ final class SQLiteBackingStoreMock: SQLiteBackingStore {
         }
     }
 
-    func open(at url: URL, protection: FileProtectionType?) throws -> any SQLiteDatabase {
+    func open(at url: URL, protection: FileProtectionType?) throws(SQLiteError) -> any SQLiteDatabase {
         calls.append(.open(url, protection))
         if let openError {
             throw openError
@@ -47,30 +47,30 @@ final class SQLiteDatabaseMock: SQLiteDatabase {
     }
 
     var values = [String: Data]()
-    var error: (any Error)?
+    var error: SQLiteError?
     private(set) var calls = [Call]()
 
-    func read(forKey key: String) throws -> Data? {
+    func read(forKey key: String) throws(SQLiteError) -> Data? {
         try record(.read(key))
         return values[key]
     }
 
-    func write(_ data: Data, forKey key: String) throws {
+    func write(_ data: Data, forKey key: String) throws(SQLiteError) {
         try record(.write(data, key))
         values[key] = data
     }
 
-    func remove(forKey key: String) throws {
+    func remove(forKey key: String) throws(SQLiteError) {
         try record(.remove(key))
         values[key] = nil
     }
 
-    func removeAll() throws {
+    func removeAll() throws(SQLiteError) {
         try record(.removeAll)
         values = [:]
     }
 
-    private func record(_ call: Call) throws {
+    private func record(_ call: Call) throws(SQLiteError) {
         calls.append(call)
         if let error {
             throw error
