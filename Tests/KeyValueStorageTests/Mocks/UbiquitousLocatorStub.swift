@@ -12,16 +12,16 @@ import Foundation
 @available(watchOS 9.0, *)
 final class UbiquitousLocatorStub: UbiquitousLocator {
     enum Call: Equatable {
-        case storedKey(String, UbiquitousStorage.Scope)
+        case storedKey(UbiquitousStorage.Key, UbiquitousStorage.Scope)
         case key(String, UbiquitousStorage.Scope)
     }
 
     var storedKeyError: UbiquitousStorage.Error?
     /// The stored keys the locator claims, and their keys.
-    var keys = [String: String]()
+    var keys = [String: UbiquitousStorage.Key]()
     private(set) var calls = [Call]()
 
-    func storedKey(forKey key: String, in scope: UbiquitousStorage.Scope) throws(UbiquitousStorage.Error) -> String {
+    func storedKey(forKey key: UbiquitousStorage.Key, in scope: UbiquitousStorage.Scope) throws(UbiquitousStorage.Error) -> String {
         calls.append(.storedKey(key, scope))
         if let storedKeyError {
             throw storedKeyError
@@ -30,7 +30,7 @@ final class UbiquitousLocatorStub: UbiquitousLocator {
         return "located-\(key)"
     }
 
-    func key(forStoredKey storedKey: String, in scope: UbiquitousStorage.Scope) -> String? {
+    func key(forStoredKey storedKey: String, in scope: UbiquitousStorage.Scope) -> UbiquitousStorage.Key? {
         calls.append(.key(storedKey, scope))
         return keys[storedKey]
     }

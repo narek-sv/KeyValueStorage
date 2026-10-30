@@ -64,7 +64,7 @@ private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #is
     try await exercise(KeychainStorage(scope: .app(namespace: .service(named: id)), backingStore: InMemoryKeychain(), locator: DefaultKeychainLocator()),
                        key: .init(name: "key"), context: context)
     if #available(watchOS 9.0, *) {
-        try await exercise(UbiquitousStorage(scope: .shared(namespace: .keyPrefix(named: id)), backingStore: InMemoryUbiquitousStore(), locator: DefaultUbiquitousLocator()),
+        try await exercise(UbiquitousStorage(scope: .iCloud(.own, namespace: .init(id)), backingStore: InMemoryUbiquitousStore(), locator: DefaultUbiquitousLocator()),
                            key: "key", context: context)
     }
 

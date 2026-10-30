@@ -9,6 +9,6 @@
 
 @available(watchOS 9.0, *)
 public extension UbiquitousStorage {
-    /// Any key; `.invalidKey` if its stored key, namespace prefix and escapes included, exceeds 128 UTF-16 code units.
-    typealias Key = String
+    /// Any string, even an empty one; `.invalidKey` if its stored key, namespace and escapes included, exceeds 128 UTF-16 code units.
+    typealias Key = ExactString
 }

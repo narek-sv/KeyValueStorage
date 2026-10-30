@@ -106,7 +106,7 @@ final class PublicAPITests: XCTestCase {
         XCTAssertEqual(file.scope, fileScope)
         XCTAssertEqual(sqlite.scope, sqliteScope)
         if #available(watchOS 9.0, *) {
-            let ubiquitousScope = UbiquitousStorage.Scope.shared(namespace: .keyPrefix(named: "publicAPIScope"))
+            let ubiquitousScope = UbiquitousStorage.Scope.iCloud(.own, namespace: "publicAPIScope")
             XCTAssertEqual(UbiquitousStorage(scope: ubiquitousScope, backingStore: InMemoryUbiquitousStore(), locator: DefaultUbiquitousLocator()).scope, ubiquitousScope)
         }
     }

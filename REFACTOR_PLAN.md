@@ -47,7 +47,7 @@ This file is the source of truth for the 4.0 refactor, written so that anyone, h
 - **Done: phases 0–6, the source side.** The synchronous `KeyValueDataStorage` with `init(scope:backingStore:)`, typed throws, scopes with namespaces, every storage on its backing store, the global actors removed, and `KeychainWrapper.swift` deleted.
 - **Added: `UbiquitousStorage`** (§5.7), on the same pattern.
 - **Tests:** the public API target and the coder tests are on the 4.0 API and pass. The 3.x unit tests live in `Tests/Legacy3x/` (not a target) as the porting reference; each storage's locator step ports and deletes its file.
-- **Done: the sealed scopes for FileStorage, the pilot, SQLite and UserDefaults** (§S, §5.3, §5.6, §5.4, 2026-10-30). Shared: `ExactString`, and a scope protocol that only requires `default`. File and SQLite storages of one scope share its folder. Until the other three move, `defaultName` and `KeyValueDataStorageNamespace` stay for them.
+- **Done: the sealed scopes for FileStorage, the pilot, SQLite, UserDefaults and Ubiquitous** (§S, §5.3, §5.6, §5.4, §5.7, 2026-10-30). Shared: `ExactString`, and a scope protocol that only requires `default`. File and SQLite storages of one scope share its folder. Until Keychain and InMemory move, `defaultName` and `KeyValueDataStorageNamespace` stay for them.
 - **Next: the sealed scopes** (§S, Appendix A, phase 6b) for SQLite, UserDefaults, Ubiquitous, Keychain and InMemory, after the pilot's review. Each step brings that storage's planned items (§5.2–5.7), its part of the error refactor (§4.4) and its test revisit (§11.3).
 - **Then: phases 7–9**, the coding, isolation and facade layers. The observation and unified layers still emit isolated-conformance warnings on Swift 6.2+ compilers, because the storage protocol is no longer `Sendable`.
 
@@ -453,12 +453,12 @@ The root encodings (§4.5) and the Keychain services are done.
 
 **Backing store:** `UbiquitousBackingStore`, one `NSUbiquitousKeyValueStore.default` call per member: `read(forKey:)` (`object(forKey:)`), `write(_:forKey:)`, `remove(forKey:)`, `keys()` (`dictionaryRepresentation.keys`) and `synchronize()`.
 
-**Locator:** the same scheme as UserDefaults' (§5.4): `<namespace>/<key>` or the root key as is, `%` and `/` escaped byte by byte in the namespace and in root keys, and an exact, byte-compared inverse. `storedKey(forKey:in:)` also enforces the store's limit: a stored key, prefix and escapes included, of more than 128 UTF-16 code units throws `.invalidKey(key)`, because the store raises an Objective-C exception, a crash, for longer keys.
+**Locator:** the same scheme as UserDefaults' (§5.4): `<namespace>!/<key>`, `%` and `/` escaped byte by byte in the namespace, and a byte-compared prefix strip as the inverse. `storedKey(forKey:in:)` also enforces the store's limit: a stored key, namespace, mark and escapes included, of more than 128 UTF-16 code units throws `.invalidKey(key)`, because the store raises an Objective-C exception, a crash, for longer keys.
 
 **Storage:** only `Data` is a value (§4.6): `fetch` returns `nil` for anything else, `save` throws `.keyOccupied(storedKey)` instead of replacing it, and `delete` and `clear()` never remove it. `clear()` removes the `Data` at every stored key the locator claims and maps back byte for byte. `save` checks the key, then the 1 MB value limit (`.valueTooLarge`), both before calling the store.
 
 - **Availability:** `@available(watchOS 9.0, *)`, matching `NSUbiquitousKeyValueStore`; the package supports watchOS 6. Raising the watchOS minimum to 9 would remove the annotations (see Open decisions).
-- **Store and sharing:** a process can reach exactly one store, `NSUbiquitousKeyValueStore.default`, chosen only by its signed `com.apple.developer.ubiquity-kvstore-identifier` entitlement and the Apple Account. There's no API to pick a store, App Groups have no effect on it, and on iOS the code can't read the entitlement. So the scope has one case, `.shared(namespace:)`. The docs explain the setup:
+- **Store and sharing:** a process can reach exactly one store, `NSUbiquitousKeyValueStore.default`, chosen only by its signed `com.apple.developer.ubiquity-kvstore-identifier` entitlement and the Apple Account. There's no API to pick a store, App Groups have no effect on it, and on iOS the code can't read the entitlement. So the scope has one case, `.iCloud(.own, namespace:)` (sealed scopes, 2026-10-30; `Key` and `Namespace` are `ExactString`, and `.invalidKey` and `.valueTooLarge` carry the key passed). The docs explain the setup:
   - one app keeps Xcode's default identifier, `$(TeamIdentifierPrefix)$(CFBundleIdentifier)`;
   - an app and its extensions, or apps of one team, set the same value in every target's entitlements;
   - an extension that keeps its default identifier silently gets its own store.
@@ -713,10 +713,10 @@ Tests/
 - `scope` is the one given.
 
 **DefaultUbiquitousLocator** (`DefaultUbiquitousLocatorTests`, no mocks)
-- namespaced keys and root keys as in `DefaultUserDefaultsLocatorTests`, a `/` with a combining mark included;
-- exactly 128 UTF-16 code units passes and one more throws `.invalidKey(key)`, for a root key, a namespaced key, escapes and emoji;
-- not claimed: the UserDefaults cases, and a stored key over the limit;
-- laws within each scope, by bytes; no two scopes share or claim each other's stored keys.
+- stored keys as in `DefaultUserDefaultsLocatorTests`, a `/` with a combining mark and a namespace ending with `!` included;
+- exactly 128 UTF-16 code units passes and one more throws `.invalidKey(key)`, for an empty and a named namespace, escapes and emoji;
+- not claimed: the UserDefaults cases, other code's unmarked keys among them;
+- laws within each scope, by bytes; no two namespaces share or claim each other's stored keys.
 
 **UbiquitousStorage** (`UbiquitousStorageTests`; `UbiquitousBackingStoreMock`, `UbiquitousLocatorStub`)
 - locator errors stop fetch, save and delete before the store; `scope` is the one given;

@@ -15,7 +15,7 @@ import Foundation
 final class UbiquitousStorageTests: XCTestCase {
     private let backingStore = UbiquitousBackingStoreMock()
     private let locator = UbiquitousLocatorStub()
-    private let scope = UbiquitousStorage.Scope.shared(namespace: .keyPrefix(named: "prefix"))
+    private let scope = UbiquitousStorage.Scope.iCloud(.own, namespace: "prefix")
     private let data = Data([0xAA, 0xBB])
     /// Values of other types, as other code can put under any key.
     private let foreignValues: [Any] = ["text", 1, true, Date(timeIntervalSince1970: 0), ["a"], ["a": 1]]

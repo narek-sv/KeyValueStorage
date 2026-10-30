@@ -9,26 +9,25 @@
 
 @available(watchOS 9.0, *)
 public extension UbiquitousStorage {
-    /// `nil` stores the keys as they are, with `%` and `/` percent-encoded.
-    /// - Warning: With a `nil` namespace, `clear()` removes every `Data` value a key could have written, other code's too,
-    ///   on all of the user's devices; never values of other types or namespaces' keys.
-    enum Namespace: KeyValueDataStorageNamespace {
-        /// Stored as `<name>/<key>`, with `%` and `/` in `name` percent-encoded.
-        case keyPrefix(named: String)
+    /// Any string, even an empty one.
+    typealias Namespace = ExactString
+
+    /// Which apps see the values.
+    enum Owner: Hashable, Sendable {
+        /// The running app or extension.
+        /// - Warning: Apps whose entitlements name the same key-value store can read, change and delete its values.
+        case own
     }
-    
+
     enum Scope: KeyValueDataStorageScope {
-        /// The store of the app's iCloud entitlement, synced across the user's devices.
-        case shared(namespace: Namespace? = nil)
-        
-        public var namespace: Namespace? {
-            switch self {
-            case .shared(let namespace):  return namespace
-            }
-        }
-        
+        /// Synced to the user's other devices through iCloud.
+        /// - Note: Values stay on this device while the user is signed out of iCloud.
+        /// - Note: The store holds at most 1 MB and 1024 keys in all.
+        /// - Warning: Without the iCloud key-value store entitlement, the store keeps nothing, and nothing reports it.
+        case iCloud(Owner, namespace: Namespace)
+
         public static var `default`: Self {
-            .shared(namespace: .keyPrefix(named: Self.defaultName))
+            .iCloud(.own, namespace: defaultNamespace)
         }
     }
 }
