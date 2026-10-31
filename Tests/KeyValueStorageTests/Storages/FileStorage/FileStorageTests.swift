@@ -300,6 +300,25 @@ final class FileStorageTests: XCTestCase {
         ])
     }
 
+    func testClearChecksTheFolderOnceThenEachFile() throws {
+        // Given: two values, and a folder named like a key
+        backingStore.items = [root.path: .directory, path("a"): .file(data), path("b"): .file(data), path("c"): .directory]
+
+        // When
+        try makeStorage().clear()
+
+        // Then: the folder isn't checked again per file, and the folder named like a key stays
+        XCTAssertEqual(backingStore.items, [root.path: .directory, path("c"): .directory])
+        XCTAssertEqual(backingStore.calls.filter { $0 == .itemType(root) }.count, 1)
+        // The folder lists its items in no set order
+        let perFile = backingStore.calls.filter { $0 != .itemType(root) && $0 != .itemNames(root) }
+        let expected: [FileBackingStoreMock.Call] = [.itemType(file("a")), .remove(file("a")), .itemType(file("b")), .remove(file("b")), .itemType(file("c"))]
+        XCTAssertEqual(perFile.count, expected.count, "\(perFile)")
+        for call in expected {
+            XCTAssertTrue(perFile.contains(call), "\(call)")
+        }
+    }
+
     func testClearSkipsFilesWhoseKeyHasNoFileName() throws {
         // Given: a locator that claims a file, but can't name its key's file
         let locator = FileLocatorStub()

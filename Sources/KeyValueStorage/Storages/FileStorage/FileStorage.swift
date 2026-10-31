@@ -79,10 +79,13 @@ public final class FileStorage: DataStorage, Sendable {
             return
         }
 
-        // The folder can also hold SQLite's files and other code's
+        // The folder can also hold SQLite's files and other code's; it's checked once, above
         let names = try Self.execute { try backingStore.itemNames(at: root) }
         for name in names where isValueName(name) {
-            try removeValue(at: root.appendingPathComponent(name, isDirectory: false))
+            let url = root.appendingPathComponent(name, isDirectory: false)
+            if try isFile(at: url) {
+                try remove(at: url)
+            }
         }
     }
 
@@ -94,15 +97,23 @@ public final class FileStorage: DataStorage, Sendable {
             return false
         }
 
-        return try itemType(at: url) == .typeRegular
+        return try isFile(at: url)
     }
 
     /// Never a folder: `remove` deletes a folder with everything inside.
+    private func isFile(at url: URL) throws(Error) -> Bool {
+        try itemType(at: url) == .typeRegular
+    }
+
     private func removeValue(at url: URL) throws(Error) {
         guard try hasValue(at: url) else {
             return
         }
 
+        try remove(at: url)
+    }
+
+    private func remove(at url: URL) throws(Error) {
         try Self.execute {
             do {
                 try backingStore.remove(at: url)

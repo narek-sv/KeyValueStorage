@@ -28,6 +28,7 @@ open class ObservableStorage<Storage: AsyncDataStorage & Sendable>: @unchecked S
 
     private let storage: AsyncCodingStorage<Storage>
     private let registry = ObservationRegistry.shared
+    private let scopeID: ObservationRegistry.ScopeID
 
     public var scope: Storage.Scope {
         storage.scope
@@ -37,6 +38,7 @@ open class ObservableStorage<Storage: AsyncDataStorage & Sendable>: @unchecked S
 
     public init(_ storage: AsyncCodingStorage<Storage>) {
         self.storage = storage
+        self.scopeID = .init(storageType: ObjectIdentifier(Storage.self), scope: AnyHashable(storage.scope))
     }
 
     // MARK: Main Functionality
@@ -117,12 +119,6 @@ open class ObservableStorage<Storage: AsyncDataStorage & Sendable>: @unchecked S
                 subscription.cancel()
             }
         }
-    }
-
-    // MARK: Helpers
-
-    private var scopeID: ObservationRegistry.ScopeID {
-        .init(storageType: ObjectIdentifier(Storage.self), scope: AnyHashable(scope))
     }
 }
 
