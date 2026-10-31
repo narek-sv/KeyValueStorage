@@ -46,7 +46,7 @@ func assertBytes(_ actual: String?, _ expected: String, file: StaticString = #fi
     XCTAssertEqual(actual.map { Array($0.utf8) }, Array(expected.utf8), "\(actual.debugDescription) isn't \(expected.debugDescription)", file: file, line: line)
 }
 
-/// The REFACTOR_PLAN.md §4.5 laws within one scope: round trip (L1), no shared names (L2), no claimed foreign names (L4).
+/// The locator laws within one scope: round trip (L1), no shared names (L2), no claimed foreign names (L4).
 /// - Note: Keys compare by scalars: storages keep `"é"` and `"e\u{301}"` apart, though Swift's `==` doesn't.
 /// - Parameter sameName: Whether the system sees two names as one, such as a case-insensitive volume.
 func assertLocatorLaws(
