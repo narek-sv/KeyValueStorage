@@ -24,7 +24,8 @@ private final class KeyValueObservations {
 /// - Only changes made through observable storages in this process are published, from any instance.
 ///   Changes from other processes (such as app extensions), from storages created without observation,
 ///   or written directly to `UserDefaults`, the keychain or files aren't.
-open class KeyValueObservableStorage<Storage: AsyncKeyValueDataStorage>: AsyncKeyValueCodingStorage<Storage>, @unchecked Sendable {
+/// - Note: Its storage is `Sendable`, because observation reaches it from `CodingStorageActor`; wrap a synchronous one in `IsolatedKeyValueDataStorage`.
+open class KeyValueObservableStorage<Storage: AsyncKeyValueDataStorage & Sendable>: AsyncKeyValueCodingStorage<Storage>, @unchecked Sendable {
         
     // MARK: Observation
 

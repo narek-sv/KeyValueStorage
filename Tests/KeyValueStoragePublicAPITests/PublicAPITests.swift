@@ -197,8 +197,8 @@ final class PublicAPITests: XCTestCase {
         subscription?.cancel()
     }
 
-    /// A synchronous storage isolated by its key type: `UnifiedStorage` shares it between concurrent tasks safely.
-    func testAnIsolatedKeySharesASynchronousStorageSafely() async throws {
+    /// The built-in keys isolate their storages, so `UnifiedStorage` shares a synchronous one between concurrent tasks safely.
+    func testBuiltInKeysShareASynchronousStorageSafely() async throws {
         // Given
         let scope = SQLiteStorage.Scope.own(.temporary, namespace: .init("publicAPIIsolated-\(UUID().uuidString)"))
         let folder = try DefaultSQLiteLocator().databaseURL(for: scope).deletingLastPathComponent().deletingLastPathComponent()
@@ -209,7 +209,7 @@ final class PublicAPITests: XCTestCase {
         let values = try await withThrowingTaskGroup(of: (Int, Int?).self) { group in
             for index in 0..<200 {
                 group.addTask {
-                    let key = IsolatedSQLiteKey<Int>(key: .init("key\(index)"), scope: scope)
+                    let key = SQLiteKey<Int>(key: .init("key\(index)"), scope: scope)
                     try await storage.save(index, forKey: key)
                     return (index, try await storage.fetch(forKey: key))
                 }
@@ -224,7 +224,7 @@ final class PublicAPITests: XCTestCase {
             XCTAssertEqual(value, index)
         }
 
-        try await storage.clear(storage: IsolatedKeyValueDataStorage<SQLiteStorage>.self, forScope: scope)
+        try await storage.clear(storage: IsolatedSQLiteStorage.self, forScope: scope)
     }
 
     /// Compiles only while the storage and its locator throw `FileStorage.Error`, and clients can match every case.
@@ -313,12 +313,12 @@ private final class CountingFactory: DefaultUnifiedStorageFactory, @unchecked Se
     private(set) var dataStorageCalls = 0
     private(set) var codingStorageCalls = 0
 
-    override func dataStorage<Storage: AsyncKeyValueDataStorage>(for scope: Storage.Scope) async throws(Storage.Error) -> Storage {
+    override func dataStorage<Storage: AsyncKeyValueDataStorage & Sendable>(for scope: Storage.Scope) async throws(Storage.Error) -> Storage {
         dataStorageCalls += 1
         return try await super.dataStorage(for: scope)
     }
 
-    override func codingStorage<Storage: AsyncKeyValueDataStorage>(for storage: Storage) async -> AsyncKeyValueCodingStorage<Storage> {
+    override func codingStorage<Storage: AsyncKeyValueDataStorage & Sendable>(for storage: Storage) async -> AsyncKeyValueCodingStorage<Storage> {
         codingStorageCalls += 1
         return await super.codingStorage(for: storage)
     }
@@ -364,4 +364,3 @@ private actor RemoteStorage: AsyncKeyValueDataStorage {
 }
 
 private typealias RemoteKey<Value: CodingValue> = UnifiedStorageKey<RemoteStorage, Value>
-private typealias IsolatedSQLiteKey<Value: CodingValue> = UnifiedStorageKey<IsolatedKeyValueDataStorage<SQLiteStorage>, Value>

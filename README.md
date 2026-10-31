@@ -235,7 +235,7 @@ try await storage.set(nil, forKey: key) // delete
 
 // Removes every value of the storage's scope, `.default` when omitted,
 // including the values saved in previous launches
-try await storage.clear(storage: KeychainStorage.self, forScope: .own(namespace: "auth"))
+try await storage.clear(storage: IsolatedKeychainStorage.self, forScope: .own(namespace: "auth"))
 ```
 
 Clearing removes only the values the library saved in that scope. Other code's values in the same suite, folder or store are never touched.
@@ -294,10 +294,14 @@ actor RemoteStorage: AsyncKeyValueDataStorage {
 }
 ```
 
-Then define a key type for it (optional, for ease of use), and use it like the built-in storages:
+Then define a key type for it, and use it like the built-in storages. `UnifiedStorage` shares its storages between tasks, so it takes only `Sendable` ones, and the compiler enforces it:
+* an asynchronous storage, which is usually an actor, as is;
+* a synchronous storage that's `Sendable`, as is;
+* any other synchronous storage wrapped in `IsolatedKeyValueDataStorage`, as the built-in keys do.
 
 ```swift
 typealias RemoteKey<Value: CodingValue> = UnifiedStorageKey<RemoteStorage, Value>
+typealias NewKey<Value: CodingValue> = UnifiedStorageKey<IsolatedKeyValueDataStorage<NewStorage>, Value>
 
 let key = RemoteKey<UUID>(key: "id")
 try await storage.save(UUID(), forKey: key)
@@ -307,7 +311,7 @@ let coding = KeyValueCodingStorage(storage: try NewStorage(scope: .default))
 try coding.save(UUID(), forKey: KeyValueCodingStorageKey<NewStorage, UUID>(key: "id"))
 ```
 
-***NOTE***! In `async` generic code, calls on a `KeyValueDataStorage` resolve to the `async` requirements and need `await`; synchronous generic code calls the synchronous ones. You need to handle the thread safety of your storage on your own: `UnifiedStorage` may call an `AsyncKeyValueDataStorage` from several tasks, so make it an actor or otherwise safe to share.
+***NOTE***! In `async` generic code, calls on a `KeyValueDataStorage` resolve to the `async` requirements and need `await`; synchronous generic code calls the synchronous ones. An asynchronous storage that isn't an actor must be `Sendable` and safe to call from several tasks at once.
 
 ---
 ## Xcode autocompletion 
@@ -462,10 +466,12 @@ Something that isn't a value where a value goes. It's never replaced or removed:
 ---
 ## Thread Safety
 
-`UnifiedStorage` is an actor: you can call it from any thread, task or actor. The storages themselves, such as `FileStorage`, and `KeyValueCodingStorage` are synchronous and unsynchronized: use an instance from one thread or actor. To share a synchronous storage between tasks or threads, wrap it in `IsolatedKeyValueDataStorage`, an actor that runs its operations one at a time and is an `AsyncKeyValueDataStorage` itself:
+`UnifiedStorage` is an actor: you can call it from any thread, task or actor.
+
+The storages themselves, such as `FileStorage`, and `KeyValueCodingStorage` are synchronous and unsynchronized, and need no locks: use an instance from one thread or actor, for example the main actor. They aren't `Sendable`, so in Swift 6 the compiler stops code that would use one from two threads or tasks at once. Only when you need to share a synchronous storage between tasks or threads, wrap it in `IsolatedKeyValueDataStorage`, an actor that runs its operations one at a time and is an `AsyncKeyValueDataStorage` itself. Each built-in storage has a name for it, such as `IsolatedSQLiteStorage` for `IsolatedKeyValueDataStorage<SQLiteStorage>`:
 
 ```swift
-let shared = IsolatedKeyValueDataStorage(try SQLiteStorage(scope: .default))
+let shared = IsolatedSQLiteStorage(try SQLiteStorage(scope: .default))
 try await shared.save(data, forKey: "key")
 
 // Several operations as one atomic step
@@ -473,12 +479,9 @@ try await shared.withStorage { storage in
     let count = try storage.fetch(forKey: "count")
     try storage.save(increment(count), forKey: "count")
 }
-
-// Through UnifiedStorage, by key type
-typealias SharedSQLiteKey<Value: CodingValue> = UnifiedStorageKey<IsolatedKeyValueDataStorage<SQLiteStorage>, Value>
 ```
 
-***NOTE***! `UnifiedStorage` doesn't isolate storages by itself yet: use an isolated key type for a `SQLiteStorage` that concurrent tasks share. A *sequence* of operations, such as a fetch followed by a save, isn't atomic: another task or process can change the value in between.
+`UnifiedStorage` does this for you: the built-in keys, such as `SQLiteKey`, reach their storages through `IsolatedKeyValueDataStorage`, and it accepts only `Sendable` storages (see [Custom Storages](#custom-storages)). A *sequence* of operations, such as a fetch followed by a save, isn't atomic: another task or process can change the value in between.
 
 ---
 ## Tests

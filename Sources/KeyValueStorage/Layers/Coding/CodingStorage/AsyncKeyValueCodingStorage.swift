@@ -11,7 +11,8 @@ import Foundation
 
 /// Encodes values and passes them to any data storage, synchronous or not.
 /// It holds only immutable state, so it doesn't need an actor: encoding runs in parallel on the callers' tasks.
-open class AsyncKeyValueCodingStorage<Storage: AsyncKeyValueDataStorage>: @unchecked Sendable {
+/// - Note: `Sendable` only when its storage is: wrap a synchronous storage in `IsolatedKeyValueDataStorage` to share it.
+open class AsyncKeyValueCodingStorage<Storage: AsyncKeyValueDataStorage> {
     public typealias Error = KeyValueCodingError<Storage>
 
     // MARK: Properties
@@ -80,3 +81,8 @@ open class AsyncKeyValueCodingStorage<Storage: AsyncKeyValueDataStorage>: @unche
         }
     }
 }
+
+// MARK: - AsyncKeyValueCodingStorage + Sendable
+
+/// Unchecked only because the class is open: its state is immutable, and the coder and the storage are `Sendable`.
+extension AsyncKeyValueCodingStorage: @unchecked Sendable where Storage: Sendable { }

@@ -69,7 +69,7 @@ private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #is
     }
 
     // An isolated storage, directly (no `try`: it keeps `InMemoryStorage`'s `Never`) and through the async coding storage
-    let isolated = IsolatedKeyValueDataStorage(InMemoryStorage(scope: .own(namespace: .init("\(id)-isolated"))))
+    let isolated = IsolatedInMemoryStorage(InMemoryStorage(scope: .own(namespace: .init("\(id)-isolated"))))
     await isolated.save(Data([1]), forKey: "key")
     let isolatedFetched = await isolated.fetch(forKey: "key")
     await isolated.set(nil, forKey: "key")
@@ -98,7 +98,7 @@ private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #is
     try await storage.set(nil, forKey: key)
     try await storage.set(2, forKey: key)
     try await storage.delete(forKey: key)
-    try await storage.clear(storage: InMemoryStorage.self, forScope: .own(namespace: .init(id)))
+    try await storage.clear(storage: IsolatedInMemoryStorage.self, forScope: .own(namespace: .init(id)))
     let firstStreamed = await streamed.value
     
     XCTAssertEqual(fetched, 1, "UnifiedStorage from \(context)")
@@ -107,14 +107,14 @@ private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #is
     subscription?.cancel()
 }
 
-private func exercise<Storage: KeyValueDataStorage>(_ storage: Storage, key: Storage.Key, context: String,
+private func exercise<Storage: KeyValueDataStorage>(_ storage: sending Storage, key: Storage.Key, context: String,
                                                     isolation: isolated (any Actor)? = #isolation) async throws {
     let description = "\(Storage.self) from \(context)"
     try exerciseSynchronously(storage, key: key, description: description)
 
-    // Async coding and observation, which read the storage's scope on CodingStorageActor
-    let observable = KeyValueObservableStorage(storage: storage, coder: RawDataCoder())
-    let codingKey = KeyValueCodingStorageKey<Storage, Int>(key: key)
+    // Async coding and observation, which reach the storage from CodingStorageActor, so through the isolated wrapper
+    let observable = KeyValueObservableStorage(storage: IsolatedKeyValueDataStorage(storage), coder: RawDataCoder())
+    let codingKey = KeyValueCodingStorageKey<IsolatedKeyValueDataStorage<Storage>, Int>(key: key)
     let published = Values<Int?>()
     let subscription = try await observable.publisher(forKey: codingKey).sink { published.append($0) }
     let stream = try await observable.stream(forKey: codingKey, includingCurrentValue: false)
