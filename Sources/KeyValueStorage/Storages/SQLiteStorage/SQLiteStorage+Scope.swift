@@ -40,7 +40,8 @@ public extension SQLiteStorage {
         case own(_ retention: Retention = .persistent, protection: Protection = .inherited, namespace: Namespace)
         /// Shared by the apps and extensions in the App Group.
         /// - Note: An empty id throws.
-        /// - Note: On macOS, every id gets a folder, even one the app isn't entitled to, and ids that differ only in case share one.
+        /// - Note: On macOS and in the Simulator, every id gets a folder, even one the app isn't entitled to. On macOS, ids that
+        ///   differ only in case share one.
         case appGroup(id: String, protection: Protection = .inherited, namespace: Namespace)
 
         public static var `default`: Self {

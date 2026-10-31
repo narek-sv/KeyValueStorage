@@ -114,7 +114,7 @@ let onboarded = UserDefaultsKey<Bool>(key: "onboarded", scope: .appGroup(id: "gr
 let token = KeychainKey<String>(key: "token", scope: .appGroup(id: "group.com.company.app", namespace: "auth"))
 ```
 
-A target without the group doesn't see the shared values: User Defaults quietly keeps its own values, File and SQLite throw `groupDirectoryNotFound`, and the keychain throws `.keychain(status: errSecMissingEntitlement)`.
+A target without the group doesn't see the shared values: User Defaults quietly keeps its own values, File and SQLite throw `groupDirectoryNotFound` on a device but get a folder of their own on macOS and in the Simulator, and the keychain throws `.keychain(status: errSecMissingEntitlement)`.
 
 Every scope names a `namespace`, which keeps sets of values apart within the same place; the default scope uses `"KeyValueStorage"`. Here is where each built-in storage keeps a scope's values:
 

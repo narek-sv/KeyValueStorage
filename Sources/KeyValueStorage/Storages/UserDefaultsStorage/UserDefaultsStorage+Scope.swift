@@ -18,7 +18,7 @@ public extension UserDefaultsStorage {
         /// - Warning: Without the App Group entitlement, values stay in this app, and nothing reports it.
         /// - Note: An empty id, the global domain's names (`NSGlobalDomain`, `.GlobalPreferences`, `kCFPreferencesAnyApplication`,
         ///   `Apple Global Domain`) and `.own`'s suite name throw `.invalidSuiteName`: every suite reads the global domain, and `.own`'s suite is `.own`'s alone.
-        /// - Note: On macOS, ids that differ only in case share one suite.
+        /// - Warning: On macOS, ids that differ only in case write one file but read as two suites, so their values get lost or mixed.
         case appGroup(id: String, namespace: Namespace)
 
         public static var `default`: Self {

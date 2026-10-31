@@ -117,14 +117,7 @@ final class UserDefaultsIntegrationTests: XCTestCase {
         CFPreferencesAppSynchronize(suiteName as CFString)
 
         // Then: every value is in the file, under its own stored key
-        let file = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true).appendingPathComponent("Library/Preferences/\(suiteName).plist")
-        // `NSDictionary`: a Swift dictionary merges keys that differ only in normalization
-        var plist = NSDictionary()
-        for _ in 0..<200 where plist["ns!/sentinel"] == nil {
-            Thread.sleep(forTimeInterval: 0.05)
-            plist = (try? Data(contentsOf: file)).flatMap { try? PropertyListSerialization.propertyList(from: $0, format: nil) as? NSDictionary } ?? [:]
-        }
-
+        let plist = suiteFile(suiteName, once: "ns!/sentinel")
         XCTAssertNotNil(plist["ns!/sentinel"], "the suite's file was never written")
         let stored = Set(plist.allValues.compactMap { $0 as? Data }).subtracting([Data("sentinel".utf8)])
         XCTAssertEqual(stored, expected, "lost: \(expected.subtracting(stored).map { String(decoding: $0, as: UTF8.self) }.sorted())")
@@ -231,6 +224,51 @@ final class UserDefaultsIntegrationTests: XCTestCase {
         }
     }
 
+    /// Measured, for `.appGroup`'s doc: the system makes the suite whether or not the app is in the group.
+    func testAnUnentitledGroupsSuiteWorksAndStaysInTheAppsOwnPreferences() throws {
+        // Given: a group this test process isn't entitled to
+        let groupId = "group.keyvaluestorage.unentitled"
+        let storage = try storage(.appGroup(id: groupId, namespace: "ns"))
+        addTeardownBlock {
+            UserDefaults(suiteName: groupId)?.removePersistentDomain(forName: groupId)
+        }
+
+        // When: nothing throws or reports it
+        try storage.save(Data([1]), forKey: "key")
+        CFPreferencesAppSynchronize(groupId as CFString)
+
+        // Then: the value works, and its file is in the app's own preferences, not a group container
+        XCTAssertEqual(storage.fetch(forKey: "key"), Data([1]))
+        XCTAssertEqual(suiteFile(groupId, once: "ns!/key")["ns!/key"] as? Data, Data([1]))
+    }
+
+    #if os(macOS)
+    /// Measured, for `.appGroup`'s doc: suites are files named after them, which a volume that ignores case takes for one.
+    func testGroupSuitesThatDifferOnlyInCaseWriteOneFile() throws {
+        // Given
+        let preferences = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true).appendingPathComponent("Library/Preferences", isDirectory: true)
+        let caseSensitive = try preferences.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]).volumeSupportsCaseSensitiveNames
+        try XCTSkipIf(caseSensitive != false, "The preferences volume tells case apart")
+        let groupIds = ["group.keyvaluestorage.case", "GROUP.KEYVALUESTORAGE.CASE"]
+        addTeardownBlock {
+            for groupId in groupIds {
+                UserDefaults(suiteName: groupId)?.removePersistentDomain(forName: groupId)
+            }
+        }
+
+        // When
+        for (index, groupId) in groupIds.enumerated() {
+            try storage(.appGroup(id: groupId, namespace: "ns")).save(Data([UInt8(index)]), forKey: .init("key\(index)"))
+            CFPreferencesAppSynchronize(groupId as CFString)
+        }
+
+        // Then: one file for both
+        _ = suiteFile(groupIds[0], once: "ns!/key0")
+        let files = try FileManager.default.contentsOfDirectory(atPath: preferences.path).filter { $0.lowercased() == "group.keyvaluestorage.case.plist" }
+        XCTAssertEqual(files.count, 1, "\(files)")
+    }
+    #endif
+
     func testTheLocatorsLookupsReturnTheSystems() {
         let locator = DefaultUserDefaultsLocator()
 
@@ -241,6 +279,19 @@ final class UserDefaultsIntegrationTests: XCTestCase {
 
     private func storage(_ scope: UserDefaultsStorage.Scope? = nil) throws(UserDefaultsStorage.Error) -> UserDefaultsStorage {
         try UserDefaultsStorage(scope: scope ?? self.scope, backingStore: DefaultUserDefaultsBackingStoreWrapper(), locator: locator)
+    }
+
+    /// The suite's file once the system has written `key` to it, waiting up to 10 s; an `NSDictionary`, because a Swift
+    /// dictionary merges keys that differ only in normalization.
+    private func suiteFile(_ suiteName: String, once key: String) -> NSDictionary {
+        let file = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true).appendingPathComponent("Library/Preferences/\(suiteName).plist")
+        var plist = NSDictionary()
+        for _ in 0..<200 where plist[key] == nil {
+            Thread.sleep(forTimeInterval: 0.05)
+            plist = (try? Data(contentsOf: file)).flatMap { try? PropertyListSerialization.propertyList(from: $0, format: nil) as? NSDictionary } ?? [:]
+        }
+
+        return plist
     }
 
     private func assertKeyOccupied(_ key: UserDefaultsStorage.Key, file: StaticString = #filePath, line: UInt = #line, _ body: () throws -> Void) {

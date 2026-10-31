@@ -70,10 +70,46 @@ final class FileIntegrationTests: XCTestCase {
         XCTAssertEqual(locator.temporaryDirectory, fileManager.temporaryDirectory)
         XCTAssertEqual(locator.systemDirectory(.applicationSupportDirectory), fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first)
         XCTAssertEqual(locator.systemDirectory(.cachesDirectory), fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first)
-        // Outside a sandbox, macOS returns a container for any group ID
         let groupId = "group.not.entitled.\(UUID().uuidString)"
         XCTAssertEqual(locator.groupDirectory(for: groupId), fileManager.containerURL(forSecurityApplicationGroupIdentifier: groupId))
         XCTAssertEqual(locator.ownIdentifier, OwnIdentity.identifier)
+    }
+
+    /// Measured, for `.appGroup`'s doc in File and SQLite.
+    func testWhichGroupIdsTheSystemGivesAContainer() throws {
+        // Given: a group this test process isn't entitled to, and the same id in capitals
+        let groupId = "group.not.entitled.\(UUID().uuidString.lowercased())"
+        let containers = fileManager.urls(for: .libraryDirectory, in: .userDomainMask)[0].appendingPathComponent("Group Containers", isDirectory: true)
+        let before = (try? fileManager.contentsOfDirectory(atPath: containers.path)) ?? []
+
+        // When
+        let container = fileManager.containerURL(forSecurityApplicationGroupIdentifier: groupId)
+        let capitalized = fileManager.containerURL(forSecurityApplicationGroupIdentifier: groupId.uppercased())
+        let empty = fileManager.containerURL(forSecurityApplicationGroupIdentifier: "")
+
+        // Then
+        XCTAssertNil(empty)
+        #if os(macOS)
+        // Any other id gets a path, and nothing is created until a value is saved
+        let path = try XCTUnwrap(container).path
+        let capitalizedPath = try XCTUnwrap(capitalized).path
+        XCTAssertFalse(fileManager.fileExists(atPath: path))
+        XCTAssertEqual((try? fileManager.contentsOfDirectory(atPath: containers.path)) ?? [], before)
+        // Ids that differ only in case get paths that differ only in case, which a volume that ignores case takes for one
+        XCTAssertNotEqual(path, capitalizedPath)
+        XCTAssertEqual(path.lowercased(), capitalizedPath.lowercased())
+        #elseif targetEnvironment(simulator)
+        // The Simulator doesn't check entitlements: any id gets a container of its own, also ids that differ only in case
+        XCTAssertNotNil(container)
+        XCTAssertNotNil(capitalized)
+        XCTAssertNotEqual(container, capitalized)
+        _ = before
+        #else
+        // A device gives only the app's own groups a container (to verify in the device run)
+        XCTAssertNil(container)
+        XCTAssertNil(capitalized)
+        _ = before
+        #endif
     }
 
     // MARK: Values
