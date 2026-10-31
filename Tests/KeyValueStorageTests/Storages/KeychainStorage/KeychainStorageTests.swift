@@ -215,16 +215,24 @@ final class KeychainStorageTests: XCTestCase {
             (.remove, { try $0.clear() })
         ]
 
-        for (operation, body) in operations {
-            // Given
-            let backingStore = KeychainBackingStoreMock()
-            backingStore.items = [item("key", data: data)]
-            backingStore.failures[operation] = .interactionNotAllowed
-            let storage = KeychainStorage(scope: scope, backingStore: backingStore, locator: locator)
+        let failures: [(KeychainOperationStatus, KeychainStorage.Error)] = [
+            (.interactionNotAllowed, .protectedDataUnavailable),
+            (.missingEntitlement, .keychain(status: errSecMissingEntitlement)),
+            (.other(errSecAuthFailed), .keychain(status: errSecAuthFailed))
+        ]
 
-            // When - Then
-            assertThrows(KeychainStorage.Error.protectedDataUnavailable) { try body(storage) }
-            XCTAssertEqual(backingStore.items, [item("key", data: data)])
+        for (operation, body) in operations {
+            for (status, expected) in failures {
+                // Given
+                let backingStore = KeychainBackingStoreMock()
+                backingStore.items = [item("key", data: data)]
+                backingStore.failures[operation] = status
+                let storage = KeychainStorage(scope: scope, backingStore: backingStore, locator: locator)
+
+                // When - Then
+                assertThrows(expected) { try body(storage) }
+                XCTAssertEqual(backingStore.items, [item("key", data: data)], "\(operation), \(status)")
+            }
         }
     }
 

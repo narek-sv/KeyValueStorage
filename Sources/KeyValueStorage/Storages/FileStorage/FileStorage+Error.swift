@@ -19,6 +19,8 @@ public extension FileStorage {
         /// Its encoded folder name is over 255 bytes.
         case invalidNamespace(Namespace)
         /// Its encoded file name is over 255 bytes.
+        /// - Note: The system also refuses a whole path over 1024 bytes, which only a deep App Group container or home
+        ///   folder reaches: every operation on the key then throws `.other`.
         case invalidKey(Key)
         /// Something that isn't a value is at the key's file, or isn't a folder where the scope's folder goes; it's never replaced or removed.
         case pathOccupied(URL)

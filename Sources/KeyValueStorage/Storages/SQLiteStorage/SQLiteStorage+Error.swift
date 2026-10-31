@@ -18,8 +18,8 @@ public extension SQLiteStorage {
         case directoryNotFound(FileManager.SearchPathDirectory)
         /// Its encoded folder name is over 255 bytes.
         case invalidNamespace(Namespace)
-        /// A SQLite result code and its message, such as `SQLITE_CORRUPT` for a damaged database, or `SQLITE_BUSY` after
-        /// waiting a second for another process.
+        /// A SQLite result code and its message, such as `SQLITE_CORRUPT` for a damaged database, `SQLITE_BUSY` after
+        /// waiting a second for another process, or `SQLITE_CANTOPEN` for a database path over the system's 1024 bytes.
         case sqlite(code: Int32, message: String)
         /// Creating the database's folder failed, with the original error.
         case other(any Swift.Error)

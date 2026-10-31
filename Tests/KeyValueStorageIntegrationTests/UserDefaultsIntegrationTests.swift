@@ -117,7 +117,7 @@ final class UserDefaultsIntegrationTests: XCTestCase {
         CFPreferencesAppSynchronize(suiteName as CFString)
 
         // Then: every value is in the file, under its own stored key
-        let file = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Preferences/\(suiteName).plist")
+        let file = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true).appendingPathComponent("Library/Preferences/\(suiteName).plist")
         // `NSDictionary`: a Swift dictionary merges keys that differ only in normalization
         var plist = NSDictionary()
         for _ in 0..<200 where plist["ns!/sentinel"] == nil {

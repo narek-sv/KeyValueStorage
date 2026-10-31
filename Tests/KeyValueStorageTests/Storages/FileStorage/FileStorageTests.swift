@@ -300,6 +300,24 @@ final class FileStorageTests: XCTestCase {
         ])
     }
 
+    func testClearSkipsFilesWhoseKeyHasNoFileName() throws {
+        // Given: a locator that claims a file, but can't name its key's file
+        let locator = FileLocatorStub()
+        locator.keys = ["claimed": "key"]
+        let folder = locator.directory
+        let items: Items = [folder.path: .directory, folder.appendingPathComponent("claimed").path: .file(data)]
+        backingStore.items = items
+        let storage = try FileStorage(scope: scope, backingStore: backingStore, locator: locator)
+        locator.fileNameError = .invalidKey("key")
+
+        // When
+        try storage.clear()
+
+        // Then: kept, and no error
+        XCTAssertEqual(backingStore.items, items)
+        XCTAssertEqual(locator.calls.suffix(2), [.key("claimed", scope), .fileName("key", scope)])
+    }
+
     func testClearWithoutAFolderDoesNothing() throws {
         for items in [noValue[0], noValue[4], noValue[5]] {
             // Given

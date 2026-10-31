@@ -179,6 +179,31 @@ final class FileIntegrationTests: XCTestCase {
         XCTAssertEqual(result.partial, 0)
     }
 
+    func testAPathOverTheSystemsLimitIsReportedThoughEveryNameFits() throws {
+        // Given: a base deep enough that a key's file passes the system's 1024-byte limit on a whole path, while each name
+        // stays within 255 bytes
+        let deepLocator = TestFileLocator(base: try deepFolder(length: 900))
+        let storage = try FileStorage(scope: .own(namespace: "test"), backingStore: DefaultFileBackingStoreWrapper(), locator: deepLocator)
+        let folder = try deepLocator.directory(for: .own(namespace: "test")).path.utf8.count
+        let fits = FileStorage.Key(String(repeating: "a", count: 1000 - folder - 1))
+        let tooLong = FileStorage.Key(String(repeating: "a", count: 1100 - folder - 1))
+
+        // When - Then
+        try storage.save(Data([1]), forKey: fits)
+        XCTAssertEqual(try storage.fetch(forKey: fits), Data([1]))
+        assertOther(storageError { try storage.save(Data([2]), forKey: tooLong) }, posix: .ENAMETOOLONG)
+
+        // The system can't even look the path up, so there's no telling whether a value is there
+        for body in [{ _ = try storage.fetch(forKey: tooLong) }, { try storage.delete(forKey: tooLong) }] {
+            guard case let .other(error)? = storageError(body) else {
+                return XCTFail("Expected .other")
+            }
+
+            XCTAssertEqual((error as NSError).domain, NSCocoaErrorDomain)
+            XCTAssertEqual((error as NSError).code, CocoaError.fileReadInvalidFileName.rawValue)
+        }
+    }
+
     // MARK: Concurrency
 
     func testConcurrentDeletesOfOneFileAllSucceed() throws {
@@ -408,6 +433,18 @@ final class FileIntegrationTests: XCTestCase {
     }
 
     /// The default scope's folder, made ahead of the storage.
+    /// A folder in the test's base whose path is `length` bytes, in names of at most 200.
+    private func deepFolder(length: Int) throws -> URL {
+        var folder = base!
+        while folder.path.utf8.count < length {
+            folder.appendPathComponent(String(repeating: "d", count: min(200, length - folder.path.utf8.count - 1)), isDirectory: true)
+        }
+
+        try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+        XCTAssertEqual(folder.path.utf8.count, length)
+        return folder
+    }
+
     private func makeScopeFolder() throws -> URL {
         try makeFolder(folder())
     }

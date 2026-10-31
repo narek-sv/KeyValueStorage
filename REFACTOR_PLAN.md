@@ -13,6 +13,7 @@ This file lists only what's left of the 4.0 refactor. The finished design, its d
 - **System and SDK gotchas** get a doc comment on the case they affect, not a workaround, unless they'd let two scopes reach each other's values.
 - **Comments** hold only essentials, gotchas and warnings, one line where possible, describing the current behavior, never its history. API docs use `///`, `- Note:` and `- Warning:`.
 - **Tests** use XCTest, with `// Given`, `// When`, `// Then` and mocks that record their calls. Storages, layers and the facade keep 100% region and line coverage; default adapters get integration tests against the real system. Every behavior the docs state is either measured by a test or listed below as to verify.
+- **Condition coverage, not just lines:** Swift's coverage counts a whole condition as one region, so every compound condition (`&&`, `||`, `if`/`guard` clause lists, `where`, `??`, ternaries, patterns) needs a test for each path that short-circuiting can tell apart: `a && b && c` needs `a` false, `b` false, `c` false and all true. Limits get a test on each side of the boundary.
 - **When asked whether anything is left open,** do one complete pass, and say "none" when nothing is.
 
 **Commands:**
@@ -25,15 +26,12 @@ This file lists only what's left of the 4.0 refactor. The finished design, its d
 
 ## 1. Tests
 
-1. **Port the last 3.x tests:** `Tests/Legacy3x/KeyValueCodingStorageTests.swift` and `Tests/Legacy3x/UnifiedStorageTests.swift` (not a target; porting reference only). Port what the 4.0 suites don't cover yet, then delete `Tests/Legacy3x/` with its `Mocks/`.
-2. **End to end:** one save, fetch and clear per storage through `UnifiedStorage`, with the real system storages in temporary scopes. The public API target checks construction and scopes, not round trips per storage.
-3. **The system behavior the scope docs state**, so no comment rests on reasoning alone:
+1. **The system behavior the scope docs state**, so no comment rests on reasoning alone:
    - iOS Simulator: a UserDefaults suite named after an App Group the app isn't entitled to works and reports nothing, and its plist lands in the app's own container;
    - macOS: `containerURL(forSecurityApplicationGroupIdentifier:)` returns a path for any id, and two ids that differ only in case get paths that differ only in case, on a volume that ignores case. The test checks paths and the volume, without creating folders in `~/Library/Group Containers`;
    - macOS: whether two UserDefaults suites whose names differ only in case share values in the process, and on disk;
    - the docs are then worded after what these tests measure.
-4. **Empty names:** an empty key and an empty namespace in every storage, and an empty Keychain account in particular.
-5. **Revisit every test suite** and cover every reachable edge case: each scope case and parameter, each retention and protection level, empty names, NUL, emoji, both spellings of `é`, maximum lengths (including a whole File or SQLite path at the system's 1024-byte limit), case-only differences, the marks, the rejected names, and two scopes or two storages that share a place.
+2. **Uncovered by design** (no test can reach them): `Lock`'s `NSLock` fallback (before macOS 13 / iOS 16), `FileStorage`'s `.atomic`-only writing options (before macOS 11), `OwnIdentity.identifier` without a bundle ID, `assert` failure arms, the `.unknown` arm of an observation's state, SQLite's out-of-memory and empty-blob-pointer paths, and `SQLiteStorage.init()`, which would open a database in the real Application Support. The Keychain and Ubiquitous default adapters run in KeychainHost and on a device.
 
 ## 2. Real-device tests (deferred: need a real iPhone)
 

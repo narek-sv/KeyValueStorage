@@ -46,6 +46,22 @@ final class IsolatedKeyValueDataStorageTests: XCTestCase {
         await assertThrows(error) { try await storage.clear() }
     }
 
+    func testWithStorageRethrowsItsBodysError() async {
+        // Given
+        let storage = makeStorage()
+        let error = MockError(id: 7)
+
+        // When - Then: the body's own error, unchanged
+        do {
+            try await storage.withStorage { _ throws(MockError) in throw error }
+            XCTFail("Expected \(error)")
+        } catch {
+            XCTAssertEqual(error, MockError(id: 7))
+        }
+        let value = await storage.withStorage { _ in 42 }
+        XCTAssertEqual(value, 42)
+    }
+
     // MARK: Scope and Creation
 
     func testScopeIsTheWrappedStoragesWithoutAwait() {
