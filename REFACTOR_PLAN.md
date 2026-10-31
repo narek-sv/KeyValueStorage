@@ -508,7 +508,7 @@ public final class KeyValueCodingStorage<Storage: KeyValueDataStorage> {
 
 ### 6.3 Observation (done 2026-10-31, D26)
 
-`Sources/KeyValueStorage/Layers/Observation/`: `ObservableKeyValueStorage.swift` and `ObservationRegistry.swift`.
+`Sources/KeyValueStorage/Layers/Observation/ObservableKeyValueStorage.swift`, which also holds its private `ObservationRegistry` and `Observation`.
 
 - **Decorator:** `ObservableKeyValueStorage(_ storage: AsyncKeyValueCodingStorage<Storage>)`, `Sendable`, for any `AsyncKeyValueDataStorage & Sendable`. It forwards the five operations, and notifies after each successful write; `clear()` notifies every observed key of the scope with `nil`.
 - **Registry:** process-wide, behind `Lock` (D5), keyed by storage type and scope, then by `KeyValueCodingStorageKey` (value type included), so every instance of a storage type and scope shares observers, and an observer sees only its own value type. Observations are released when no publisher or subscription uses them, synchronously.
@@ -582,7 +582,7 @@ public actor IsolatedKeyValueDataStorage<Wrapped: KeyValueDataStorage>: AsyncKey
 
 ## 10. File layout
 
-**Status (2026-11-01): the layout today.** `Sources/KeyValueStorage/Layers/`: `Data/` (`AsyncKeyValueDataStorage`, which also holds `KeyValueDataStorageScope`, and `KeyValueDataStorage`), `Coding/` (the two coding storages, and `DataCoders/`), `Isolation/` (`IsolatedKeyValueDataStorage`), `Observation/` (`ObservableKeyValueStorage`, `ObservationRegistry`) and `Unified/` (`UnifiedStorage`, `UnifiedStorage+Key`, `UnifiedStorage+Factory`); the storages in `Storages/`; the shared types in `Helpers/`. `Tests/KeyValueStorageTests/` mirrors it: `Data/`, `Coding/` (with `DataCoders/`), `Isolation/`, `Observation/`, `Unified/`, `Storages/<Name>/`, `Helpers/`, `Mocks/` and `Support/`. The tree below was the earlier target.
+**Status (2026-11-01): the layout today.** `Sources/KeyValueStorage/Layers/`: `Data/` (`AsyncKeyValueDataStorage`, which also holds `KeyValueDataStorageScope`, and `KeyValueDataStorage`), `Coding/` (the two coding storages, and `DataCoders/`), `Isolation/` (`IsolatedKeyValueDataStorage`), `Observation/` (`ObservableKeyValueStorage`, with its private registry) and `Unified/` (`UnifiedStorage`, `UnifiedStorage+Key`, `UnifiedStorage+Factory`); the storages in `Storages/`; the shared types in `Helpers/`. `Tests/KeyValueStorageTests/` mirrors it: `Data/`, `Coding/` (with `DataCoders/`), `Isolation/`, `Observation/`, `Unified/`, `Storages/<Name>/`, `Helpers/`, `Mocks/` and `Support/`. The tree below was the earlier target.
 
 ```
 Sources/KeyValueStorage/
