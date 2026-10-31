@@ -105,6 +105,24 @@ final class DefaultInMemoryBackingStoreWrapperTests: XCTestCase {
         XCTAssertNil(containers.read(forKey: "\u{E9}", in: decomposed))
     }
 
+    func testKeysAndContainersThatDifferAfterANulAreDistinct() {
+        // Given
+        let containers = DefaultInMemoryBackingStoreWrapper()
+        let keys = ["a", "a\0", "a\0b", "a\0c", "\0", "\0a", ""]
+
+        // When
+        for (index, key) in keys.enumerated() {
+            containers.write(Data([UInt8(index)]), forKey: key, in: "\(run)-nul")
+            containers.write(Data([UInt8(index)]), forKey: "key", in: "\(run)-nul-\(key)")
+        }
+
+        // Then
+        for (index, key) in keys.enumerated() {
+            XCTAssertEqual(containers.read(forKey: key, in: "\(run)-nul"), Data([UInt8(index)]), key.debugDescription)
+            XCTAssertEqual(containers.read(forKey: "key", in: "\(run)-nul-\(key)"), Data([UInt8(index)]), key.debugDescription)
+        }
+    }
+
     func testBridgedStringsReachTheSameValues() {
         let containers = DefaultInMemoryBackingStoreWrapper()
         let container = "\(run)-bridged"

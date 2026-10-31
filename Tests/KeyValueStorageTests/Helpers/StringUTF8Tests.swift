@@ -154,6 +154,37 @@ final class StringUTF8Tests: XCTestCase {
         }
     }
 
+    // MARK: init(percentUnescaping:)
+
+    private let reserved: Set<UInt8> = Set([UInt8(ascii: "%"), UInt8(ascii: "/")] + Array(0x00...0x1F) + [0x7F])
+
+    func testUnescapingInvertsEscaping() {
+        let corpus = samples + ["%", "%%", "%2F", "a/b", "\0", "a\0b", "\u{1F}\u{7F}", "\n\t\r", String(decoding: Array(UInt8(0)...0x7F), as: UTF8.self)]
+        for name in corpus {
+            assertBytes(String(percentUnescaping: name.percentEscaping(reserved), reserved), name)
+        }
+    }
+
+    func testOnlyNamesTheEscapingWritesAreUnescaped() {
+        // Raw reserved bytes, lowercase, unreserved or cut-off escapes: escaping never writes them
+        for name in ["%", "a%", "%2", "%2f", "%41", "%zz", "/", "a/b", "\0", "a\nb", "%25%", "%2G"] {
+            XCTAssertNil(String(percentUnescaping: name, reserved), name.debugDescription)
+        }
+    }
+
+    func testEveryUnescapedNameEscapesBack() {
+        // So no two names unescape to one
+        for name in ["", "a", "%25", "%2F", "%00", "a%2Fb%25", "\u{E9}%00e\u{301}", "🙂%1F"] {
+            let unescaped = String(percentUnescaping: name, reserved)
+            XCTAssertNotNil(unescaped, name.debugDescription)
+            assertBytes(unescaped.map { $0.percentEscaping(reserved) }, name)
+        }
+    }
+
+    func testNonASCIIPassesThroughUnescaping() {
+        assertBytes(String(percentUnescaping: "\u{E9}e\u{301}🙂", reserved), "\u{E9}e\u{301}🙂")
+    }
+
     // MARK: droppingExactPrefix
 
     func testAMatchingPrefixLeavesTheRest() {

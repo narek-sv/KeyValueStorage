@@ -62,6 +62,7 @@ final class DefaultUserDefaultsSuite: UserDefaultsSuite, @unchecked Sendable {
     }
 
     func keys() -> [String] {
-        Array(userDefaults.dictionaryRepresentation().keys)
+        // Through `NSDictionary`: a Swift dictionary merges keys that differ only in normalization, such as `"é"` and `"e\u{301}"`
+        (userDefaults.dictionaryRepresentation() as NSDictionary).allKeys.compactMap { $0 as? String }
     }
 }

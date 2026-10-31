@@ -46,7 +46,9 @@ final class DefaultUserDefaultsLocatorTests: XCTestCase {
             ("%", "c", "%25!/c"),
             ("", "c", "!/c"),
             ("a!", "c", "a!!/c"),
-            ("ns", "a/b%!", "ns!/a/b%!"),
+            ("ns", "a/b%!", "ns!/a/b%25!"),
+            ("ns", "a\0b", "ns!/a%00b"),
+            ("a\0/", "c", "a%00%2F!/c"),
             ("a/\u{301}", "c", "a%2F\u{301}!/c")
         ]
 
@@ -63,7 +65,9 @@ final class DefaultUserDefaultsLocatorTests: XCTestCase {
 
     func testStoredKeysNoKeyProducesArentClaimed() {
         // Other code's keys, such as `settings/theme`, never carry the mark
-        for storedKey in ["ns", "ns/key", "ns!", "ns!key", "other!/key", "ns%2F!/key", "NS!/key", "settings/theme"] {
+        for storedKey in ["ns", "ns/key", "ns!", "ns!key", "other!/key", "ns%2F!/key", "NS!/key", "settings/theme"]
+            // Names the escaping never writes: a raw `%` or NUL, or an escape that's cut off, lowercase or of a byte it keeps
+            + ["ns!/%", "ns!/a%", "ns!/%2", "ns!/a\0b", "ns!/%zz", "ns!/%2F", "ns!/%2f", "ns!/%41", "ns!/%25%"] {
             XCTAssertNil(locator.key(forStoredKey: storedKey, in: .own(namespace: "ns")), storedKey.debugDescription)
         }
     }
@@ -71,7 +75,7 @@ final class DefaultUserDefaultsLocatorTests: XCTestCase {
     // MARK: Laws
 
     func testLawsWithinEachScope() {
-        let keys = ["", "key", "Key", "a/b", "b/c", "!", "!/", "%", "%2F", "%25", "\u{301}x", "/\u{301}", "\u{E9}", "e\u{301}", "🙂"]
+        let keys = ["", "key", "Key", "a/b", "b/c", "!", "!/", "%", "%2F", "%25", "\u{301}x", "/\u{301}", "\u{E9}", "e\u{301}", "🙂", "\0", "a\0", "\0a\0", "%00", "%2500", "\u{1}", "\u{7F}"]
 
         for scope in [UserDefaultsStorage.Scope.own(namespace: "ns"), .own(namespace: ""), .appGroup(id: "group.test", namespace: "ns")] {
             assertLocatorLaws(
@@ -85,8 +89,8 @@ final class DefaultUserDefaultsLocatorTests: XCTestCase {
     }
 
     func testNamespacesNeverShareOrClaimEachOthersStoredKeys() {
-        let scopes = ["", "a", "a!", "a!!", "a/b", "a%2Fb", "%", "!", "KeyValueStorage"].map { UserDefaultsStorage.Scope.own(namespace: .init($0)) }
-        let keys = ["", "b", "!", "!/b", "a/b", "b/c", "%", "%2F", "KeyValueStorage!/key", "\u{301}x", "\u{E9}", "e\u{301}"]
+        let scopes = ["", "a", "a!", "a!!", "a/b", "a%2Fb", "%", "!", "KeyValueStorage", "a\0", "a%00", "a\0/b"].map { UserDefaultsStorage.Scope.own(namespace: .init($0)) }
+        let keys = ["", "b", "!", "!/b", "a/b", "b/c", "%", "%2F", "KeyValueStorage!/key", "\u{301}x", "\u{E9}", "e\u{301}", "\0", "%00", "\0!/b"]
         var owners = [[UInt8]: Int]()
 
         for (index, scope) in scopes.enumerated() {

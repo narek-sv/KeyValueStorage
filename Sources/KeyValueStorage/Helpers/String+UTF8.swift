@@ -81,6 +81,32 @@ extension String {
         return String(decoding: escaped, as: UTF8.self)
     }
 
+    /// The exact inverse of `percentEscaping(reserved)`: `nil` for a name it never produces, such as one with a raw reserved
+    /// byte, a lowercase or unreserved escape, or a cut-off one. So no two names decode to one, and every decoded name escapes back.
+    /// - Precondition: `reserved` holds `%` and only ASCII bytes.
+    init?(percentUnescaping name: String, _ reserved: Set<UInt8>) {
+        assert(reserved.contains(UInt8(ascii: "%")) && reserved.allSatisfy { $0 < 0x80 }, "`%` and only ASCII bytes can be escaped")
+        var bytes = [UInt8]()
+        var rest = Substring(name).utf8
+        while let byte = rest.popFirst() {
+            if byte == UInt8(ascii: "%") {
+                guard let high = rest.popFirst().flatMap(Self.uppercaseHexDigits.firstIndex),
+                      let low = rest.popFirst().flatMap(Self.uppercaseHexDigits.firstIndex),
+                      reserved.contains(UInt8(high << 4 | low)) else {
+                    return nil
+                }
+
+                bytes.append(UInt8(high << 4 | low))
+            } else if reserved.contains(byte) {
+                return nil
+            } else {
+                bytes.append(byte)
+            }
+        }
+
+        self = String(decoding: bytes, as: UTF8.self)
+    }
+
     /// The rest after `prefix`, or `nil` without it.
     func droppingExactPrefix(_ prefix: String) -> String? {
         // Bytes, not characters: the rest can start with a combining mark, which joins the prefix's last character

@@ -55,6 +55,29 @@ final class KeychainIntegrationTests: XCTestCase {
         XCTAssertEqual(try storage.fetch(forKey: "e\u{301}"), Data([2]))
     }
 
+    /// Two accounts or services that differ only after a NUL would share an item if the keychain cut names at it.
+    func testKeysAndNamespacesThatDifferAfterANulKeepTheirOwnItems() throws {
+        // Given
+        let keys: [KeychainStorage.Key] = ["a", "a\0", "a\0b", "a\0c", "\0", "\0a", ""]
+        let keyed = storage(.own(namespace: namespace()))
+        let first = storage(.own(namespace: .init("\(tag!)\0a")))
+        let second = storage(.own(namespace: .init("\(tag!)\0b")))
+
+        // When
+        for (index, key) in keys.enumerated() {
+            try keyed.save(Data([UInt8(index)]), forKey: key)
+        }
+        try first.save(Data([1]), forKey: "key")
+        try second.save(Data([2]), forKey: "key")
+
+        // Then
+        for (index, key) in keys.enumerated() {
+            XCTAssertEqual(try keyed.fetch(forKey: key), Data([UInt8(index)]), key.string.debugDescription)
+        }
+        XCTAssertEqual(try first.fetch(forKey: "key"), Data([1]))
+        XCTAssertEqual(try second.fetch(forKey: "key"), Data([2]))
+    }
+
     func testConcurrentFirstSavesOfOneKeyAllSucceed() throws {
         // Given: one instance, and no item yet
         let storage = storage(.own(namespace: namespace()))

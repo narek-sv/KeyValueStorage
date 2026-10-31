@@ -65,6 +65,95 @@ final class UserDefaultsIntegrationTests: XCTestCase {
         XCTAssertNil(UserDefaults.standard.object(forKey: "ns!/key"))
     }
 
+    // MARK: NUL
+
+    /// Two keys that differ only after a NUL would share a value if the system cut names at it.
+    func testKeysThatDifferAfterANulKeepTheirOwnValues() throws {
+        // Given
+        let keys: [UserDefaultsStorage.Key] = ["a", "a\0", "a\0b", "a\0c", "\0", "\0a", ""]
+        let storage = try storage()
+
+        // When
+        for (index, key) in keys.enumerated() {
+            try storage.save(Data([UInt8(index)]), forKey: key)
+        }
+
+        // Then
+        for (index, key) in keys.enumerated() {
+            XCTAssertEqual(storage.fetch(forKey: key), Data([UInt8(index)]), key.string.debugDescription)
+        }
+
+        storage.clear()
+        for key in keys {
+            XCTAssertNil(storage.fetch(forKey: key), key.string.debugDescription)
+        }
+    }
+
+    /// The system keeps values in memory before it writes the suite's file, so only the file shows what survives a restart.
+    /// Every control character, and characters the system could treat specially, such as noncharacters, a byte order mark,
+    /// a line separator, a combining mark and an emoji, reach it under keys and namespaces.
+    func testEveryKeyAndNamespaceReachesTheSuitesFile() throws {
+        // Given
+        let names = (0x00...0x1F).map { String(UnicodeScalar(UInt8($0))) } + ["\u{7F}", "\u{FEFF}", "\u{FFFE}", "\u{FFFF}",
+                                                                                    "\u{10FFFF}", "\u{2028}", "e\u{301}", "\u{E9}", "🙂", "%", "%00", ""]
+        let keys = names.flatMap { [$0, "a\($0)", "a\($0)b"] }.map { UserDefaultsStorage.Key($0) }
+        let namespaces = names.map { UserDefaultsStorage.Scope.own(namespace: .init("ns\($0)")) }
+        let suiteName = try locator.suiteName(for: scope)
+        let storage = try storage()
+        // A dropped key isn't found by count alone, so every value is unique
+        var expected = Set<Data>()
+
+        // When
+        for (index, key) in keys.enumerated() {
+            try storage.save(Data("key \(index)".utf8), forKey: key)
+            expected.insert(Data("key \(index)".utf8))
+        }
+        for (index, namespace) in namespaces.enumerated() {
+            try self.storage(namespace).save(Data("namespace \(index)".utf8), forKey: "key")
+            expected.insert(Data("namespace \(index)".utf8))
+        }
+        // Written last: once it's in the file, so is everything before it
+        try storage.save(Data("sentinel".utf8), forKey: "sentinel")
+        CFPreferencesAppSynchronize(suiteName as CFString)
+
+        // Then: every value is in the file, under its own stored key
+        let file = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Preferences/\(suiteName).plist")
+        // `NSDictionary`: a Swift dictionary merges keys that differ only in normalization
+        var plist = NSDictionary()
+        for _ in 0..<200 where plist["ns!/sentinel"] == nil {
+            Thread.sleep(forTimeInterval: 0.05)
+            plist = (try? Data(contentsOf: file)).flatMap { try? PropertyListSerialization.propertyList(from: $0, format: nil) as? NSDictionary } ?? [:]
+        }
+
+        XCTAssertNotNil(plist["ns!/sentinel"], "the suite's file was never written")
+        let stored = Set(plist.allValues.compactMap { $0 as? Data }).subtracting([Data("sentinel".utf8)])
+        XCTAssertEqual(stored, expected, "lost: \(expected.subtracting(stored).map { String(decoding: $0, as: UTF8.self) }.sorted())")
+        XCTAssertEqual(plist.count, expected.count + 1)
+    }
+
+    func testNamespacesThatDifferAfterANulKeepTheirOwnValues() throws {
+        // Given
+        let first = try storage(.own(namespace: "ns\0a"))
+        let second = try storage(.own(namespace: "ns\0b"))
+        let plain = try storage(.own(namespace: "ns"))
+
+        // When
+        try first.save(Data([1]), forKey: "key")
+        try second.save(Data([2]), forKey: "key")
+        try plain.save(Data([3]), forKey: "key")
+
+        // Then
+        XCTAssertEqual(first.fetch(forKey: "key"), Data([1]))
+        XCTAssertEqual(second.fetch(forKey: "key"), Data([2]))
+        XCTAssertEqual(plain.fetch(forKey: "key"), Data([3]))
+
+        first.clear()
+        XCTAssertNil(first.fetch(forKey: "key"))
+        XCTAssertEqual(second.fetch(forKey: "key"), Data([2]))
+        second.clear()
+        plain.clear()
+    }
+
     // MARK: Other Code's Values
 
     func testAValueOfAnotherTypeIsNeverReplacedOrRemoved() throws {
@@ -111,6 +200,22 @@ final class UserDefaultsIntegrationTests: XCTestCase {
         XCTAssertEqual(defaults.data(forKey: "ns/key"), Data([3]))
         XCTAssertEqual(defaults.string(forKey: "ns!/text"), "text")
         XCTAssertEqual(UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)?.keys.sorted(), globalKeys)
+    }
+
+    func testClearRemovesKeysThatDifferOnlyInNormalization() throws {
+        // Given
+        let storage = try storage()
+        try storage.save(Data([1]), forKey: "\u{E9}")
+        try storage.save(Data([2]), forKey: "e\u{301}")
+
+        // When
+        storage.clear()
+
+        // Then
+        XCTAssertNil(storage.fetch(forKey: "\u{E9}"))
+        XCTAssertNil(storage.fetch(forKey: "e\u{301}"))
+        XCTAssertNil(defaults.data(forKey: "ns!/\u{E9}"))
+        XCTAssertNil(defaults.data(forKey: "ns!/e\u{301}"))
     }
 
     // MARK: Suites

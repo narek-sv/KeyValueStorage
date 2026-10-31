@@ -22,8 +22,9 @@ public protocol UserDefaultsLocator: Sendable {
 // MARK: - DefaultUserDefaultsLocator
 
 /// `.own` uses the suite `<app>.KeyValueStorage`, `<app>` being the bundle ID, or the process name without one, in
-/// `DefaultFileLocator`'s encoding; `.appGroup` uses the group's suite. Keys are stored as `<namespace>!/<key>`, with `%` and
-/// `/` percent-encoded in the namespace: the `!` marks the library's keys in a suite other code also writes to.
+/// `DefaultFileLocator`'s encoding; `.appGroup` uses the group's suite. Keys are stored as `<namespace>!/<key>`: the `!` marks
+/// the library's keys in a suite other code also writes to. `%` and NUL are percent-encoded in both, and `/` in
+/// the namespace too, so no stored key is lost or shared.
 /// - Note: A subclass that changes stored keys overrides both key methods.
 /// - Warning: Subclasses inherit `Sendable`: their own state must be thread-safe too.
 open class DefaultUserDefaultsLocator: UserDefaultsLocator, @unchecked Sendable {
@@ -32,8 +33,11 @@ open class DefaultUserDefaultsLocator: UserDefaultsLocator, @unchecked Sendable 
     /// Ends the namespace, and marks the library's entries in a suite other code also writes to.
     /// The escaped namespace has no `/`, so the first `/` always ends it.
     private static let namespaceMark = "!/"
-    /// `/`, which ends the namespace, and `%` so escapes stay unambiguous.
-    private static let reservedBytes: Set = [UInt8(ascii: "%"), UInt8(ascii: "/")]
+    /// NUL, which the system drops when it writes its property list, so its values are lost on relaunch,
+    /// and `%`, so escapes stay unambiguous.
+    private static let keyReservedBytes: Set<UInt8> = [UInt8(ascii: "%"), 0x00]
+    /// The key's, and `/`, which ends the namespace.
+    private static let namespaceReservedBytes = keyReservedBytes.union([UInt8(ascii: "/")])
 
     public init() { }
 
@@ -60,11 +64,13 @@ open class DefaultUserDefaultsLocator: UserDefaultsLocator, @unchecked Sendable 
     }
 
     open func storedKey(forKey key: UserDefaultsStorage.Key, in scope: UserDefaultsStorage.Scope) -> String {
-        Self.prefix(for: scope) + key.string
+        Self.prefix(for: scope) + key.string.percentEscaping(Self.keyReservedBytes)
     }
 
     open func key(forStoredKey storedKey: String, in scope: UserDefaultsStorage.Scope) -> UserDefaultsStorage.Key? {
-        storedKey.droppingExactPrefix(Self.prefix(for: scope)).map { UserDefaultsStorage.Key($0) }
+        storedKey.droppingExactPrefix(Self.prefix(for: scope))
+            .flatMap { String(percentUnescaping: $0, Self.keyReservedBytes) }
+            .map { UserDefaultsStorage.Key($0) }
     }
 
     // MARK: Helpers
@@ -82,7 +88,7 @@ open class DefaultUserDefaultsLocator: UserDefaultsLocator, @unchecked Sendable 
     private static func prefix(for scope: UserDefaultsStorage.Scope) -> String {
         switch scope {
         case let .own(namespace), let .appGroup(_, namespace):
-            return namespace.string.percentEscaping(reservedBytes) + namespaceMark
+            return namespace.string.percentEscaping(namespaceReservedBytes) + namespaceMark
         }
     }
 }

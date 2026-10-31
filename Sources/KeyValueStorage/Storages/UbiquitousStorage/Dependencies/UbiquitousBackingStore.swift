@@ -45,7 +45,8 @@ open class DefaultUbiquitousBackingStoreWrapper: UbiquitousBackingStore, @unchec
     }
 
     open func keys() -> [String] {
-        Array(store.dictionaryRepresentation.keys)
+        // Through `NSDictionary`: a Swift dictionary merges keys that differ only in normalization, such as `"é"` and `"e\u{301}"`
+        (store.dictionaryRepresentation as NSDictionary).allKeys.compactMap { $0 as? String }
     }
 
     open func synchronize() -> Bool {

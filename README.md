@@ -258,10 +258,10 @@ try await storage.save(/* accepts only MyType*/, forKey: key)
 
 `UnifiedStorage` has 6 built-in storage types:
 * `In-memory` - This storage type persists the items only within an app session.
-* `User-Defaults` - This storage type persists the items within the app's lifetime.
+* `User-Defaults` - This storage type persists the items within the app's lifetime. Values are stored under `<namespace>!/<key>`, and any string is a valid key: `%` and NUL are written as `%25` and `%00`, because the system never writes a key with NUL to disk, and `/` in a namespace as `%2F`.
 * `File-System` -  This storage saves every value as a separate file in the scope's folder, `Application Support/<app>/<namespace>!/<protection>` for `.own` scopes (`Caches` or `tmp` for the other retentions), or in the App Group container. The file is replaced atomically, so a crash never leaves a value half-written or missing. Any string is a valid key: its file name keeps `a`–`z`, `0`–`9`, `_` and `-`, writes a capital as `!` and its lowercase letter, and every other byte as `%` and two hex digits. So `Key` is saved as `!key` and never shares a file with `key`, even on a case-insensitive disk. A file name can be at most 255 bytes, so longer keys throw `FileStorage.Error.invalidKey`.
 * `Keychain` - This storage type keeps the items in secure storage and persists even after app re-installations. Supports `iCloud` synchronization.
-* `Ubiquitous` - This storage keeps the values in the iCloud key-value store, under `<namespace>!/<key>`, and syncs them across the user's devices. A value can be at most 1 MiB, and a stored key at most 128 UTF-16 code units.
+* `Ubiquitous` - This storage keeps the values in the iCloud key-value store, under `<namespace>!/<key>`, and syncs them across the user's devices. Any string is a valid key: `%` and NUL are written as `%25` and `%00`, and `/` in a namespace as `%2F`. A value can be at most 1 MiB, and a stored key at most 128 UTF-16 code units.
 * `SQLite` - This storage keeps all values of a scope in one SQLite database, the hidden `.KeyValueStorage.sqlite` in the same folder as the `File-System` storage of the scope. Any string is a valid key, and all storages of a scope, in your app and its extensions, share the same database at the same time. Each operation is atomic across processes, but a fetch followed by a save is not: another process can save in between.
 
 You can also define your own storage, synchronous or asynchronous, and it works with `UnifiedStorage` and the coding storages out of the box:
