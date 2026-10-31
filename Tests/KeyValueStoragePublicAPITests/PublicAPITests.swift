@@ -25,23 +25,24 @@ final class PublicAPITests: XCTestCase {
         XCTAssertNotNil(observablePublisher)
     }
 
-    func testFactoriesAcceptACoder() async throws {
+    /// A factory that only picks the coder: the default `codingStorage(for:)` uses it.
+    func testAFactoryCanPickTheCoderAlone() async throws {
         // Given
-        let storage = UnifiedStorage(factory: ObservableUnifiedStorageFactory(coder: PropertyListDataCoder()))
-        let key = InMemoryKey<String>(key: "publicAPICoder")
+        let namespace = ExactString("publicAPICoder-\(UUID().uuidString)")
+        let storage = UnifiedStorage(factory: PropertyListFactory())
+        let key = InMemoryKey<String>(key: "key", scope: .own(namespace: namespace))
         
         // When
         try await storage.save("value", forKey: key)
         let fetched = try await storage.fetch(forKey: key)
-        let publisher = try await storage.publisher(forKey: key)
         
-        // Then
+        // Then: a binary property list, not the raw coder's UTF-8
         XCTAssertEqual(fetched, "value")
-        XCTAssertNotNil(publisher)
-        _ = UnifiedStorage(factory: DefaultUnifiedStorageFactory(coder: JSONDataCoder()))
+        let stored = InMemoryStorage(scope: .own(namespace: namespace)).fetch(forKey: "key")
+        XCTAssertEqual(stored.map { Array($0.prefix(6)) }, Array("bplist".utf8))
     }
     
-    func testDefaultFactoryIsSubclassable() async throws {
+    func testAFactoryImplementsOnlyWhatItChanges() async throws {
         // Given
         let factory = CountingFactory()
         let storage = UnifiedStorage(factory: factory)
@@ -309,18 +310,26 @@ final class PublicAPITests: XCTestCase {
     }
 }
 
-private final class CountingFactory: DefaultUnifiedStorageFactory, @unchecked Sendable {
+/// Counts its calls, and otherwise creates what the defaults do.
+private final class CountingFactory: UnifiedStorageFactory, @unchecked Sendable {
     private(set) var dataStorageCalls = 0
     private(set) var codingStorageCalls = 0
 
-    override func dataStorage<Storage: AsyncKeyValueDataStorage & Sendable>(for scope: Storage.Scope) async throws(Storage.Error) -> Storage {
+    func dataStorage<Storage: AsyncKeyValueDataStorage & Sendable>(for scope: Storage.Scope) async throws(Storage.Error) -> Storage {
         dataStorageCalls += 1
-        return try await super.dataStorage(for: scope)
+        return try await Storage(scope: scope)
     }
 
-    override func codingStorage<Storage: AsyncKeyValueDataStorage & Sendable>(for storage: Storage) async -> AsyncKeyValueCodingStorage<Storage> {
+    func codingStorage<Storage: AsyncKeyValueDataStorage & Sendable>(for storage: Storage) async -> AsyncKeyValueCodingStorage<Storage> {
         codingStorageCalls += 1
-        return await super.codingStorage(for: storage)
+        return AsyncKeyValueCodingStorage(storage: storage, coder: coder(for: storage))
+    }
+}
+
+/// Picks the coder and nothing else.
+private struct PropertyListFactory: UnifiedStorageFactory {
+    func coder<Storage: AsyncKeyValueDataStorage & Sendable>(for storage: Storage) -> any DataCoder {
+        PropertyListDataCoder()
     }
 }
 

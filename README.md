@@ -383,11 +383,19 @@ There are 3 built-in coders:
 * `JSONDataCoder` - JSON for every type.
 * `PropertyListDataCoder` - Binary property lists for every type. Pass a `PropertyListEncoder` with the `.xml` output format to get XML.
 
-Coders are synchronous. Pass the coder to the factory or to a coding storage, or conform your own type to `DataCoder`:
+Coders are synchronous. Pass the coder to a coding storage, or conform your own type to `DataCoder`. For `UnifiedStorage`, a factory picks the coder of each storage, so different storages can use different coders:
 
 ```swift
-let storage = UnifiedStorage(factory: DefaultUnifiedStorageFactory(coder: PropertyListDataCoder()))
+struct AppStorageFactory: UnifiedStorageFactory {
+    func coder<Storage: AsyncKeyValueDataStorage & Sendable>(for storage: Storage) -> any DataCoder {
+        storage is IsolatedFileStorage ? PropertyListDataCoder() : RawDataCoder()
+    }
+}
+
+let storage = UnifiedStorage(factory: AppStorageFactory())
 ```
+
+A factory implements only what it changes: `dataStorage(for:)` creates each storage, `coder(for:)` picks its coder, and `codingStorage(for:)` puts them together. `DefaultUnifiedStorageFactory` uses every default, `RawDataCoder` included.
 
 ***NOTE***! The value type comes from the key, it isn't saved with the value. Changing the value type of an existing key can make its stored value undecodable, or, for `Data` and `String`, be read without an error.
 
@@ -466,7 +474,7 @@ Something that isn't a value where a value goes. It's never replaced or removed:
 ---
 ## Thread Safety
 
-`UnifiedStorage` is an actor: you can call it from any thread, task or actor.
+`UnifiedStorage` is safe to call from any thread, task or actor, and adds no locking or actor of its own around operations: calls on storages of different types or scopes, such as a User Defaults fetch and a file write, never wait for each other. Each storage runs the operations of its own scope one at a time.
 
 The storages themselves, such as `FileStorage`, and `KeyValueCodingStorage` are synchronous and unsynchronized, and need no locks: use an instance from one thread or actor, for example the main actor. They aren't `Sendable`, so in Swift 6 the compiler stops code that would use one from two threads or tasks at once. Only when you need to share a synchronous storage between tasks or threads, wrap it in `IsolatedKeyValueDataStorage`, an actor that runs its operations one at a time and is an `AsyncKeyValueDataStorage` itself. Each built-in storage has a name for it, such as `IsolatedSQLiteStorage` for `IsolatedKeyValueDataStorage<SQLiteStorage>`:
 

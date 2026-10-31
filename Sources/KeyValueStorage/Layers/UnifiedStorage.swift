@@ -41,43 +41,61 @@ extension UnifiedStorageKey: Hashable {
 
 // MARK: - UnifiedStorageFactory
 
+/// Creates `UnifiedStorage`'s storages, one per storage type and scope; each requirement has a default, so a factory
+/// implements only what it changes.
 public protocol UnifiedStorageFactory: Sendable {
     func dataStorage<Storage: AsyncKeyValueDataStorage & Sendable>(for scope: Storage.Scope) async throws(Storage.Error) -> Storage
+    func coder<Storage: AsyncKeyValueDataStorage & Sendable>(for storage: Storage) -> any DataCoder
     func codingStorage<Storage: AsyncKeyValueDataStorage & Sendable>(for storage: Storage) async -> AsyncKeyValueCodingStorage<Storage>
+}
+
+// MARK: - UnifiedStorageFactory + Defaults
+
+public extension UnifiedStorageFactory {
+    /// The storage's own `init(scope:)`.
+    func dataStorage<Storage: AsyncKeyValueDataStorage & Sendable>(for scope: Storage.Scope) async throws(Storage.Error) -> Storage {
+        try await Storage(scope: scope)
+    }
+
+    /// `RawDataCoder`, for every storage.
+    func coder<Storage: AsyncKeyValueDataStorage & Sendable>(for storage: Storage) -> any DataCoder {
+        RawDataCoder()
+    }
+
+    /// An `AsyncKeyValueCodingStorage` with `coder(for:)`.
+    func codingStorage<Storage: AsyncKeyValueDataStorage & Sendable>(for storage: Storage) async -> AsyncKeyValueCodingStorage<Storage> {
+        AsyncKeyValueCodingStorage(storage: storage, coder: coder(for: storage))
+    }
 }
 
 // MARK: - DefaultUnifiedStorageFactory
 
-open class DefaultUnifiedStorageFactory: UnifiedStorageFactory, @unchecked Sendable {
-    let coder: any DataCoder
-    
-    /// - Parameter coder: Encodes the values of every storage the factory creates.
-    public init(coder: any DataCoder = RawDataCoder()) {
-        self.coder = coder
-    }
-    
-    open func dataStorage<Storage: AsyncKeyValueDataStorage & Sendable>(for scope: Storage.Scope) async throws(Storage.Error) -> Storage {
-        try await Storage(scope: scope)
-    }
-    
-    open func codingStorage<Storage: AsyncKeyValueDataStorage & Sendable>(for storage: Storage) async -> AsyncKeyValueCodingStorage<Storage> {
-        AsyncKeyValueCodingStorage(storage: storage, coder: coder)
-    }
+/// Every default: each storage from its `init(scope:)`, with `RawDataCoder`.
+public struct DefaultUnifiedStorageFactory: UnifiedStorageFactory {
+    public init() { }
 }
 
 // MARK: - ObservableUnifiedStorageFactory
 
 /// Creates storages whose keys can be observed with `UnifiedStorage.publisher(forKey:)` and `stream(forKey:)`.
 /// See `KeyValueObservableStorage` for when and where changes are delivered.
-public final class ObservableUnifiedStorageFactory: DefaultUnifiedStorageFactory, @unchecked Sendable {
-    public override func codingStorage<Storage: AsyncKeyValueDataStorage & Sendable>(for storage: Storage) async -> AsyncKeyValueCodingStorage<Storage> {
-        KeyValueObservableStorage(storage: storage, coder: coder)
+public struct ObservableUnifiedStorageFactory: UnifiedStorageFactory {
+    public init() { }
+
+    public func codingStorage<Storage: AsyncKeyValueDataStorage & Sendable>(for storage: Storage) async -> AsyncKeyValueCodingStorage<Storage> {
+        KeyValueObservableStorage(storage: storage, coder: coder(for: storage))
     }
 }
 
 // MARK: - UnifiedStorage
 
-public actor UnifiedStorage {
+/// One entry point for every storage, keyed by typed keys.
+///
+/// - It adds no isolation of its own, so it's safe to call from any thread, task or actor, and calls on storages of
+///   different types or scopes never wait for each other. Each storage serializes only its own scope: the built-in keys
+///   reach theirs through `IsolatedKeyValueDataStorage`, and only `Sendable` storages compile as keys.
+/// - It creates one storage per storage type and scope, on first use, through its factory.
+public final class UnifiedStorage: @unchecked Sendable {
     
     // MARK: Type Aliases
 
@@ -85,44 +103,42 @@ public actor UnifiedStorage {
     
     // MARK: Properties
     
-    private var storages = [AnyHashable: Any]()
     private let factory: any UnifiedStorageFactory
+    /// The creation task of each storage type and scope; held only to look up or insert, never across an `await`.
+    private let lock = Lock()
+    private var storages = [AnyHashable: any Sendable]()
 
     // MARK: Initializers
 
-    public init(factory: any UnifiedStorageFactory) {
+    public init(factory: any UnifiedStorageFactory = DefaultUnifiedStorageFactory()) {
         self.factory = factory
-    }
-    
-    public init() {
-        self.init(factory: DefaultUnifiedStorageFactory())
     }
     
     // MARK: Main Functionality
     
-    public nonisolated func fetch<Storage: AsyncKeyValueDataStorage & Sendable, Value: CodingValue>(forKey key: Key<Storage, Value>) async throws(KeyValueCodingError<Storage>) -> Value? {
+    public func fetch<Storage: AsyncKeyValueDataStorage & Sendable, Value: CodingValue>(forKey key: Key<Storage, Value>) async throws(KeyValueCodingError<Storage>) -> Value? {
         let storage: AsyncKeyValueCodingStorage<Storage> = try await storage(for: key.scope)
         return try await storage.fetch(forKey: .init(key: key.key))
     }
     
-    public nonisolated func save<Storage: AsyncKeyValueDataStorage & Sendable, Value: CodingValue>(_ value: Value, forKey key: Key<Storage, Value>) async throws(KeyValueCodingError<Storage>) {
+    public func save<Storage: AsyncKeyValueDataStorage & Sendable, Value: CodingValue>(_ value: Value, forKey key: Key<Storage, Value>) async throws(KeyValueCodingError<Storage>) {
         let storage: AsyncKeyValueCodingStorage<Storage> = try await storage(for: key.scope)
         try await storage.save(value, forKey: .init(key: key.key))
     }
     
-    public nonisolated func set<Storage: AsyncKeyValueDataStorage & Sendable, Value: CodingValue>(_ value: Value?, forKey key: Key<Storage, Value>) async throws(KeyValueCodingError<Storage>) {
+    public func set<Storage: AsyncKeyValueDataStorage & Sendable, Value: CodingValue>(_ value: Value?, forKey key: Key<Storage, Value>) async throws(KeyValueCodingError<Storage>) {
         let storage: AsyncKeyValueCodingStorage<Storage> = try await storage(for: key.scope)
         try await storage.set(value, forKey: .init(key: key.key))
     }
     
-    public nonisolated func delete<Storage: AsyncKeyValueDataStorage & Sendable, Value: CodingValue>(forKey key: Key<Storage, Value>) async throws(KeyValueCodingError<Storage>) {
+    public func delete<Storage: AsyncKeyValueDataStorage & Sendable, Value: CodingValue>(forKey key: Key<Storage, Value>) async throws(KeyValueCodingError<Storage>) {
         let storage: AsyncKeyValueCodingStorage<Storage> = try await storage(for: key.scope)
         try await storage.delete(forKey: .init(key: key.key, codingType: key.codingType))
     }
     
     /// Removes everything stored in the given storage and scope.
     /// The storage is loaded on demand, so this also clears values saved in previous launches.
-    public nonisolated func clear<Storage: AsyncKeyValueDataStorage & Sendable>(storage: Storage.Type, forScope scope: Storage.Scope = .default) async throws(KeyValueCodingError<Storage>) {
+    public func clear<Storage: AsyncKeyValueDataStorage & Sendable>(storage: Storage.Type, forScope scope: Storage.Scope = .default) async throws(KeyValueCodingError<Storage>) {
         let storage: AsyncKeyValueCodingStorage<Storage> = try await self.storage(for: scope)
         try await storage.clear()
     }
@@ -132,7 +148,7 @@ public actor UnifiedStorage {
     /// Changes are delivered on a background executor; see `KeyValueObservableStorage`.
     /// - Parameter includingCurrentValue: Whether the publisher first emits the currently stored value, or `nil` if there's none.
     /// - Returns: `nil` if the storage isn't observable, i.e. it wasn't created by an `ObservableUnifiedStorageFactory`.
-    public nonisolated func publisher<Storage: AsyncKeyValueDataStorage & Sendable, Value: CodingValue>(forKey key: Key<Storage, Value>, includingCurrentValue: Bool = true)
+    public func publisher<Storage: AsyncKeyValueDataStorage & Sendable, Value: CodingValue>(forKey key: Key<Storage, Value>, includingCurrentValue: Bool = true)
     async throws(KeyValueCodingError<Storage>) -> KeyValuePublisher<Value?>? {
         let storage: AsyncKeyValueCodingStorage<Storage> = try await storage(for: key.scope)
         let codingKey = KeyValueCodingStorageKey<Storage, Value>(key: key.key)
@@ -142,7 +158,7 @@ public actor UnifiedStorage {
     /// The stream resumes on the executor of the task that iterates it; see `KeyValueObservableStorage`.
     /// - Parameter includingCurrentValue: Whether the stream starts with the currently stored value, or `nil` if there's none.
     /// - Returns: `nil` if the storage isn't observable, i.e. it wasn't created by an `ObservableUnifiedStorageFactory`.
-    public nonisolated func stream<Storage: AsyncKeyValueDataStorage & Sendable, Value: CodingValue>(forKey key: Key<Storage, Value>, includingCurrentValue: Bool = true)
+    public func stream<Storage: AsyncKeyValueDataStorage & Sendable, Value: CodingValue>(forKey key: Key<Storage, Value>, includingCurrentValue: Bool = true)
     async throws(KeyValueCodingError<Storage>) -> AsyncStream<Value?>? {
         let storage: AsyncKeyValueCodingStorage<Storage> = try await storage(for: key.scope)
         let codingKey = KeyValueCodingStorageKey<Storage, Value>(key: key.key)
@@ -152,15 +168,16 @@ public actor UnifiedStorage {
     // MARK: Helpers
     
     /// Caches the creation task before awaiting it, so concurrent first calls share one storage instead of
-    /// each creating their own while the actor is suspended. Failures aren't cached, so a later call can retry.
+    /// each creating their own. Failures aren't cached, so a later call can retry.
     private func storage<Storage: AsyncKeyValueDataStorage & Sendable>(for scope: Storage.Scope) async throws(KeyValueCodingError<Storage>) -> AsyncKeyValueCodingStorage<Storage> {
         let underlyingKey = UnderlyingStorageKey<Storage>(scope: scope)
-        let task: CreationTask<Storage>
-        if let cached = storages[underlyingKey] as? CreationTask<Storage> {
-            task = cached
-        } else {
-            let factory = factory
-            task = Task {
+        let factory = factory
+        let task = lock.withLock { () -> CreationTask<Storage> in
+            if let cached = storages[underlyingKey] as? CreationTask<Storage> {
+                return cached
+            }
+
+            let task = CreationTask<Storage> {
                 do throws(Storage.Error) {
                     let dataStorage: Storage = try await factory.dataStorage(for: scope)
                     return .success(await factory.codingStorage(for: dataStorage))
@@ -168,15 +185,19 @@ public actor UnifiedStorage {
                     return .failure(error)
                 }
             }
+
             storages[underlyingKey] = task
+            return task
         }
 
         switch await task.value {
         case let .success(storage):
             return storage
         case let .failure(error):
-            if let cached = storages[underlyingKey] as? CreationTask<Storage>, cached == task {
-                storages[underlyingKey] = nil
+            lock.withLock {
+                if storages[underlyingKey] as? CreationTask<Storage> == task {
+                    storages[underlyingKey] = nil
+                }
             }
 
             throw .storage(error)

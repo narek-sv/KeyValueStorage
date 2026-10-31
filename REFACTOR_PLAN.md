@@ -54,7 +54,8 @@ This file is the source of truth for the 4.0 refactor, written so that anyone, h
 - **Open in phase 6b:**
   - `.keyOccupied` (UserDefaults, Ubiquitous) carries the stored key, not the key passed (E5).
   - The test revisit and the tests for unmeasured behavior (§11.3): none of the "To add" tests are written yet.
-- **Then: the rest of phases 7–9**: observation (§6.3), `update`, and the facade (§8), still the 3.x actor with its factories and `CodingStorageActor`.
+- **Done: the facade's isolation** (2026-10-31, D24): `UnifiedStorage` is a `Sendable` final class with a lock-protected cache, no actor, so storages of different types or scopes never wait for each other.
+- **Then: the rest of phases 7–9**: observation (§6.3, still on `CodingStorageActor` and opt-in through `ObservableUnifiedStorageFactory`) and `update`.
 - **Fixed: unchecked sharing of synchronous storages** (2026-10-31, D23). The coding storages claimed `@unchecked Sendable` whatever their storage, so `UnifiedStorage` shared a `SQLiteStorage` across concurrent tasks, and `DefaultSQLiteDatabase`'s prepared statements could interleave two operations' bindings. Now only `Sendable` storages are shared, and the built-in keys isolate theirs. A clean build has no warnings: the 4 `Storage.Type` ones went with it, because a `Sendable` type's metatype is `Sendable`.
 
 ## S. Sealed scopes and keys (decided and done 2026-10-30)
@@ -151,6 +152,7 @@ The library offers one consistent way to work with storages of very different na
 | D18 | **System limits are enforced in the locator only**, and the protocol documents them. A custom locator must uphold them. | All naming in one place; the same trust model as a custom backing store, which can already crash or write anywhere. |
 | D19 | **Errors are typed end to end and carry what failed** (§4.4); invalid keys and namespaces carry the rule they break. | Errors are actionable without reading the code; no error is re-mapped or swallowed silently. |
 | D20 | **Stored names are disjoint across scopes, and `clear()` is scope-exact** (§4.5). | Root values and namespaced values can share one folder, suite or store without one scope's `clear()` deleting another's values. |
+| D24 | **`UnifiedStorage` adds no isolation; the storages own it** (2026-10-31). A `public final class`, `@unchecked Sendable`, whose only state is a cache of one coding storage per storage type and scope behind `Lock` (D5), held to look up or insert and never across an `await`. Each operation is a locked lookup, then the storage's own `await`. Concurrent first calls share one creation `Task`; a failed creation isn't cached. The factory's three requirements, `dataStorage(for:)`, `coder(for:)` and `codingStorage(for:)`, have defaults, and `init(factory:)` defaults to `DefaultUnifiedStorageFactory()`, a stateless struct. | The 3.x actor serialized only its cache, but every call hopped onto it and then onto the storage: two hops and one choke point. With D23 every storage is `Sendable` and isolated per scope, so the facade needs no isolation of its own: a User Defaults fetch never waits for a file write. |
 | D23 | **`UnifiedStorage` shares only `Sendable` storages** (2026-10-31). `AsyncKeyValueCodingStorage` is `Sendable` only when its storage is; `KeyValueObservableStorage`, `UnifiedStorageKey`, the factories and `UnifiedStorage` require `Storage: AsyncKeyValueDataStorage & Sendable`. The built-in keys (`FileKey`, …) are `UnifiedStorageKey<IsolatedFileStorage, V>`, each built-in storage having a public alias for its isolated variant (`IsolatedFileStorage = IsolatedKeyValueDataStorage<FileStorage>`, `IsolatedSQLiteStorage`, …, in `Helpers/Typealiases.swift`). A custom storage's key takes an async storage, which must be `Sendable` (an actor is), or a `Sendable` synchronous one as is, and wraps any other synchronous one. | The choice can't be made at runtime (`Sendable` is a marker protocol, so `is any Sendable` doesn't compile) or in generic code, and overloads by `Sendable` pick the wrong one for a type that is both synchronous and `Sendable`. The key type states it once, the compiler enforces it, and the facade keeps one code path. Each storage is reached through one key type, so observation never splits between a wrapped and an unwrapped type. |
 | D22 | **Async storages, and sync stays sync** (2026-10-31). `AsyncKeyValueDataStorage` has `async` requirements; `KeyValueDataStorage` refines it and redeclares the four operations as synchronous. A storage implements each operation once: a synchronous method satisfies both. Concrete use of a synchronous storage never needs `await`, nor does `KeyValueCodingStorage` over it; `AsyncKeyValueCodingStorage` takes any storage, and `UnifiedStorage` any `Sendable` one (D23). Rules: no extension members on `AsyncKeyValueDataStorage` (an `async` member of the same name wins inside `async` code, so synchronous storages would need `await`); `init(scope:)` isn't redeclared as synchronous (Swift 6.3 crashes compiling generic calls to a synchronous init that redeclares an `async` one); `async` generic code over a `KeyValueDataStorage` calls the `async` requirements. | Users can add server- or CloudKit-backed storages without making the built-in ones, or the code that uses them, `async`. |
 | D21 | **Sealed scopes** (§S): a scope says who sees the values, on which devices, how long they're kept and how they're protected; the library picks the place and owns every name in it. | Every input is a valid name, no two scopes or keys clash, and the storages stay interchangeable. Interop is a custom locator's job. |
@@ -536,22 +538,25 @@ public actor IsolatedKeyValueDataStorage<Wrapped: KeyValueDataStorage>: AsyncKey
 
 ## 8. Facade
 
-**Status (2026-10-31): not started.** Storages are isolated by key type (D23): the built-in keys wrap theirs in `IsolatedKeyValueDataStorage`, and `UnifiedStorage` takes only `Sendable` storages. `UnifiedStorage` is still the 3.x actor with `nonisolated` operations, `DefaultUnifiedStorageFactory` and `ObservableUnifiedStorageFactory`; `UbiquitousKey` exists next to the five typealiases.
+**Status (2026-10-31): done (D23, D24), except `update` and the observation redesign (§6.3).**
 
-`Sources/KeyValueStorage/Unified/`
+`Sources/KeyValueStorage/Layers/UnifiedStorage.swift`
 
-- `UnifiedStorageKey<Storage, Value>`: `key`, `scope` (non-optional, defaults to `.default`), value type. Keep the typealiases `FileKey`, `SQLiteKey`, `KeychainKey`, `UserDefaultsKey`, `InMemoryKey`.
-- `UnifiedStorageFactory` (protocol; tests use it to inject backings):
+- **`UnifiedStorageKey<Storage: AsyncKeyValueDataStorage & Sendable, Value>`:** `key`, `scope` (non-optional, `.default` when omitted) and the value type. The built-in keys (`FileKey`, `SQLiteKey`, `KeychainKey`, `UserDefaultsKey`, `InMemoryKey`, `UbiquitousKey`) name their isolated storages (`IsolatedFileStorage`, …, D23).
+- **`UnifiedStorageFactory`** (`Sendable`), the injection point:
 
   ```swift
   public protocol UnifiedStorageFactory: Sendable {
-      func dataStorage<S: KeyValueDataStorage>(_ type: S.Type, scope: S.Scope) throws -> S   // default: S(scope:)
+      func dataStorage<S: AsyncKeyValueDataStorage & Sendable>(for scope: S.Scope) async throws(S.Error) -> S       // default: S(scope:)
+      func coder<S: AsyncKeyValueDataStorage & Sendable>(for storage: S) -> any DataCoder                         // default: RawDataCoder()
+      func codingStorage<S: AsyncKeyValueDataStorage & Sendable>(for storage: S) async -> AsyncKeyValueCodingStorage<S>  // default: with coder(for:)
   }
   ```
 
-- **`UnifiedStorage`** (`final class`, not `Sendable`): a synchronous API (`fetch`, `save`, `set`, `delete`, `update`, `clear(storage:forScope: = .default)`, `publisher`, `stream`). It creates one `KeyValueCodingStorage` per (storage type, scope) on first use. Creation is synchronous, so the `Task`-caching logic goes away, and a failed creation isn't cached.
-- **`IsolatedUnifiedStorage`** (`final class`, `Sendable`): the same API, `async`. Its cache is lock-protected (D5), and each (type, scope) gets its own `IsolatedKeyValueStorage<KeyValueCodingStorage<S>>`, so unrelated storages never wait for each other. Users who prefer a single actor can wrap a `UnifiedStorage` in an actor themselves.
-- `coder` is set on the facade initializer, defaulting to `RawDataCoder()`.
+  Every requirement has a default in a protocol extension, so a factory implements only what it changes; requirements dispatch dynamically, so a custom `coder(for:)` reaches the default `codingStorage(for:)` (tested). `DefaultUnifiedStorageFactory` and `ObservableUnifiedStorageFactory` (its coding storages are `KeyValueObservableStorage`) are empty structs: no state, no subclassing, `Sendable` checked by the compiler.
+- **`UnifiedStorage`** (`final class`, `@unchecked Sendable`, D24): `async` `fetch`, `save`, `set`, `delete`, `clear(storage:forScope: = .default)`, `publisher` and `stream` (both `nil` unless the factory is observable). It creates one coding storage per storage type and scope on first use, and adds no isolation of its own.
+- **Tests** (`UnifiedStorageTests`): one storage per type and scope, given or default; scopes and types apart; 100 concurrent first calls create once; a failed creation is reported and retried; a waiting storage never blocks another; `.storage` and `.coding` errors; only the observable factory publishes. Client-side: concurrent `SQLiteKey` round trips, async storages, every isolation context.
+- **Open:** `update`, in phase 7.
 
 ## 9. Removals checklist
 
@@ -821,7 +826,7 @@ Each phase ends with: the library builds on every CI toolchain, the phase's test
 
 1. **Open: macOS minimum 10.15 → 11.** Removes the untestable `#available` branch in `FileStorage.writingOptions` and simplifies the protection options. Recommended.
 2. **Names:** decided for isolation, `IsolatedKeyValueDataStorage` (2026-10-31). Open: keep `KeyValueCodingStorage` or shorten it to `CodingStorage`.
-3. **Open, before phase 9: isolated facade:** one actor per (type, scope) (recommended, §8) vs a single actor around `UnifiedStorage`.
+3. **Isolated facade:** decided (2026-10-31, D24): no facade actor; each storage isolates its own scope, the built-in ones through `IsolatedKeyValueDataStorage`.
 4. **Open, before phase 7: observation always on** (recommended, D11) vs opt-in.
 5. ~~**Typed throws** on the data layer.~~ Adopted: every storage, the locators and the coding layer throw typed errors, and they build for the iOS 13 / macOS 10.15 deployment targets.
 6. **Open: watchOS minimum 6 → 9.** That's what `UbiquitousStorage` needs; it would remove its `@available(watchOS 9.0, *)` annotations.
