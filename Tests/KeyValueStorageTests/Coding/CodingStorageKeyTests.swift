@@ -1,5 +1,5 @@
 //
-//  KeyValueCodingStorageKeyTests.swift
+//  CodingStorageKeyTests.swift
 //  KeyValueStorage
 //
 //  Created by Narek Sahakyan on 01.11.26.
@@ -10,8 +10,8 @@ import Foundation
 @testable import KeyValueStorage
 
 /// The observation registry tells keys apart by these: the key and the value type.
-final class KeyValueCodingStorageKeyTests: XCTestCase {
-    private typealias Key<Value: CodingValue> = KeyValueCodingStorageKey<InMemoryStorage, Value>
+final class CodingStorageKeyTests: XCTestCase {
+    private typealias Key<Value: CodingValue> = CodingStorageKey<InMemoryStorage, Value>
 
     func testEqualKeysAndValueTypesAreEqualWithEqualHashes() {
         XCTAssertEqual(Key<Int>(key: "key"), Key<Int>(key: "key"))

@@ -14,11 +14,11 @@ public protocol DataCoder: Sendable {
     func decode<Value: CodingValue>(_ data: Data) throws -> Value
 }
 
-// MARK: - DataCoder + KeyValueCodingError
+// MARK: - DataCoder + CodingStorageError
 
 extension DataCoder {
     /// Encodes for both coding storages; the coder's failure is `.coding`.
-    func encoded<Storage, Value: CodingValue>(_ value: Value, for _: Storage.Type) throws(KeyValueCodingError<Storage>) -> Data {
+    func encoded<Storage, Value: CodingValue>(_ value: Value, for _: Storage.Type) throws(CodingStorageError<Storage>) -> Data {
         do {
             return try encode(value)
         } catch {
@@ -27,7 +27,7 @@ extension DataCoder {
     }
 
     /// Decodes for both coding storages; the coder's failure is `.coding`.
-    func decoded<Storage, Value: CodingValue>(_ data: Data, as _: Value.Type, for _: Storage.Type) throws(KeyValueCodingError<Storage>) -> Value {
+    func decoded<Storage, Value: CodingValue>(_ data: Data, as _: Value.Type, for _: Storage.Type) throws(CodingStorageError<Storage>) -> Value {
         do {
             // Explicit, because the return type would otherwise make the coder decode `Value?`
             return try decode(data) as Value

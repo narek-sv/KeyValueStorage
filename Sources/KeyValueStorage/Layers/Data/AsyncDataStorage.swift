@@ -1,5 +1,5 @@
 //
-//  AsyncKeyValueDataStorage.swift
+//  AsyncDataStorage.swift
 //  KeyValueStorage
 //
 //  Created by Narek Sahakyan on 01.11.26.
@@ -7,15 +7,15 @@
 
 import Foundation
 
-// MARK: - AsyncKeyValueDataStorage
+// MARK: - AsyncDataStorage
 
 /// A storage whose operations may suspend, such as one backed by a server.
-/// - Note: Every `KeyValueDataStorage` is one too, with its synchronous methods.
+/// - Note: Every `DataStorage` is one too, with its synchronous methods.
 /// - Note: No extension members: an `async` member here would win over a synchronous one of the same name inside `async` code,
 ///   so calls on synchronous storages would need `await`.
-public protocol AsyncKeyValueDataStorage {
+public protocol AsyncDataStorage {
     associatedtype Key: Hashable & Sendable
-    associatedtype Scope: KeyValueDataStorageScope
+    associatedtype Scope: DataStorageScope
     associatedtype Error: Swift.Error & Sendable
 
     var scope: Scope { get }
@@ -28,17 +28,17 @@ public protocol AsyncKeyValueDataStorage {
     func clear() async throws(Error)
 }
 
-// MARK: - KeyValueDataStorageScope
+// MARK: - DataStorageScope
 
 /// - Warning: `.own` belongs to the bundle ID: builds that share one share values, and unit tests hosted in an app use the app's,
 ///   so a test's `clear()` empties the app's data on that device. Give tests a namespace of their own.
-public protocol KeyValueDataStorageScope: Hashable & Sendable {
+public protocol DataStorageScope: Hashable & Sendable {
     static var `default`: Self { get }
 }
 
-// MARK: - KeyValueDataStorageScope + Defaults
+// MARK: - DataStorageScope + Defaults
 
-public extension KeyValueDataStorageScope {
+public extension DataStorageScope {
     /// Every `default` scope's namespace.
     /// - Warning: Shared by everything in the app that uses a `default` scope.
     static var defaultNamespace: ExactString {

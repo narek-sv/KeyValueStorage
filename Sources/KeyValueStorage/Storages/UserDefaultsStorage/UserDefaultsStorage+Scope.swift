@@ -9,7 +9,7 @@
 
 public extension UserDefaultsStorage {
     /// - Note: Launch arguments and registered defaults under a stored key's name read as that key's value, in every suite.
-    enum Scope: KeyValueDataStorageScope {
+    enum Scope: DataStorageScope {
         /// The running app's or extension's own.
         /// - Note: A suite of the library's own, not `UserDefaults.standard`.
         /// - Warning: On macOS without App Sandbox, the user's other apps can read it.

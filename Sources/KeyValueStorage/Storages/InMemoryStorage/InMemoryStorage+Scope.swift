@@ -9,7 +9,7 @@
 
 public extension InMemoryStorage {
     /// Values live until the process exits.
-    enum Scope: KeyValueDataStorageScope {
+    enum Scope: DataStorageScope {
         /// This process's own memory.
         case own(namespace: Namespace)
 

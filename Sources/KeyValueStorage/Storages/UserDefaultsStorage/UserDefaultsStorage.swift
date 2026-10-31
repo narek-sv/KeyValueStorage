@@ -13,7 +13,7 @@ import Foundation
 /// - Note: Only `Data` at a stored key is a value. Anything else there fetches as `nil`, is never removed, and makes `save`
 ///   throw `.keyOccupied`.
 /// - Note: Thread-safe: an instance can be shared between threads and tasks, but a sequence of operations isn't atomic.
-public final class UserDefaultsStorage: KeyValueDataStorage, Sendable {
+public final class UserDefaultsStorage: DataStorage, Sendable {
 
     // MARK: Properties
 

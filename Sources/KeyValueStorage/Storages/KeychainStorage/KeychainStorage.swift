@@ -14,7 +14,7 @@ import Security
 /// - Note: `save`, `delete` and `clear()` never read an item first: reading decrypts it, which fails while the device is locked.
 ///   An item without data fetches as `nil`, and is replaced and removed like any value.
 /// - Note: Thread-safe: an instance can be shared between threads and tasks, but a sequence of operations isn't atomic.
-public final class KeychainStorage: KeyValueDataStorage, Sendable {
+public final class KeychainStorage: DataStorage, Sendable {
 
     // MARK: Properties
 

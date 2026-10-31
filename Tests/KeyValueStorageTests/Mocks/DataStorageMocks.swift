@@ -10,7 +10,7 @@ import Foundation
 
 // MARK: - MockScope
 
-struct MockScope: KeyValueDataStorageScope {
+struct MockScope: DataStorageScope {
     let name: String
 
     static var `default`: Self {
@@ -36,7 +36,7 @@ enum DataStorageCall: Equatable {
 // MARK: - DataStorageMock
 
 /// A synchronous in-memory storage; records every call, and throws `error` instead of answering.
-final class DataStorageMock: KeyValueDataStorage {
+final class DataStorageMock: DataStorage {
     typealias Key = String
     typealias Error = MockError
 
@@ -80,7 +80,7 @@ final class DataStorageMock: KeyValueDataStorage {
 // MARK: - AsyncDataStorageMock
 
 /// An asynchronous in-memory storage, as an app's server-backed one would be; records every call, and throws `error` instead of answering.
-actor AsyncDataStorageMock: AsyncKeyValueDataStorage {
+actor AsyncDataStorageMock: AsyncDataStorage {
     typealias Key = String
     typealias Error = MockError
 

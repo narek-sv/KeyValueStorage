@@ -14,7 +14,7 @@ import Foundation
 ///   folder goes, is never read or removed, and `save` throws `.pathOccupied`. Links are never followed.
 /// - Warning: A folder that another process puts at a key's path between `delete`'s check and its removal is removed.
 /// - Note: Thread-safe: an instance can be shared between threads and tasks, but a sequence of operations isn't atomic.
-public final class FileStorage: KeyValueDataStorage, Sendable {
+public final class FileStorage: DataStorage, Sendable {
 
     // MARK: Properties
 

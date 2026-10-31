@@ -1,5 +1,5 @@
 //
-//  ObservableKeyValueStorageTests.swift
+//  ObservableStorageTests.swift
 //  KeyValueStorage
 //
 //  Created by Narek Sahakyan on 31.10.26.
@@ -9,8 +9,8 @@ import XCTest
 import Foundation
 @testable import KeyValueStorage
 
-final class ObservableKeyValueStorageTests: XCTestCase {
-    private typealias Key<Value: CodingValue> = KeyValueCodingStorageKey<InMemoryStorage, Value>
+final class ObservableStorageTests: XCTestCase {
+    private typealias Key<Value: CodingValue> = CodingStorageKey<InMemoryStorage, Value>
 
     private let key = Key<Int>(key: "key")
 
@@ -101,8 +101,8 @@ final class ObservableKeyValueStorageTests: XCTestCase {
         // Given
         let underlying = SlowReadStorage(scope: .init(name: "slow-\(UUID().uuidString)"))
         await underlying.store(try JSONDataCoder().encode(1), forKey: "key")
-        let storage = ObservableKeyValueStorage(AsyncKeyValueCodingStorage(storage: underlying, coder: JSONDataCoder()))
-        let key = KeyValueCodingStorageKey<SlowReadStorage, Int>(key: "key")
+        let storage = ObservableStorage(AsyncCodingStorage(storage: underlying, coder: JSONDataCoder()))
+        let key = CodingStorageKey<SlowReadStorage, Int>(key: "key")
         let values = Recorded<Int?>()
 
         // When: a save overtakes the read of the current value
@@ -124,9 +124,9 @@ final class ObservableKeyValueStorageTests: XCTestCase {
         let fast = SlowReadStorage(scope: scope, pausesReads: false)
         await slow.store(try JSONDataCoder().encode(1), forKey: "key")
         await fast.store(try JSONDataCoder().encode(2), forKey: "key")
-        let slowStorage = ObservableKeyValueStorage(AsyncKeyValueCodingStorage(storage: slow, coder: JSONDataCoder()))
-        let fastStorage = ObservableKeyValueStorage(AsyncKeyValueCodingStorage(storage: fast, coder: JSONDataCoder()))
-        let key = KeyValueCodingStorageKey<SlowReadStorage, Int>(key: "key")
+        let slowStorage = ObservableStorage(AsyncCodingStorage(storage: slow, coder: JSONDataCoder()))
+        let fastStorage = ObservableStorage(AsyncCodingStorage(storage: fast, coder: JSONDataCoder()))
+        let key = CodingStorageKey<SlowReadStorage, Int>(key: "key")
         let slowValues = Recorded<Int?>()
 
         // When: the fast read seeds the observation while the slow one is still reading
@@ -293,8 +293,8 @@ final class ObservableKeyValueStorageTests: XCTestCase {
 
         // When: another scope, another storage type with an equal scope, and another value type
         try await makeStorage(ExactString("\(namespace)-other")).save(1, forKey: key)
-        try await ObservableKeyValueStorage(AsyncKeyValueCodingStorage(storage: IsolatedKeyValueDataStorage(InMemoryStorage(scope: .own(namespace: namespace)))))
-            .save(2, forKey: KeyValueCodingStorageKey<IsolatedKeyValueDataStorage<InMemoryStorage>, Int>(key: "key"))
+        try await ObservableStorage(AsyncCodingStorage(storage: IsolatedDataStorage(InMemoryStorage(scope: .own(namespace: namespace)))))
+            .save(2, forKey: CodingStorageKey<IsolatedDataStorage<InMemoryStorage>, Int>(key: "key"))
         try await storage.save("three", forKey: Key<String>(key: "key"))
 
         // Then
@@ -366,19 +366,19 @@ final class ObservableKeyValueStorageTests: XCTestCase {
     func testAFailedWriteNotifiesNoOne() async throws {
         // Given
         let underlying = AsyncDataStorageMock(scope: .init(name: "failing-\(UUID().uuidString)"))
-        let storage = ObservableKeyValueStorage(AsyncKeyValueCodingStorage(storage: underlying, coder: DataCoderMock()))
-        let key = KeyValueCodingStorageKey<AsyncDataStorageMock, Int>(key: "key")
+        let storage = ObservableStorage(AsyncCodingStorage(storage: underlying, coder: DataCoderMock()))
+        let key = CodingStorageKey<AsyncDataStorageMock, Int>(key: "key")
         let values = Recorded<Int?>()
         let subscription = try await storage.publisher(forKey: key, includingCurrentValue: false).sink { values.append($0) }
         let error = MockError(id: 1)
         await underlying.fail(with: error)
 
         // When - Then
-        await assertThrows(KeyValueCodingError<AsyncDataStorageMock>.storage(error)) { try await storage.save(1, forKey: key) }
-        await assertThrows(KeyValueCodingError<AsyncDataStorageMock>.storage(error)) { try await storage.set(1, forKey: key) }
-        await assertThrows(KeyValueCodingError<AsyncDataStorageMock>.storage(error)) { try await storage.set(nil, forKey: key) }
-        await assertThrows(KeyValueCodingError<AsyncDataStorageMock>.storage(error)) { try await storage.delete(forKey: key) }
-        await assertThrows(KeyValueCodingError<AsyncDataStorageMock>.storage(error)) { try await storage.clear() }
+        await assertThrows(CodingStorageError<AsyncDataStorageMock>.storage(error)) { try await storage.save(1, forKey: key) }
+        await assertThrows(CodingStorageError<AsyncDataStorageMock>.storage(error)) { try await storage.set(1, forKey: key) }
+        await assertThrows(CodingStorageError<AsyncDataStorageMock>.storage(error)) { try await storage.set(nil, forKey: key) }
+        await assertThrows(CodingStorageError<AsyncDataStorageMock>.storage(error)) { try await storage.delete(forKey: key) }
+        await assertThrows(CodingStorageError<AsyncDataStorageMock>.storage(error)) { try await storage.clear() }
         XCTAssertEqual(values.all, [])
         subscription.cancel()
     }
@@ -391,7 +391,7 @@ final class ObservableKeyValueStorageTests: XCTestCase {
         let subscription = try await storage.publisher(forKey: key, includingCurrentValue: false).sink { values.append($0) }
 
         // When - Then
-        await assertThrows(KeyValueCodingError<InMemoryStorage>.coding(error)) { try await storage.save(1, forKey: key) }
+        await assertThrows(CodingStorageError<InMemoryStorage>.coding(error)) { try await storage.save(1, forKey: key) }
         XCTAssertEqual(values.all, [])
         subscription.cancel()
     }
@@ -401,8 +401,8 @@ final class ObservableKeyValueStorageTests: XCTestCase {
     func testOperationsAndErrorsPassThrough() async throws {
         // Given
         let underlying = AsyncDataStorageMock(scope: .init(name: "forwarding"))
-        let storage = ObservableKeyValueStorage(AsyncKeyValueCodingStorage(storage: underlying, coder: DataCoderMock()))
-        let key = KeyValueCodingStorageKey<AsyncDataStorageMock, Int>(key: "key")
+        let storage = ObservableStorage(AsyncCodingStorage(storage: underlying, coder: DataCoderMock()))
+        let key = CodingStorageKey<AsyncDataStorageMock, Int>(key: "key")
 
         // When
         try await storage.save(1, forKey: key)
@@ -419,14 +419,14 @@ final class ObservableKeyValueStorageTests: XCTestCase {
         // When - Then
         let error = MockError(id: 1)
         await underlying.fail(with: error)
-        await assertThrows(KeyValueCodingError<AsyncDataStorageMock>.storage(error)) { try await storage.save(1, forKey: key) }
+        await assertThrows(CodingStorageError<AsyncDataStorageMock>.storage(error)) { try await storage.save(1, forKey: key) }
     }
 
     // MARK: Helpers
 
     private func makeStorage(_ namespace: ExactString = .init("observable-\(UUID().uuidString)"),
-                             coder: any DataCoder = JSONDataCoder()) -> ObservableKeyValueStorage<InMemoryStorage> {
-        ObservableKeyValueStorage(AsyncKeyValueCodingStorage(storage: InMemoryStorage(scope: .own(namespace: namespace)), coder: coder))
+                             coder: any DataCoder = JSONDataCoder()) -> ObservableStorage<InMemoryStorage> {
+        ObservableStorage(AsyncCodingStorage(storage: InMemoryStorage(scope: .own(namespace: namespace)), coder: coder))
     }
 }
 
@@ -434,7 +434,7 @@ final class ObservableKeyValueStorageTests: XCTestCase {
 
 /// Takes the stored value, then waits until the test lets the read return, like a slow read that a save overtakes;
 /// with `pausesReads` off, a plain storage of the same type.
-private actor SlowReadStorage: AsyncKeyValueDataStorage {
+private actor SlowReadStorage: AsyncDataStorage {
     typealias Key = String
     typealias Error = Never
 

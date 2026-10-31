@@ -97,8 +97,8 @@ final class DataCodersTests: XCTestCase {
     
     func testPropertyListCodingStorage() throws {
         // Given
-        let storage = KeyValueCodingStorage(storage: InMemoryStorage(scope: .own(namespace: "propertyList")), coder: PropertyListDataCoder())
-        let key = KeyValueCodingStorageKey<InMemoryStorage, String>(key: "key")
+        let storage = CodingStorage(storage: InMemoryStorage(scope: .own(namespace: "propertyList")), coder: PropertyListDataCoder())
+        let key = CodingStorageKey<InMemoryStorage, String>(key: "key")
         
         // When
         try storage.save("Alice", forKey: key)

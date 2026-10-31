@@ -64,17 +64,17 @@ private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #is
     }
 
     // An isolated storage, directly (no `try`: it keeps `InMemoryStorage`'s `Never`) and through the async coding storage
-    let isolated = IsolatedKeyValueDataStorage(InMemoryStorage(scope: .own(namespace: .init("\(id)-isolated"))))
+    let isolated = IsolatedDataStorage(InMemoryStorage(scope: .own(namespace: .init("\(id)-isolated"))))
     await isolated.save(Data([1]), forKey: "key")
     let isolatedFetched = await isolated.fetch(forKey: "key")
     await isolated.set(nil, forKey: "key")
-    let isolatedCoding = AsyncKeyValueCodingStorage(storage: isolated)
-    try await isolatedCoding.save(7, forKey: KeyValueCodingStorageKey(key: "coded"))
-    let isolatedDecoded: Int? = try await isolatedCoding.fetch(forKey: KeyValueCodingStorageKey(key: "coded"))
+    let isolatedCoding = AsyncCodingStorage(storage: isolated)
+    try await isolatedCoding.save(7, forKey: CodingStorageKey(key: "coded"))
+    let isolatedDecoded: Int? = try await isolatedCoding.fetch(forKey: CodingStorageKey(key: "coded"))
     await isolated.clear()
-    XCTAssertEqual(isolatedFetched, Data([1]), "IsolatedKeyValueDataStorage from \(context)")
-    XCTAssertEqual(isolatedDecoded, 7, "IsolatedKeyValueDataStorage coding from \(context)")
-    XCTAssertEqual(isolated.scope, .own(namespace: .init("\(id)-isolated")), "IsolatedKeyValueDataStorage scope from \(context)")
+    XCTAssertEqual(isolatedFetched, Data([1]), "IsolatedDataStorage from \(context)")
+    XCTAssertEqual(isolatedDecoded, 7, "IsolatedDataStorage coding from \(context)")
+    XCTAssertEqual(isolated.scope, .own(namespace: .init("\(id)-isolated")), "IsolatedDataStorage scope from \(context)")
 
     // Unified storage
     let storage = UnifiedStorage(factory: ObservableUnifiedStorageFactory())
@@ -102,14 +102,14 @@ private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #is
     subscription?.cancel()
 }
 
-private func exercise<Storage: KeyValueDataStorage>(_ storage: sending Storage, key: Storage.Key, context: String,
-                                                    isolation: isolated (any Actor)? = #isolation) async throws {
+private func exercise<Storage: DataStorage>(_ storage: sending Storage, key: Storage.Key, context: String,
+                                            isolation: isolated (any Actor)? = #isolation) async throws {
     let description = "\(Storage.self) from \(context)"
     try exerciseSynchronously(storage, key: key, description: description)
 
     // Async coding and observation; the storage is only known to be synchronous here, so through the isolated wrapper
-    let observable = ObservableKeyValueStorage(AsyncKeyValueCodingStorage(storage: IsolatedKeyValueDataStorage(storage), coder: RawDataCoder()))
-    let codingKey = KeyValueCodingStorageKey<IsolatedKeyValueDataStorage<Storage>, Int>(key: key)
+    let observable = ObservableStorage(AsyncCodingStorage(storage: IsolatedDataStorage(storage), coder: RawDataCoder()))
+    let codingKey = CodingStorageKey<IsolatedDataStorage<Storage>, Int>(key: key)
     let published = Values<Int?>()
     let subscription = try await observable.publisher(forKey: codingKey).sink { published.append($0) }
     let stream = try await observable.stream(forKey: codingKey, includingCurrentValue: false)
@@ -132,7 +132,7 @@ private func exercise<Storage: KeyValueDataStorage>(_ storage: sending Storage, 
 
 /// The data and coding storages without `await`: a synchronous storage stays synchronous in generic code too.
 /// - Note: Synchronous on purpose: inside `async` code, the same calls would resolve to the `async` requirements.
-private func exerciseSynchronously<Storage: KeyValueDataStorage>(_ storage: Storage, key: Storage.Key, description: String) throws {
+private func exerciseSynchronously<Storage: DataStorage>(_ storage: Storage, key: Storage.Key, description: String) throws {
     let data = Data([1, 2, 3])
     
     // Data storage
@@ -154,8 +154,8 @@ private func exerciseSynchronously<Storage: KeyValueDataStorage>(_ storage: Stor
     XCTAssertNil(cleared, description)
 
     // Coding storage
-    let coding = KeyValueCodingStorage(storage: storage)
-    let codingKey = KeyValueCodingStorageKey<Storage, Int>(key: key)
+    let coding = CodingStorage(storage: storage)
+    let codingKey = CodingStorageKey<Storage, Int>(key: key)
     try coding.save(1, forKey: codingKey)
     let fetched = try coding.fetch(forKey: codingKey)
     try coding.set(nil, forKey: codingKey)

@@ -77,7 +77,7 @@ final class UnifiedStorageTests: XCTestCase {
         let key = Key<Int>(key: "key")
 
         // When - Then
-        await assertThrows(KeyValueCodingError<AsyncDataStorageMock>.storage(RecordingFactory.creationError)) {
+        await assertThrows(CodingStorageError<AsyncDataStorageMock>.storage(RecordingFactory.creationError)) {
             try await storage.save(1, forKey: key)
         }
         try await storage.save(1, forKey: key)
@@ -232,8 +232,8 @@ final class UnifiedStorageTests: XCTestCase {
         let key = Key<Int>(key: "key", scope: .init(name: "errors"))
 
         // When - Then
-        await assertThrows(KeyValueCodingError<AsyncDataStorageMock>.coding(error)) { try await storage.save(1, forKey: key) }
-        await assertThrows(KeyValueCodingError<GatedStorage>.storage(GatedStorage.failure)) {
+        await assertThrows(CodingStorageError<AsyncDataStorageMock>.coding(error)) { try await storage.save(1, forKey: key) }
+        await assertThrows(CodingStorageError<GatedStorage>.storage(GatedStorage.failure)) {
             try await storage.clear(storage: GatedStorage.self)
         }
     }
@@ -357,20 +357,20 @@ private final class RecordingFactory: UnifiedStorageFactory, @unchecked Sendable
         dataCoder
     }
 
-    func codingStorage<Storage: UnifiedStorable>(for storage: Storage) async -> AsyncKeyValueCodingStorage<Storage> {
+    func codingStorage<Storage: UnifiedStorable>(for storage: Storage) async -> AsyncCodingStorage<Storage> {
         lock.withLock { codingStorages += 1 }
-        return AsyncKeyValueCodingStorage(storage: storage, coder: coder(for: storage))
+        return AsyncCodingStorage(storage: storage, coder: coder(for: storage))
     }
 
-    func observableStorage<Storage: UnifiedStorable>(for storage: AsyncKeyValueCodingStorage<Storage>) async -> ObservableKeyValueStorage<Storage>? {
-        observable ? ObservableKeyValueStorage(storage) : nil
+    func observableStorage<Storage: UnifiedStorable>(for storage: AsyncCodingStorage<Storage>) async -> ObservableStorage<Storage>? {
+        observable ? ObservableStorage(storage) : nil
     }
 }
 
 // MARK: - GatedStorage
 
 /// Holds every `fetch` until its gate opens, and fails every `clear`.
-private actor GatedStorage: AsyncKeyValueDataStorage {
+private actor GatedStorage: AsyncDataStorage {
     typealias Key = String
     typealias Error = MockError
 
@@ -469,7 +469,7 @@ private struct CountingObservableFactory: UnifiedStorageFactory {
         DataCoderMock()
     }
 
-    func observableStorage<Storage: UnifiedStorable>(for storage: AsyncKeyValueCodingStorage<Storage>) async -> ObservableKeyValueStorage<Storage>? {
+    func observableStorage<Storage: UnifiedStorable>(for storage: AsyncCodingStorage<Storage>) async -> ObservableStorage<Storage>? {
         CountingObservableStorage(storage)
     }
 }
@@ -477,8 +477,8 @@ private struct CountingObservableFactory: UnifiedStorageFactory {
 // MARK: - CountingObservableStorage
 
 /// Counts its saves, then saves and publishes as its superclass does.
-private final class CountingObservableStorage<Storage: UnifiedStorable>: ObservableKeyValueStorage<Storage>, @unchecked Sendable {
-    override func save<Value: CodingValue>(_ value: Value, forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws(Error) {
+private final class CountingObservableStorage<Storage: UnifiedStorable>: ObservableStorage<Storage>, @unchecked Sendable {
+    override func save<Value: CodingValue>(_ value: Value, forKey key: CodingStorageKey<Storage, Value>) async throws(Error) {
         Counter.shared.increment()
         try await super.save(value, forKey: key)
     }

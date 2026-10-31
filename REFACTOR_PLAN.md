@@ -40,19 +40,15 @@ Keychain's `errSecInteractionNotAllowed` is mapped to `.protectedDataUnavailable
 - **Ubiquitous:** a signed host with the iCloud key-value store entitlement and an Apple Account, ideally with a second device to see values sync. Check the key-length limit (128 UTF-16 code units per Apple's docs, 64 UTF-8 bytes per older forum and blog posts), the default adapter's integration tests, the quota, signed-out behavior, what an unentitled build does (keeps nothing, `synchronize()` returns `false`), and that the store, like UserDefaults, drops keys with NUL (assumed; the locator escapes it).
 - Blocker: KeychainHost is ad-hoc signed, and its entitlements hardcode a placeholder team (`ABCDE12345`). Running it on a device needs a signing setup that leaves the committed project alone, such as a local, git-ignored xcconfig with the team and bundle ID, and entitlements built from `$(AppIdentifierPrefix)`.
 
-## 3. Open decisions
-
-1. **Name:** keep `KeyValueCodingStorage`, or shorten it to `CodingStorage`.
-
-## 4. Release
+## 3. Release
 
 - README: the Installation version (`from: "3.0.0"`) and "Migrating from 2.x".
 - DocC rewrite: the scopes table, the isolation guide, observation limits.
 - `CHANGELOG`; tag 4.0.0.
 
-## 5. Risks and notes
+## 4. Risks and notes
 
 - **Cross-process consistency:** isolation is per instance and per process. The app and an extension writing the same scope are only protected by the system itself (SQLite transactions and WAL, atomic file replace, UserDefaults and keychain internals). `withStorage` isn't atomic across processes.
 - **iOS group containers:** the system terminates a suspended app that holds a file lock in a group container (`0xdead10cc`). SQLite in an App Group scope should finish its work before suspension; the scope docs say so.
-- **Observation** sees only changes made through an `ObservableKeyValueStorage` of the same storage type and scope, and only of the observer's value type. Concurrent writers of one key may deliver out of order.
-- **Blocking SQLite calls:** `DefaultSQLiteDatabase` locks each operation, so calls on one instance block while they wait. `IsolatedKeyValueDataStorage` turns that into suspension when many tasks share one SQLite scope.
+- **Observation** sees only changes made through an `ObservableStorage` of the same storage type and scope, and only of the observer's value type. Concurrent writers of one key may deliver out of order.
+- **Blocking SQLite calls:** `DefaultSQLiteDatabase` locks each operation, so calls on one instance block while they wait. `IsolatedDataStorage` turns that into suspension when many tasks share one SQLite scope.

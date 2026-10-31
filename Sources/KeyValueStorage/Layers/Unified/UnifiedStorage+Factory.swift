@@ -12,9 +12,9 @@
 public protocol UnifiedStorageFactory: Sendable {
     func dataStorage<Storage: UnifiedStorable>(for scope: Storage.Scope) async throws(Storage.Error) -> Storage
     func coder<Storage: UnifiedStorable>(for storage: Storage) -> any DataCoder
-    func codingStorage<Storage: UnifiedStorable>(for storage: Storage) async -> AsyncKeyValueCodingStorage<Storage>
+    func codingStorage<Storage: UnifiedStorable>(for storage: Storage) async -> AsyncCodingStorage<Storage>
     /// `nil` for a storage whose changes aren't published.
-    func observableStorage<Storage: UnifiedStorable>(for storage: AsyncKeyValueCodingStorage<Storage>) async -> ObservableKeyValueStorage<Storage>?
+    func observableStorage<Storage: UnifiedStorable>(for storage: AsyncCodingStorage<Storage>) async -> ObservableStorage<Storage>?
 }
 
 // MARK: - UnifiedStorageFactory + Defaults
@@ -30,13 +30,13 @@ public extension UnifiedStorageFactory {
         RawDataCoder()
     }
 
-    /// An `AsyncKeyValueCodingStorage` with `coder(for:)`.
-    func codingStorage<Storage: UnifiedStorable>(for storage: Storage) async -> AsyncKeyValueCodingStorage<Storage> {
-        AsyncKeyValueCodingStorage(storage: storage, coder: coder(for: storage))
+    /// An `AsyncCodingStorage` with `coder(for:)`.
+    func codingStorage<Storage: UnifiedStorable>(for storage: Storage) async -> AsyncCodingStorage<Storage> {
+        AsyncCodingStorage(storage: storage, coder: coder(for: storage))
     }
 
     /// `nil`: changes aren't published.
-    func observableStorage<Storage: UnifiedStorable>(for storage: AsyncKeyValueCodingStorage<Storage>) async -> ObservableKeyValueStorage<Storage>? {
+    func observableStorage<Storage: UnifiedStorable>(for storage: AsyncCodingStorage<Storage>) async -> ObservableStorage<Storage>? {
         nil
     }
 }
@@ -50,11 +50,11 @@ public struct DefaultUnifiedStorageFactory: UnifiedStorageFactory {
 
 // MARK: - ObservableUnifiedStorageFactory
 
-/// The defaults, with every storage observable through `ObservableKeyValueStorage`.
+/// The defaults, with every storage observable through `ObservableStorage`.
 public struct ObservableUnifiedStorageFactory: UnifiedStorageFactory {
     public init() { }
 
-    public func observableStorage<Storage: UnifiedStorable>(for storage: AsyncKeyValueCodingStorage<Storage>) async -> ObservableKeyValueStorage<Storage>? {
-        ObservableKeyValueStorage(storage)
+    public func observableStorage<Storage: UnifiedStorable>(for storage: AsyncCodingStorage<Storage>) async -> ObservableStorage<Storage>? {
+        ObservableStorage(storage)
     }
 }

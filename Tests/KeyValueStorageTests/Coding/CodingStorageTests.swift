@@ -1,5 +1,5 @@
 //
-//  KeyValueCodingStorageTests.swift
+//  CodingStorageTests.swift
 //  KeyValueStorage
 //
 //  Created by Narek Sahakyan on 31.10.26.
@@ -10,11 +10,11 @@ import Foundation
 @testable import KeyValueStorage
 
 /// Synchronous test methods: a synchronous storage keeps the coding layer free of `await`.
-final class KeyValueCodingStorageTests: XCTestCase {
-    private typealias Error = KeyValueCodingError<DataStorageMock>
+final class CodingStorageTests: XCTestCase {
+    private typealias Error = CodingStorageError<DataStorageMock>
 
     private let storage = DataStorageMock(scope: .init(name: "scope"))
-    private let key = KeyValueCodingStorageKey<DataStorageMock, Int>(key: "key")
+    private let key = CodingStorageKey<DataStorageMock, Int>(key: "key")
     private let error = MockError(id: 1)
 
     // MARK: Fetch
@@ -114,7 +114,7 @@ final class KeyValueCodingStorageTests: XCTestCase {
 
     // MARK: Helpers
 
-    private func makeStorage(coder: any DataCoder = DataCoderMock()) -> KeyValueCodingStorage<DataStorageMock> {
-        KeyValueCodingStorage(storage: storage, coder: coder)
+    private func makeStorage(coder: any DataCoder = DataCoderMock()) -> CodingStorage<DataStorageMock> {
+        CodingStorage(storage: storage, coder: coder)
     }
 }

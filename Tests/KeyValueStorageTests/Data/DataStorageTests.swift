@@ -1,5 +1,5 @@
 //
-//  KeyValueDataStorageTests.swift
+//  DataStorageTests.swift
 //  KeyValueStorage
 //
 //  Created by Narek Sahakyan on 01.11.26.
@@ -9,7 +9,7 @@ import XCTest
 import Foundation
 @testable import KeyValueStorage
 
-final class KeyValueDataStorageTests: XCTestCase {
+final class DataStorageTests: XCTestCase {
     func testEveryDefaultScopeSharesTheLibrarysNamespace() {
         XCTAssertEqual(MockScope.defaultNamespace, "KeyValueStorage")
         XCTAssertEqual(FileStorage.Scope.default, .own(namespace: "KeyValueStorage"))

@@ -1,5 +1,5 @@
 //
-//  ObservableKeyValueStorage.swift
+//  ObservableStorage.swift
 //  KeyValueStorage
 //
 //  Created by Narek Sahakyan on 31.10.26.
@@ -8,7 +8,7 @@
 import Combine
 import Foundation
 
-// MARK: - ObservableKeyValueStorage
+// MARK: - ObservableStorage
 
 /// A coding storage that publishes the changes made through it.
 ///
@@ -21,12 +21,12 @@ import Foundation
 /// - An observer sees only the values saved with its own value type.
 /// - Two calls that save one key at once may deliver their values in the other order than they were written.
 /// - Warning: Subclasses inherit `Sendable`: their own state must be thread-safe too.
-open class ObservableKeyValueStorage<Storage: AsyncKeyValueDataStorage & Sendable>: @unchecked Sendable {
-    public typealias Error = KeyValueCodingError<Storage>
+open class ObservableStorage<Storage: AsyncDataStorage & Sendable>: @unchecked Sendable {
+    public typealias Error = CodingStorageError<Storage>
 
     // MARK: Properties
 
-    private let storage: AsyncKeyValueCodingStorage<Storage>
+    private let storage: AsyncCodingStorage<Storage>
     private let registry = ObservationRegistry.shared
 
     public var scope: Storage.Scope {
@@ -35,22 +35,22 @@ open class ObservableKeyValueStorage<Storage: AsyncKeyValueDataStorage & Sendabl
 
     // MARK: Initializers
 
-    public init(_ storage: AsyncKeyValueCodingStorage<Storage>) {
+    public init(_ storage: AsyncCodingStorage<Storage>) {
         self.storage = storage
     }
 
     // MARK: Main Functionality
 
-    open func fetch<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws(Error) -> Value? {
+    open func fetch<Value: CodingValue>(forKey key: CodingStorageKey<Storage, Value>) async throws(Error) -> Value? {
         try await storage.fetch(forKey: key)
     }
 
-    open func save<Value: CodingValue>(_ value: Value, forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws(Error) {
+    open func save<Value: CodingValue>(_ value: Value, forKey key: CodingStorageKey<Storage, Value>) async throws(Error) {
         try await storage.save(value, forKey: key)
         registry.observation(forKey: key, in: scopeID)?.change(to: value)
     }
 
-    open func set<Value: CodingValue>(_ value: Value?, forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws(Error) {
+    open func set<Value: CodingValue>(_ value: Value?, forKey key: CodingStorageKey<Storage, Value>) async throws(Error) {
         if let value {
             try await save(value, forKey: key)
         } else {
@@ -58,7 +58,7 @@ open class ObservableKeyValueStorage<Storage: AsyncKeyValueDataStorage & Sendabl
         }
     }
 
-    open func delete<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws(Error) {
+    open func delete<Value: CodingValue>(forKey key: CodingStorageKey<Storage, Value>) async throws(Error) {
         try await storage.delete(forKey: key)
         registry.observation(forKey: key, in: scopeID)?.change(to: nil)
     }
@@ -75,8 +75,8 @@ open class ObservableKeyValueStorage<Storage: AsyncKeyValueDataStorage & Sendabl
 
     /// - Parameter includingCurrentValue: Whether the publisher first emits the currently stored value, or `nil` if there's none.
     ///   Reading it can throw, for example when the stored data can't be decoded.
-    open func publisher<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>,
-                                            includingCurrentValue: Bool = true) async throws(Error) -> KeyValuePublisher<Value?> {
+    open func publisher<Value: CodingValue>(forKey key: CodingStorageKey<Storage, Value>,
+                                            includingCurrentValue: Bool = true) async throws(Error) -> ValuePublisher<Value?> {
         let scopeID = scopeID
         let observation = registry.register(key, in: scopeID)
         let token = ObservationToken { [registry] in
@@ -94,7 +94,7 @@ open class ObservableKeyValueStorage<Storage: AsyncKeyValueDataStorage & Sendabl
             ? observation.subject.eraseToAnyPublisher()
             : observation.subject.dropFirst().eraseToAnyPublisher()
 
-        return KeyValuePublisher(states
+        return ValuePublisher(states
             .compactMap { state in
                 withExtendedLifetime(token) {
                     state.value(as: Value.self, includingSeeded: includingCurrentValue)
@@ -105,7 +105,7 @@ open class ObservableKeyValueStorage<Storage: AsyncKeyValueDataStorage & Sendabl
 
     /// - Parameter includingCurrentValue: Whether the stream starts with the currently stored value, or `nil` if there's none.
     ///   Reading it can throw, for example when the stored data can't be decoded.
-    open func stream<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>,
+    open func stream<Value: CodingValue>(forKey key: CodingStorageKey<Storage, Value>,
                                          includingCurrentValue: Bool = true) async throws(Error) -> AsyncStream<Value?> {
         let publisher = try await publisher(forKey: key, includingCurrentValue: includingCurrentValue)
         return AsyncStream(bufferingPolicy: .unbounded) { continuation in
@@ -159,7 +159,7 @@ private final class ObservationToken: Sendable {
 
 // MARK: - ObservationRegistry
 
-/// Every observed key of the process, shared by all `ObservableKeyValueStorage` instances.
+/// Every observed key of the process, shared by all `ObservableStorage` instances.
 private final class ObservationRegistry: @unchecked Sendable {
     static let shared = ObservationRegistry()
 

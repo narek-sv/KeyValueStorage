@@ -14,7 +14,7 @@ import Foundation
 ///   throw `.keyOccupied`.
 /// - Note: Thread-safe: an instance can be shared between threads and tasks, but a sequence of operations isn't atomic.
 @available(watchOS 9.0, *)
-public final class UbiquitousStorage: KeyValueDataStorage, Sendable {
+public final class UbiquitousStorage: DataStorage, Sendable {
 
     // MARK: Properties
 

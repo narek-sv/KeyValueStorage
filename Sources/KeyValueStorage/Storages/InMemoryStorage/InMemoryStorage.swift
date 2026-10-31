@@ -11,7 +11,7 @@ import Foundation
 
 /// Values in the process's memory, shared by every storage of the scope; they last until the process exits.
 /// - Note: Thread-safe: an instance can be shared between threads and tasks, but a sequence of operations isn't atomic.
-public final class InMemoryStorage: KeyValueDataStorage, Sendable {
+public final class InMemoryStorage: DataStorage, Sendable {
 
     // MARK: Properties
 

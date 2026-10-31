@@ -46,7 +46,7 @@ public extension KeychainStorage {
     }
 
     /// - Warning: Items outlive the app: deleting it leaves them in the keychain, and a reinstall finds them.
-    enum Scope: KeyValueDataStorageScope {
+    enum Scope: DataStorageScope {
         /// The running app's or extension's own.
         /// - Warning: Items go to the app's default access group, its first Keychain Sharing group if it lists any; apps sharing that group can read, change and delete them.
         case own(protection: Protection = .whileLocked, namespace: Namespace)

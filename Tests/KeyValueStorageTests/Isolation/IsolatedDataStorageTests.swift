@@ -1,5 +1,5 @@
 //
-//  IsolatedKeyValueDataStorageTests.swift
+//  IsolatedDataStorageTests.swift
 //  KeyValueStorage
 //
 //  Created by Narek Sahakyan on 31.10.26.
@@ -9,7 +9,7 @@ import XCTest
 import Foundation
 @testable import KeyValueStorage
 
-final class IsolatedKeyValueDataStorageTests: XCTestCase {
+final class IsolatedDataStorageTests: XCTestCase {
     private let error = MockError(id: 1)
 
     // MARK: Forwarding
@@ -70,7 +70,7 @@ final class IsolatedKeyValueDataStorageTests: XCTestCase {
 
     func testInitWithAScopeCreatesTheWrappedStorage() async throws {
         // When
-        let storage = try await IsolatedKeyValueDataStorage<DataStorageMock>(scope: .init(name: "created"))
+        let storage = try await IsolatedDataStorage<DataStorageMock>(scope: .init(name: "created"))
 
         // Then
         XCTAssertEqual(storage.scope, MockScope(name: "created"))
@@ -105,7 +105,7 @@ final class IsolatedKeyValueDataStorageTests: XCTestCase {
     func testOperationsNeverOverlap() async throws {
         // Given
         let entries = Entries()
-        let storage = IsolatedKeyValueDataStorage(OverlapDetectingStorage(entries: entries))
+        let storage = IsolatedDataStorage(OverlapDetectingStorage(entries: entries))
 
         // When: every operation, from many tasks at once
         try await withThrowingTaskGroup(of: Void.self) { group in
@@ -129,8 +129,8 @@ final class IsolatedKeyValueDataStorageTests: XCTestCase {
 
     func testTheCodingStorageWorksOnTop() async throws {
         // Given
-        let coding = AsyncKeyValueCodingStorage(storage: makeStorage(), coder: DataCoderMock())
-        let key = KeyValueCodingStorageKey<IsolatedKeyValueDataStorage<DataStorageMock>, Int>(key: "key")
+        let coding = AsyncCodingStorage(storage: makeStorage(), coder: DataCoderMock())
+        let key = CodingStorageKey<IsolatedDataStorage<DataStorageMock>, Int>(key: "key")
 
         // When
         try await coding.save(42, forKey: key)
@@ -142,8 +142,8 @@ final class IsolatedKeyValueDataStorageTests: XCTestCase {
 
     // MARK: Helpers
 
-    private func makeStorage() -> IsolatedKeyValueDataStorage<DataStorageMock> {
-        IsolatedKeyValueDataStorage(DataStorageMock(scope: .init(name: "isolated")))
+    private func makeStorage() -> IsolatedDataStorage<DataStorageMock> {
+        IsolatedDataStorage(DataStorageMock(scope: .init(name: "isolated")))
     }
 }
 
@@ -174,7 +174,7 @@ private final class Entries: @unchecked Sendable {
 // MARK: - OverlapDetectingStorage
 
 /// Stays in every call for a moment, so calls that overlap are counted.
-private final class OverlapDetectingStorage: KeyValueDataStorage {
+private final class OverlapDetectingStorage: DataStorage {
     typealias Key = String
     typealias Error = MockError
 

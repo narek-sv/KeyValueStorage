@@ -79,12 +79,12 @@ final class RawDataCoderTests: XCTestCase {
     func testCodingStorageUsesRawCoderByDefault() throws {
         // Given
         let underlyingStorage = InMemoryStorage(scope: .own(namespace: "rawDefault"))
-        let storage = KeyValueCodingStorage(storage: underlyingStorage)
+        let storage = CodingStorage(storage: underlyingStorage)
         
         // When
-        try storage.save(Data([0xAA, 0xBB]), forKey: KeyValueCodingStorageKey<InMemoryStorage, Data>(key: "data"))
-        try storage.save("token", forKey: KeyValueCodingStorageKey<InMemoryStorage, String>(key: "string"))
-        try storage.save(42, forKey: KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "int"))
+        try storage.save(Data([0xAA, 0xBB]), forKey: CodingStorageKey<InMemoryStorage, Data>(key: "data"))
+        try storage.save("token", forKey: CodingStorageKey<InMemoryStorage, String>(key: "string"))
+        try storage.save(42, forKey: CodingStorageKey<InMemoryStorage, Int>(key: "int"))
         
         // Then
         let data = underlyingStorage.fetch(forKey: "data")

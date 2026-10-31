@@ -21,11 +21,11 @@ final class UnifiedStorageFactoryTests: XCTestCase {
         // Given
         let factory = DefaultUnifiedStorageFactory()
         let storage = DataStorageMock(scope: .init(name: "raw"))
-        let isolated = IsolatedKeyValueDataStorage(storage)
+        let isolated = IsolatedDataStorage(storage)
 
         // When
         let coding = await factory.codingStorage(for: isolated)
-        try await coding.save("raw", forKey: KeyValueCodingStorageKey(key: "key"))
+        try await coding.save("raw", forKey: CodingStorageKey(key: "key"))
         let observable = await factory.observableStorage(for: coding)
 
         // Then
@@ -44,10 +44,10 @@ final class UnifiedStorageFactoryTests: XCTestCase {
         // When
         let made = await factory.observableStorage(for: coding)
         let observable = try XCTUnwrap(made)
-        try await observable.save(1, forKey: KeyValueCodingStorageKey<AsyncDataStorageMock, Int>(key: "key"))
+        try await observable.save(1, forKey: CodingStorageKey<AsyncDataStorageMock, Int>(key: "key"))
 
         // Then: it wrapped the coding storage it was given
-        let fromCoding = try await coding.fetch(forKey: KeyValueCodingStorageKey<AsyncDataStorageMock, Int>(key: "key"))
+        let fromCoding = try await coding.fetch(forKey: CodingStorageKey<AsyncDataStorageMock, Int>(key: "key"))
         XCTAssertEqual(fromCoding, 1)
         XCTAssertEqual(observable.scope, mock.scope)
         XCTAssertTrue(factory.coder(for: mock) is RawDataCoder)
@@ -62,7 +62,7 @@ final class UnifiedStorageFactoryTests: XCTestCase {
 
         // When
         let coding = await factory.codingStorage(for: mock)
-        try await coding.save("json", forKey: KeyValueCodingStorageKey(key: "key"))
+        try await coding.save("json", forKey: CodingStorageKey(key: "key"))
 
         // Then: the default coding storage used the overridden coder, and the other defaults stay
         let stored = await mock.values["key"]

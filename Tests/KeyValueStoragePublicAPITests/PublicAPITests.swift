@@ -154,8 +154,8 @@ final class PublicAPITests: XCTestCase {
     func testSynchronousStoragesNeedNoAwaitInAsyncCode() async throws {
         // Given
         let storage = InMemoryStorage(scope: .own(namespace: .init("publicAPISync-\(UUID().uuidString)")))
-        let coding = KeyValueCodingStorage(storage: storage)
-        let key = KeyValueCodingStorageKey<InMemoryStorage, String>(key: "name")
+        let coding = CodingStorage(storage: storage)
+        let key = CodingStorageKey<InMemoryStorage, String>(key: "name")
 
         // When
         storage.save(Data([1]), forKey: "raw")
@@ -245,12 +245,12 @@ final class PublicAPITests: XCTestCase {
     }
 
     /// A custom synchronous storage that's `Sendable` works through `UnifiedStorage` as it is,
-    /// and one that isn't, through `IsolatedKeyValueDataStorage`.
+    /// and one that isn't, through `IsolatedDataStorage`.
     func testCustomSynchronousStoragesWorkThroughUnifiedStorage() async throws {
         // Given
         let storage = UnifiedStorage()
         let shared = UnifiedStorageKey<LockedStorage, String>(key: "name", scope: .init(namespace: "publicAPI-\(UUID().uuidString)"))
-        let isolated = UnifiedStorageKey<IsolatedKeyValueDataStorage<PlainStorage>, String>(key: "name")
+        let isolated = UnifiedStorageKey<IsolatedDataStorage<PlainStorage>, String>(key: "name")
 
         // When
         try await storage.save("Alice", forKey: shared)
@@ -356,9 +356,9 @@ private final class CountingFactory: UnifiedStorageFactory, @unchecked Sendable 
         return try await Storage(scope: scope)
     }
 
-    func codingStorage<Storage: UnifiedStorable>(for storage: Storage) async -> AsyncKeyValueCodingStorage<Storage> {
+    func codingStorage<Storage: UnifiedStorable>(for storage: Storage) async -> AsyncCodingStorage<Storage> {
         codingStorageCalls += 1
-        return AsyncKeyValueCodingStorage(storage: storage, coder: coder(for: storage))
+        return AsyncCodingStorage(storage: storage, coder: coder(for: storage))
     }
 }
 
@@ -372,11 +372,11 @@ private struct PropertyListFactory: UnifiedStorageFactory {
 // MARK: - RemoteStorage
 
 /// An app's own asynchronous storage, as a server-backed one would be.
-private actor RemoteStorage: AsyncKeyValueDataStorage {
+private actor RemoteStorage: AsyncDataStorage {
     typealias Key = String
     typealias Error = URLError
 
-    struct Scope: KeyValueDataStorageScope {
+    struct Scope: DataStorageScope {
         let namespace: String
 
         static var `default`: Self {
@@ -412,7 +412,7 @@ private typealias RemoteKey<Value: CodingValue> = UnifiedStorageKey<RemoteStorag
 
 // MARK: - Custom Storages
 
-private struct NamespaceScope: KeyValueDataStorageScope {
+private struct NamespaceScope: DataStorageScope {
     let namespace: String
 
     static var `default`: Self {
@@ -421,7 +421,7 @@ private struct NamespaceScope: KeyValueDataStorageScope {
 }
 
 /// An app's own synchronous storage that isn't thread-safe.
-private final class PlainStorage: KeyValueDataStorage {
+private final class PlainStorage: DataStorage {
     typealias Key = String
     typealias Error = Never
 
@@ -439,7 +439,7 @@ private final class PlainStorage: KeyValueDataStorage {
 }
 
 /// An app's own synchronous storage that is thread-safe, so `Sendable`.
-private final class LockedStorage: KeyValueDataStorage, @unchecked Sendable {
+private final class LockedStorage: DataStorage, @unchecked Sendable {
     typealias Key = String
     typealias Error = Never
 

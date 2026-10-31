@@ -1,5 +1,5 @@
 //
-//  AsyncKeyValueCodingStorageTests.swift
+//  AsyncCodingStorageTests.swift
 //  KeyValueStorage
 //
 //  Created by Narek Sahakyan on 31.10.26.
@@ -9,11 +9,11 @@ import XCTest
 import Foundation
 @testable import KeyValueStorage
 
-final class AsyncKeyValueCodingStorageTests: XCTestCase {
-    private typealias Error = KeyValueCodingError<AsyncDataStorageMock>
+final class AsyncCodingStorageTests: XCTestCase {
+    private typealias Error = CodingStorageError<AsyncDataStorageMock>
 
     private let storage = AsyncDataStorageMock(scope: .init(name: "scope"))
-    private let key = KeyValueCodingStorageKey<AsyncDataStorageMock, Int>(key: "key")
+    private let key = CodingStorageKey<AsyncDataStorageMock, Int>(key: "key")
     private let error = MockError(id: 1)
 
     // MARK: Fetch
@@ -119,8 +119,8 @@ final class AsyncKeyValueCodingStorageTests: XCTestCase {
     func testASynchronousStorageWorksOnTheAsyncPath() async throws {
         // Given
         let storage = DataStorageMock(scope: .init(name: "sync"))
-        let coding = AsyncKeyValueCodingStorage(storage: storage, coder: DataCoderMock())
-        let key = KeyValueCodingStorageKey<DataStorageMock, Int>(key: "key")
+        let coding = AsyncCodingStorage(storage: storage, coder: DataCoderMock())
+        let key = CodingStorageKey<DataStorageMock, Int>(key: "key")
 
         // When
         try await coding.save(42, forKey: key)
@@ -141,7 +141,7 @@ final class AsyncKeyValueCodingStorageTests: XCTestCase {
 
     // MARK: Helpers
 
-    private func makeStorage(coder: any DataCoder = DataCoderMock()) -> AsyncKeyValueCodingStorage<AsyncDataStorageMock> {
-        AsyncKeyValueCodingStorage(storage: storage, coder: coder)
+    private func makeStorage(coder: any DataCoder = DataCoderMock()) -> AsyncCodingStorage<AsyncDataStorageMock> {
+        AsyncCodingStorage(storage: storage, coder: coder)
     }
 }

@@ -23,7 +23,7 @@ Enhance your development with the state-of-the-art key-value storage framework, 
 
 ## Choosing a Storage
 
-Every storage works through the same API: declare a typed key, then save, fetch, delete and observe its value with `UnifiedStorage`. Six storages are built in: In Memory, User Defaults, Keychain, File System, SQLite and iCloud Key-Value Store. You can add your own storage, synchronous or asynchronous, by conforming to `KeyValueDataStorage` or `AsyncKeyValueDataStorage` (see [Custom Storages](#custom-storages)), and your own encoding by conforming to `DataCoder` (see [Coding](#coding)). Values can be shared with your app's extensions and your other apps (see [Setup](#setup)), and observed for changes (see [Observation](#observation)).
+Every storage works through the same API: declare a typed key, then save, fetch, delete and observe its value with `UnifiedStorage`. Six storages are built in: In Memory, User Defaults, Keychain, File System, SQLite and iCloud Key-Value Store. You can add your own storage, synchronous or asynchronous, by conforming to `DataStorage` or `AsyncDataStorage` (see [Custom Storages](#custom-storages)), and your own encoding by conforming to `DataCoder` (see [Coding](#coding)). Values can be shared with your app's extensions and your other apps (see [Setup](#setup)), and observed for changes (see [Observation](#observation)).
 
 Here's how the built-in storages compare:
 
@@ -265,14 +265,14 @@ try await storage.save(/* accepts only MyType*/, forKey: key)
 * `SQLite` - This storage keeps all values of a scope in one SQLite database, the hidden `.KeyValueStorage.sqlite` in the same folder as the `File-System` storage of the scope. Any string is a valid key, and all storages of a scope, in your app and its extensions, share the same database at the same time. Each operation is atomic across processes, but a fetch followed by a save is not: another process can save in between.
 
 You can also define your own storage, synchronous or asynchronous, and it works with `UnifiedStorage` and the coding storages out of the box:
-* A storage whose operations never suspend conforms to `KeyValueDataStorage`. Code that uses it directly never needs `await`, and neither does `KeyValueCodingStorage` on top of it.
-* A storage whose operations suspend, such as one backed by a server, conforms to `AsyncKeyValueDataStorage` and is used through `AsyncKeyValueCodingStorage` or `UnifiedStorage`. Every `KeyValueDataStorage` is an `AsyncKeyValueDataStorage` too.
+* A storage whose operations never suspend conforms to `DataStorage`. Code that uses it directly never needs `await`, and neither does `CodingStorage` on top of it.
+* A storage whose operations suspend, such as one backed by a server, conforms to `AsyncDataStorage` and is used through `AsyncCodingStorage` or `UnifiedStorage`. Every `DataStorage` is an `AsyncDataStorage` too.
 
 Each storage implements every operation once, synchronous or `async`. Declare its `Key` and `Error` types: Swift doesn't infer them from typed throws.
 
 ```swift
 // Synchronous
-final class NewStorage: KeyValueDataStorage {
+final class NewStorage: DataStorage {
     typealias Key = String
     typealias Error = NewStorageError
 
@@ -283,7 +283,7 @@ final class NewStorage: KeyValueDataStorage {
 }
 
 // Asynchronous
-actor RemoteStorage: AsyncKeyValueDataStorage {
+actor RemoteStorage: AsyncDataStorage {
     typealias Key = String
     typealias Error = URLError
 
@@ -296,21 +296,21 @@ actor RemoteStorage: AsyncKeyValueDataStorage {
 
 Then define a key type for it, and use it like the built-in storages. `UnifiedStorage` shares its storages between tasks, so it takes only `Sendable` ones, `UnifiedStorable` for short, and the compiler enforces it (see [Thread Safety](#thread-safety)):
 * a synchronous or asynchronous storage that's `Sendable`, such as an actor or a storage behind a lock, as is;
-* any other synchronous storage wrapped in `IsolatedKeyValueDataStorage`.
+* any other synchronous storage wrapped in `IsolatedDataStorage`.
 
 ```swift
 typealias RemoteKey<Value: CodingValue> = UnifiedStorageKey<RemoteStorage, Value>
-typealias NewKey<Value: CodingValue> = UnifiedStorageKey<IsolatedKeyValueDataStorage<NewStorage>, Value>
+typealias NewKey<Value: CodingValue> = UnifiedStorageKey<IsolatedDataStorage<NewStorage>, Value>
 
 let key = RemoteKey<UUID>(key: "id")
 try await storage.save(UUID(), forKey: key)
 
 // A synchronous storage needs no `await`, also through its coding storage
-let coding = KeyValueCodingStorage(storage: try NewStorage(scope: .default))
-try coding.save(UUID(), forKey: KeyValueCodingStorageKey<NewStorage, UUID>(key: "id"))
+let coding = CodingStorage(storage: try NewStorage(scope: .default))
+try coding.save(UUID(), forKey: CodingStorageKey<NewStorage, UUID>(key: "id"))
 ```
 
-***NOTE***! In `async` generic code, calls on a `KeyValueDataStorage` resolve to the `async` requirements and need `await`; synchronous generic code calls the synchronous ones. Outside `UnifiedStorage`, your storage's thread safety is up to you.
+***NOTE***! In `async` generic code, calls on a `DataStorage` resolve to the `async` requirements and need `await`; synchronous generic code calls the synchronous ones. Outside `UnifiedStorage`, your storage's thread safety is up to you.
 
 ---
 ## Xcode autocompletion 
@@ -401,20 +401,20 @@ A factory implements only what it changes: `dataStorage(for:)` creates each stor
 ---
 ## Observation
 
-Observation is opt-in, through the factory: its `observableStorage(for:)` returns the `ObservableKeyValueStorage` of each storage, or `nil` for one whose changes aren't published, which is the default. `ObservableUnifiedStorageFactory` makes every storage observable:
+Observation is opt-in, through the factory: its `observableStorage(for:)` returns the `ObservableStorage` of each storage, or `nil` for one whose changes aren't published, which is the default. `ObservableUnifiedStorageFactory` makes every storage observable:
 
 ```swift
 let storage = UnifiedStorage(factory: ObservableUnifiedStorageFactory())
 
 // Or decide per storage, and observe through your own subclass
 struct AppStorageFactory: UnifiedStorageFactory {
-    func observableStorage<Storage: UnifiedStorable>(for storage: AsyncKeyValueCodingStorage<Storage>) async -> ObservableKeyValueStorage<Storage>? {
-        storage is AsyncKeyValueCodingStorage<KeychainStorage> ? nil : LoggingObservableStorage(storage)
+    func observableStorage<Storage: UnifiedStorable>(for storage: AsyncCodingStorage<Storage>) async -> ObservableStorage<Storage>? {
+        storage is AsyncCodingStorage<KeychainStorage> ? nil : LoggingObservableStorage(storage)
     }
 }
 ```
 
-`ObservableKeyValueStorage` is an `open` class, so a subclass can change how it saves, deletes or publishes, and call `super` for the rest.
+`ObservableStorage` is an `open` class, so a subclass can change how it saves, deletes or publishes, and call `super` for the rest.
 
 Publishers and streams start with the currently stored value, or `nil` if there's none, followed by every change. Pass `includingCurrentValue: false` to get only the changes.
 
@@ -445,11 +445,11 @@ for await value in stream {
 }
 ```
 
-Without `UnifiedStorage`, wrap a coding storage in `ObservableKeyValueStorage`, which saves, fetches and deletes like it and adds `publisher` and `stream`:
+Without `UnifiedStorage`, wrap a coding storage in `ObservableStorage`, which saves, fetches and deletes like it and adds `publisher` and `stream`:
 
 ```swift
-let settings = ObservableKeyValueStorage(AsyncKeyValueCodingStorage(storage: try FileStorage(scope: .default)))
-for await theme in try await settings.stream(forKey: KeyValueCodingStorageKey<FileStorage, String>(key: "theme")) {
+let settings = ObservableStorage(AsyncCodingStorage(storage: try FileStorage(scope: .default)))
+for await theme in try await settings.stream(forKey: CodingStorageKey<FileStorage, String>(key: "theme")) {
     apply(theme)
 }
 ```
@@ -461,7 +461,7 @@ However, it's important to note that only the changes made through observable st
 ---
 ## Error handling
 
-`UnifiedStorage`, `KeyValueCodingStorage` and `AsyncKeyValueCodingStorage` throw `KeyValueCodingError<Storage>`:
+`UnifiedStorage`, `CodingStorage` and `AsyncCodingStorage` throw `CodingStorageError<Storage>`:
 * `.storage(error)` - the storage failed; `error` is the storage's own `Error`, listed below.
 * `.coding(error)` - the coder couldn't encode or decode the value, for example a `DecodingError` after the type of an existing key changed.
 
@@ -498,21 +498,21 @@ Task.detached { try storage.save(data, forKey: "avatar") }   // fine: FileStorag
 
 **`UnifiedStorage` takes only `Sendable` storages, and adds no locking of its own.** It's safe to call from any thread, task or actor, and calls on storages of different types or scopes, such as a User Defaults fetch and a file write, never wait for each other. For your own storages, thread safety is your responsibility: one that's `Sendable`, such as an actor or a class behind a lock, works as it is, and one that isn't doesn't compile as a key.
 
-**`IsolatedKeyValueDataStorage` makes the rest easy.** It's an actor around any synchronous storage, `Sendable` and an `AsyncKeyValueDataStorage` itself, that runs the storage's operations one at a time:
+**`IsolatedDataStorage` makes the rest easy.** It's an actor around any synchronous storage, `Sendable` and an `AsyncDataStorage` itself, that runs the storage's operations one at a time:
 
 ```swift
 // Make your own storage usable in UnifiedStorage, however simple it is
-typealias NotesKey<Value: CodingValue> = UnifiedStorageKey<IsolatedKeyValueDataStorage<NotesStorage>, Value>
+typealias NotesKey<Value: CodingValue> = UnifiedStorageKey<IsolatedDataStorage<NotesStorage>, Value>
 
 // Several operations as one atomic step, on any storage
-let counter = IsolatedKeyValueDataStorage(try SQLiteStorage(scope: .default))
+let counter = IsolatedDataStorage(try SQLiteStorage(scope: .default))
 try await counter.withStorage { storage in
     let count = try storage.fetch(forKey: "count")
     try storage.save(increment(count), forKey: "count")
 }
 ```
 
-***NOTE***! Calls on one `SQLiteStorage` wait for each other behind its lock, blocking their threads meanwhile. An app that drives one SQLite scope from many tasks at once can wrap it in `IsolatedKeyValueDataStorage`, so that waiting calls suspend instead.
+***NOTE***! Calls on one `SQLiteStorage` wait for each other behind its lock, blocking their threads meanwhile. An app that drives one SQLite scope from many tasks at once can wrap it in `IsolatedDataStorage`, so that waiting calls suspend instead.
 
 ---
 ## Tests

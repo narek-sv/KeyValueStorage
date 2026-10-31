@@ -34,7 +34,7 @@ public extension FileStorage {
         case whileLockedUnlessOpen
     }
 
-    enum Scope: KeyValueDataStorageScope {
+    enum Scope: DataStorageScope {
         /// The running app's or extension's own.
         /// - Warning: On macOS without App Sandbox, the user's other apps can read it.
         case own(_ retention: Retention = .persistent, protection: Protection = .inherited, namespace: Namespace)

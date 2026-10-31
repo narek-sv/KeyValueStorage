@@ -1,5 +1,5 @@
 //
-//  IsolatedKeyValueDataStorage.swift
+//  IsolatedDataStorage.swift
 //  KeyValueStorage
 //
 //  Created by Narek Sahakyan on 31.10.26.
@@ -7,11 +7,11 @@
 
 import Foundation
 
-// MARK: - IsolatedKeyValueDataStorage
+// MARK: - IsolatedDataStorage
 
 /// Isolates a synchronous storage in an actor, so tasks and threads can share it; its operations run one at a time.
 /// - Note: The wrapped storage's calls block the actor's thread for as long as they take, such as a file read.
-public actor IsolatedKeyValueDataStorage<Wrapped: KeyValueDataStorage>: AsyncKeyValueDataStorage {
+public actor IsolatedDataStorage<Wrapped: DataStorage>: AsyncDataStorage {
     public typealias Key = Wrapped.Key
     public typealias Scope = Wrapped.Scope
     public typealias Error = Wrapped.Error

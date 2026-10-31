@@ -11,7 +11,7 @@ import Foundation
 
 /// Real values through each coder and both coding storages, over a real `InMemoryStorage`.
 final class CodingRoundTripTests: XCTestCase {
-    private typealias Key<Value: CodingValue> = KeyValueCodingStorageKey<InMemoryStorage, Value>
+    private typealias Key<Value: CodingValue> = CodingStorageKey<InMemoryStorage, Value>
 
     private let structValue = CustomStruct(int: 3, string: "3", date: Date(timeIntervalSince1970: 3), inner: [Inner(id: UUID())])
     private let classValue = CustomClass(int: 4, string: "ключ 🔑", date: Date(timeIntervalSince1970: 4), inner: [])
@@ -28,7 +28,7 @@ final class CodingRoundTripTests: XCTestCase {
 
     func testEveryKindOfValueRoundTripsThroughEachCoder() throws {
         for (name, coder) in Self.coders {
-            let storage = KeyValueCodingStorage(storage: InMemoryStorage(scope: .own(namespace: .init("roundTrip-\(name)"))), coder: coder)
+            let storage = CodingStorage(storage: InMemoryStorage(scope: .own(namespace: .init("roundTrip-\(name)"))), coder: coder)
 
             try assertRoundTrip(structValue, storage, name)
             try assertRoundTrip(classValue, storage, name)
@@ -61,7 +61,7 @@ final class CodingRoundTripTests: XCTestCase {
     func testTheAsyncCodingStorageRoundTripsLikeTheSyncOne() async throws {
         for (name, coder) in Self.coders {
             // Given
-            let storage = AsyncKeyValueCodingStorage(storage: InMemoryStorage(scope: .own(namespace: .init("roundTrip-\(name)"))), coder: coder)
+            let storage = AsyncCodingStorage(storage: InMemoryStorage(scope: .own(namespace: .init("roundTrip-\(name)"))), coder: coder)
             let structKey = Key<CustomStruct>(key: "struct")
             let enumKey = Key<[CustomEnum]>(key: "enums")
 
@@ -85,8 +85,8 @@ final class CodingRoundTripTests: XCTestCase {
 
     func testClearRemovesEveryValueOfTheScope() throws {
         // Given
-        let storage = KeyValueCodingStorage(storage: InMemoryStorage(scope: .own(namespace: "roundTrip-json")), coder: JSONDataCoder())
-        let other = KeyValueCodingStorage(storage: InMemoryStorage(scope: .own(namespace: "roundTrip-raw")), coder: JSONDataCoder())
+        let storage = CodingStorage(storage: InMemoryStorage(scope: .own(namespace: "roundTrip-json")), coder: JSONDataCoder())
+        let other = CodingStorage(storage: InMemoryStorage(scope: .own(namespace: "roundTrip-raw")), coder: JSONDataCoder())
         try storage.save(structValue, forKey: Key(key: "struct"))
         try storage.save(classValue, forKey: Key(key: "class"))
         try other.save(1, forKey: Key(key: "kept"))
@@ -105,7 +105,7 @@ final class CodingRoundTripTests: XCTestCase {
     func testFetchDecodesAsTheKeysValueType() throws {
         // Given
         let coder = TypeRecordingCoder()
-        let storage = KeyValueCodingStorage(storage: InMemoryStorage(scope: .own(namespace: "roundTrip-json")), coder: coder)
+        let storage = CodingStorage(storage: InMemoryStorage(scope: .own(namespace: "roundTrip-json")), coder: coder)
         try storage.save(42, forKey: Key<Int>(key: "int"))
         try storage.save(Optional(42), forKey: Key<Int?>(key: "optional"))
 
@@ -123,11 +123,11 @@ final class CodingRoundTripTests: XCTestCase {
         // Given
         let data = InMemoryStorage(scope: .own(namespace: "roundTrip-json"))
         data.save(Data("null".utf8), forKey: "key")
-        let storage = KeyValueCodingStorage(storage: data, coder: JSONDataCoder())
+        let storage = CodingStorage(storage: data, coder: JSONDataCoder())
 
         // When - Then
         XCTAssertThrowsError(try storage.fetch(forKey: Key<Int>(key: "key"))) { error in
-            guard case .coding(DecodingError.valueNotFound)? = error as? KeyValueCodingError<InMemoryStorage> else {
+            guard case .coding(DecodingError.valueNotFound)? = error as? CodingStorageError<InMemoryStorage> else {
                 return XCTFail("Unexpected error \(error)")
             }
         }
@@ -135,7 +135,7 @@ final class CodingRoundTripTests: XCTestCase {
 
     func testAnOptionalTypeTellsAStoredNilFromNoValue() throws {
         // Given
-        let storage = KeyValueCodingStorage(storage: InMemoryStorage(scope: .own(namespace: "roundTrip-json")), coder: JSONDataCoder())
+        let storage = CodingStorage(storage: InMemoryStorage(scope: .own(namespace: "roundTrip-json")), coder: JSONDataCoder())
         let key = Key<Int?>(key: "key")
 
         // When: `.some(nil)` is a value, saved as `null`; `nil` deletes
@@ -152,12 +152,12 @@ final class CodingRoundTripTests: XCTestCase {
     func testAValueSavedAsAnotherTypeIsACodingError() throws {
         for (name, coder) in Self.coders {
             // Given
-            let storage = KeyValueCodingStorage(storage: InMemoryStorage(scope: .own(namespace: .init("roundTrip-\(name)"))), coder: coder)
+            let storage = CodingStorage(storage: InMemoryStorage(scope: .own(namespace: .init("roundTrip-\(name)"))), coder: coder)
             try storage.save(structValue, forKey: Key(key: "key"))
 
             // When - Then
             XCTAssertThrowsError(try storage.fetch(forKey: Key<Int>(key: "key")), name) { error in
-                guard case .coding? = error as? KeyValueCodingError<InMemoryStorage> else {
+                guard case .coding? = error as? CodingStorageError<InMemoryStorage> else {
                     return XCTFail("\(name): unexpected error \(error)")
                 }
             }
@@ -174,7 +174,7 @@ final class CodingRoundTripTests: XCTestCase {
 
     private func assertRoundTrip<Value: CodingValue & Equatable>(
         _ value: Value,
-        _ storage: KeyValueCodingStorage<InMemoryStorage>,
+        _ storage: CodingStorage<InMemoryStorage>,
         _ coder: String,
         line: UInt = #line
     ) throws {

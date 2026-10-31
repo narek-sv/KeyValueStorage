@@ -1,5 +1,5 @@
 //
-//  AsyncKeyValueCodingStorage.swift
+//  AsyncCodingStorage.swift
 //  KeyValueStorage
 //
 //  Created by Narek Sahakyan on 31.10.26.
@@ -7,13 +7,13 @@
 
 import Foundation
 
-// MARK: - AsyncKeyValueCodingStorage
+// MARK: - AsyncCodingStorage
 
 /// Encodes values and passes them to any data storage, synchronous or not.
 /// It holds only immutable state, so it doesn't need an actor: encoding runs in parallel on the callers' tasks.
-/// - Note: `Sendable` only when its storage is: wrap a synchronous storage in `IsolatedKeyValueDataStorage` to share it.
-open class AsyncKeyValueCodingStorage<Storage: AsyncKeyValueDataStorage> {
-    public typealias Error = KeyValueCodingError<Storage>
+/// - Note: `Sendable` only when its storage is: wrap a synchronous storage in `IsolatedDataStorage` to share it.
+open class AsyncCodingStorage<Storage: AsyncDataStorage> {
+    public typealias Error = CodingStorageError<Storage>
 
     // MARK: Properties
 
@@ -33,7 +33,7 @@ open class AsyncKeyValueCodingStorage<Storage: AsyncKeyValueDataStorage> {
     
     // MARK: Main Functionality
     
-    public func fetch<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws(Error) -> Value? {
+    public func fetch<Value: CodingValue>(forKey key: CodingStorageKey<Storage, Value>) async throws(Error) -> Value? {
         let data: Data?
         do throws(Storage.Error) {
             data = try await storage.fetch(forKey: key.key)
@@ -48,7 +48,7 @@ open class AsyncKeyValueCodingStorage<Storage: AsyncKeyValueDataStorage> {
         return try coder.decoded(data, as: Value.self, for: Storage.self)
     }
 
-    public func save<Value: CodingValue>(_ value: Value, forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws(Error) {
+    public func save<Value: CodingValue>(_ value: Value, forKey key: CodingStorageKey<Storage, Value>) async throws(Error) {
         let encoded = try coder.encoded(value, for: Storage.self)
         do throws(Storage.Error) {
             try await storage.save(encoded, forKey: key.key)
@@ -57,7 +57,7 @@ open class AsyncKeyValueCodingStorage<Storage: AsyncKeyValueDataStorage> {
         }
     }
 
-    public func set<Value: CodingValue>(_ value: Value?, forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws(Error) {
+    public func set<Value: CodingValue>(_ value: Value?, forKey key: CodingStorageKey<Storage, Value>) async throws(Error) {
         if let value {
             try await save(value, forKey: key)
         } else {
@@ -65,7 +65,7 @@ open class AsyncKeyValueCodingStorage<Storage: AsyncKeyValueDataStorage> {
         }
     }
 
-    public func delete<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws(Error) {
+    public func delete<Value: CodingValue>(forKey key: CodingStorageKey<Storage, Value>) async throws(Error) {
         do throws(Storage.Error) {
             try await storage.delete(forKey: key.key)
         } catch {
@@ -82,7 +82,7 @@ open class AsyncKeyValueCodingStorage<Storage: AsyncKeyValueDataStorage> {
     }
 }
 
-// MARK: - AsyncKeyValueCodingStorage + Sendable
+// MARK: - AsyncCodingStorage + Sendable
 
 /// Unchecked only because the class is open: its state is immutable, and the coder and the storage are `Sendable`.
-extension AsyncKeyValueCodingStorage: @unchecked Sendable where Storage: Sendable { }
+extension AsyncCodingStorage: @unchecked Sendable where Storage: Sendable { }

@@ -16,7 +16,7 @@ public extension UbiquitousStorage {
         case own
     }
 
-    enum Scope: KeyValueDataStorageScope {
+    enum Scope: DataStorageScope {
         /// Synced to the user's other devices through iCloud.
         /// - Note: Values stay on this device while the user is signed out of iCloud.
         /// - Note: The store holds at most 1 MB and 1024 keys in all.
