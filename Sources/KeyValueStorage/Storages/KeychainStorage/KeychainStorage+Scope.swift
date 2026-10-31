@@ -48,6 +48,8 @@ public extension KeychainStorage {
     /// - Warning: Items outlive the app: deleting it leaves them in the keychain, and a reinstall finds them.
     enum Scope: DataStorageScope {
         /// The running app's or extension's own.
+        /// - Warning: It belongs to the bundle ID: builds that share one share values, and unit tests hosted in the app use the
+        ///   app's, so a test's `clear()` empties the app's data on that device. Give tests a namespace of their own.
         /// - Warning: Items go to the app's default access group, its first Keychain Sharing group if it lists any; apps sharing that group can read, change and delete them.
         case own(protection: Protection = .whileLocked, namespace: Namespace)
         /// Shared by the group's apps and extensions: an App Group, or a Keychain Sharing group with its team ID prefix.

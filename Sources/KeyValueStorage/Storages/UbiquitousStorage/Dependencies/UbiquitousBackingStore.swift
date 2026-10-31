@@ -9,6 +9,7 @@ import Foundation
 
 // MARK: - UbiquitousBackingStore
 
+/// One system call per member, without rules: the storage owns them.
 public protocol UbiquitousBackingStore: Sendable {
     /// `NSUbiquitousKeyValueStore.object(forKey:)`.
     func read(forKey key: String) -> Any?
@@ -16,7 +17,8 @@ public protocol UbiquitousBackingStore: Sendable {
     func write(_ data: Data, forKey key: String)
     /// `NSUbiquitousKeyValueStore.removeObject(forKey:)`.
     func remove(forKey key: String)
-    /// `NSUbiquitousKeyValueStore.dictionaryRepresentation.keys`.
+    /// `NSUbiquitousKeyValueStore.dictionaryRepresentation`'s keys, each as stored: keys that differ only in normalization,
+    /// such as `"é"` and `"e\u{301}"`, are two.
     func keys() -> [String]
     /// `NSUbiquitousKeyValueStore.synchronize()`.
     func synchronize() -> Bool
@@ -25,8 +27,8 @@ public protocol UbiquitousBackingStore: Sendable {
 // MARK: - DefaultUbiquitousBackingStoreWrapper
 
 /// The live iCloud key-value store.
-@available(watchOS 9.0, *)
 /// - Warning: Subclasses inherit `Sendable`: their own state must be thread-safe too.
+@available(watchOS 9.0, *)
 open class DefaultUbiquitousBackingStoreWrapper: UbiquitousBackingStore, @unchecked Sendable {
     private var store: NSUbiquitousKeyValueStore { .default }
 

@@ -19,7 +19,7 @@ import Foundation
 ///   Changes made otherwise aren't published: through a plain coding storage, by other processes (such as app extensions),
 ///   on other devices, or directly to `UserDefaults`, the keychain or files.
 /// - An observer sees only the values saved with its own value type.
-/// - Two calls that save one key at once may deliver their values in the other order than they were written.
+/// - Two calls that save one key at once may deliver their values out of order.
 /// - Warning: Subclasses inherit `Sendable`: their own state must be thread-safe too.
 open class ObservableStorage<Storage: AsyncDataStorage & Sendable>: @unchecked Sendable {
     public typealias Error = CodingStorageError<Storage>

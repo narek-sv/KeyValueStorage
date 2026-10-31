@@ -36,6 +36,8 @@ public extension FileStorage {
 
     enum Scope: DataStorageScope {
         /// The running app's or extension's own.
+        /// - Warning: It belongs to the bundle ID: builds that share one share values, and unit tests hosted in the app use the
+        ///   app's, so a test's `clear()` empties the app's data on that device. Give tests a namespace of their own.
         /// - Warning: On macOS without App Sandbox, the user's other apps can read it.
         case own(_ retention: Retention = .persistent, protection: Protection = .inherited, namespace: Namespace)
         /// Shared by the apps and extensions in the App Group.

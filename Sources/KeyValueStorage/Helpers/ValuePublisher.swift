@@ -11,8 +11,8 @@ import Combine
 
 /// Publishes the changes of a stored value, and can be passed between concurrency domains.
 ///
-/// Combine's type-erased publishers aren't marked `Sendable`, so they can't be returned from the storage actors.
-/// Subscribing to and cancelling Combine subscriptions is thread-safe, which makes sharing this wrapper safe.
+/// Combine's type-erased publishers aren't marked `Sendable`, so they can't cross concurrency domains; subscribing and
+/// cancelling are thread-safe, which makes sharing this wrapper safe.
 public struct ValuePublisher<Output: Sendable>: Publisher, @unchecked Sendable {
     public typealias Failure = Never
 

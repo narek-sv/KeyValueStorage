@@ -11,25 +11,23 @@ import Foundation
 
 public struct CodingStorageKey<Storage: AsyncDataStorage, Value: CodingValue>: Sendable {
     public let key: Storage.Key
-    public let codingType: Value.Type
+
+    public var codingType: Value.Type {
+        Value.self
+    }
     
     public init(key: Storage.Key) {
         self.key = key
-        self.codingType = Value.self
-    }
-    
-    internal init(key: Storage.Key, codingType: Value.Type) {
-        self.key = key
-        self.codingType = codingType
     }
 }
 
 // MARK: - CodingStorageKey + Hashable
 
+/// Keys of other value types are other types, so `==` compares only the key; the hash also mixes in the value type, for
+/// dictionaries of `AnyHashable` keys.
 extension CodingStorageKey: Hashable {
     public static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.key == rhs.key &&
-        lhs.codingType == rhs.codingType
+        lhs.key == rhs.key
     }
     
     public func hash(into hasher: inout Hasher) {

@@ -10,6 +10,7 @@ import Security
 
 // MARK: - KeychainBackingStore
 
+/// One system call per member, without rules: the storage owns them.
 public protocol KeychainBackingStore: Sendable {
     /// `SecItemCopyMatching`.
     func read(_ query: KeychainQuery) -> (KeychainOperationStatus, AnyObject?)

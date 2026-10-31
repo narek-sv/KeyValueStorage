@@ -33,7 +33,7 @@ Here's how the built-in storages compare:
 | **Suitable for secrets** | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
 | **Shared with your other apps and extensions** | ❌ | ✅ App Group | ✅ App Group or Keychain Sharing group | ✅ App Group | ✅ App Group | ✅ Same store identifier |
 | **Syncs across the user's devices** | ❌ | ❌ | ✅ iCloud Keychain (`.iCloud` scope) | ❌ | ❌ | ✅ iCloud |
-| **Best value size** | Any | Small | Small | Large | Small to medium | Small, 1 MB in all |
+| **Best value size** | Any | Small | Small | Large | Small to medium | Small, 1 MiB in all |
 | **Speed** | Fastest | Very fast | Slowest | Slow for small values, fastest for large ones | Fast for small values | Very fast locally, syncs in the background |
 | **Across processes** | – | Last write wins per key | Last write wins per item | Atomic replace per file | Transaction per operation | Last write wins per key, also across devices |
 
@@ -73,7 +73,7 @@ Here's how the built-in storages compare:
 
 **iCloud Key-Value Store** - small preferences and state that follow the user to their other devices.
 * Synced through iCloud by the system, with a local copy that's read and written without waiting for the network.
-* The whole store holds at most 1 MB and 1024 keys. A value over 1 MiB throws `valueTooLarge`, and a key that's too long throws `invalidKey`, but going over the store's total limits fails silently.
+* The whole store holds at most 1 MiB and 1024 keys. A value over 1 MiB throws `valueTooLarge`, and a key that's too long throws `invalidKey`, but going over the store's total limits fails silently.
 * Values stay on the device while the user is signed out of iCloud, and sync once they sign in.
 * Not for sensitive data, and needs the iCloud capability (see [iCloud Key-Value Store](#icloud-key-value-store)): without it, the store silently keeps nothing.
 * Changes that arrive from the user's other devices aren't published to observers.
@@ -456,7 +456,7 @@ for await theme in try await settings.stream(forKey: CodingStorageKey<FileStorag
 
 Changes are delivered on the thread that makes them, right after the write succeeds, so move to the main thread before updating the UI. Streams resume on the executor of the task that iterates them. An observer sees only the values saved with its own value type.
 
-However, it's important to note that only the changes made through observable storages of the current process are published, from any instance of the same storage type and scope. Changes made by other processes (for example, App Extensions), on the user's other devices, by storages without observation, or written directly to `UserDefaults`, the keychain or files aren't. Two calls that save one key at the same moment may deliver their values in the other order than they were written.
+However, it's important to note that only the changes made through observable storages of the current process are published, from any instance of the same storage type and scope. Changes made by other processes (for example, App Extensions), on the user's other devices, by storages without observation, or written directly to `UserDefaults`, the keychain or files aren't. Two calls that save one key at the same moment may deliver their values out of order.
 
 ---
 ## Error handling

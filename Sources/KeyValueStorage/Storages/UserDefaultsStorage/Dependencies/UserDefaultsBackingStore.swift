@@ -9,6 +9,7 @@ import Foundation
 
 // MARK: - UserDefaultsBackingStore
 
+/// One system call per member, without rules: the storage owns them.
 public protocol UserDefaultsBackingStore: Sendable {
     /// `UserDefaults(suiteName:)`.
     func suite(named name: String) -> (any UserDefaultsSuite)?
@@ -16,6 +17,7 @@ public protocol UserDefaultsBackingStore: Sendable {
 
 // MARK: - UserDefaultsSuite
 
+/// One system call per member, without rules: the storage owns them.
 public protocol UserDefaultsSuite: AnyObject, Sendable {
     /// `UserDefaults.object(forKey:)`, which also returns registered defaults.
     func read(forKey key: String) -> Any?
@@ -23,7 +25,8 @@ public protocol UserDefaultsSuite: AnyObject, Sendable {
     func write(_ data: Data, forKey key: String)
     /// `UserDefaults.removeObject(forKey:)`.
     func remove(forKey key: String)
-    /// `UserDefaults.dictionaryRepresentation().keys`, which also lists the global domain's keys.
+    /// `UserDefaults.dictionaryRepresentation()`'s keys, the global domain's included, each as stored: keys that differ only
+    /// in normalization, such as `"é"` and `"e\u{301}"`, are two.
     func keys() -> [String]
 }
 

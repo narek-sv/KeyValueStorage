@@ -36,7 +36,7 @@ open class DefaultFileBackingStoreWrapper: FileBackingStore, @unchecked Sendable
     public init() { }
 
     open func itemType(at url: URL) throws -> FileAttributeType? {
-      try fileManager.attributesOfItem(atPath: url.path)[.type] as? FileAttributeType
+        try fileManager.attributesOfItem(atPath: url.path)[.type] as? FileAttributeType
     }
 
     open func read(at url: URL) throws -> Data {

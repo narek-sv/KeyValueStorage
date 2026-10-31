@@ -53,7 +53,8 @@ open class DefaultFileLocator: FileLocator, @unchecked Sendable {
         fileManager.temporaryDirectory
     }
 
-    /// `FileManager.containerURL(forSecurityApplicationGroupIdentifier:)`; `nil` outside the group.
+    /// `FileManager.containerURL(forSecurityApplicationGroupIdentifier:)`: `nil` for an empty id, and on a device for a group
+    /// the app isn't in; macOS and the Simulator give any other id a container.
     open func groupDirectory(for groupId: String) -> URL? {
         fileManager.containerURL(forSecurityApplicationGroupIdentifier: groupId)
     }

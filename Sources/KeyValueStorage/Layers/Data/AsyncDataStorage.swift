@@ -30,8 +30,6 @@ public protocol AsyncDataStorage {
 
 // MARK: - DataStorageScope
 
-/// - Warning: `.own` belongs to the bundle ID: builds that share one share values, and unit tests hosted in an app use the app's,
-///   so a test's `clear()` empties the app's data on that device. Give tests a namespace of their own.
 public protocol DataStorageScope: Hashable & Sendable {
     static var `default`: Self { get }
 }

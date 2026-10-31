@@ -10,6 +10,7 @@ import SQLite3
 
 // MARK: - SQLiteBackingStore
 
+/// One system call per member, without rules: the storage owns them.
 public protocol SQLiteBackingStore: Sendable {
     /// `FileManager.createDirectory(atPath:withIntermediateDirectories: true)`.
     func createDirectory(at url: URL) throws
@@ -19,6 +20,7 @@ public protocol SQLiteBackingStore: Sendable {
 
 // MARK: - SQLiteDatabase
 
+/// One statement per member, without rules: the storage owns them.
 public protocol SQLiteDatabase: AnyObject, Sendable {
     /// `SELECT value … WHERE key = ?`.
     func read(forKey key: String) throws(SQLiteError) -> Data?

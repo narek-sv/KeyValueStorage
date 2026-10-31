@@ -10,25 +10,29 @@
 public struct UnifiedStorageKey<Storage: UnifiedStorable, Value: CodingValue>: Sendable {
     public let key: Storage.Key
     public let scope: Storage.Scope
-    public let codingType: Value.Type
-    public let storageType: Storage.Type
+
+    public var codingType: Value.Type {
+        Value.self
+    }
+
+    public var storageType: Storage.Type {
+        Storage.self
+    }
     
     public init(key: Storage.Key, scope: Storage.Scope = .default) {
         self.key = key
         self.scope = scope
-        self.codingType = Value.self
-        self.storageType = Storage.self
     }
 }
 
 // MARK: - UnifiedStorageKey + Hashable
 
+/// Keys of other value or storage types are other types, so `==` compares only the key and scope; the hash also mixes in
+/// both types, for dictionaries of `AnyHashable` keys.
 extension UnifiedStorageKey: Hashable {
     public static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.key == rhs.key &&
-        lhs.scope == rhs.scope &&
-        lhs.codingType == rhs.codingType &&
-        lhs.storageType == rhs.storageType
+        lhs.scope == rhs.scope
     }
     
     public func hash(into hasher: inout Hasher) {

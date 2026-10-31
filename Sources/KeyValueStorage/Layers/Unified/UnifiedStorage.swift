@@ -68,14 +68,13 @@ public final class UnifiedStorage: @unchecked Sendable {
     public func delete<Storage: UnifiedStorable, Value: CodingValue>(forKey key: Key<Storage, Value>) async throws(CodingStorageError<Storage>) {
         let entry: Entry<Storage> = try await storage(for: key.scope)
         if let observable = entry.observable {
-            try await observable.delete(forKey: .init(key: key.key, codingType: key.codingType))
+            try await observable.delete(forKey: CodingStorageKey<Storage, Value>(key: key.key))
         } else {
-            try await entry.coding.delete(forKey: .init(key: key.key, codingType: key.codingType))
+            try await entry.coding.delete(forKey: CodingStorageKey<Storage, Value>(key: key.key))
         }
     }
     
-    /// Removes everything stored in the given storage and scope.
-    /// The storage is loaded on demand, so this also clears values saved in previous launches.
+    /// Removes every value of the storage type's scope.
     public func clear<Storage: UnifiedStorable>(storage: Storage.Type, forScope scope: Storage.Scope = .default) async throws(CodingStorageError<Storage>) {
         let entry: Entry<Storage> = try await self.storage(for: scope)
         if let observable = entry.observable {
@@ -158,23 +157,18 @@ public final class UnifiedStorage: @unchecked Sendable {
 // MARK: - UnifiedStorage + UnderlyingStorageKey
 
 extension UnifiedStorage {
+    /// Keys of other storage types are other types, so `==` compares only the scope; the hash also mixes in the storage type,
+    /// because the cache holds every storage type's keys as `AnyHashable`.
     private struct UnderlyingStorageKey<Storage: UnifiedStorable>: Hashable, Sendable {
         let scope: Storage.Scope
-        let storageType: Storage.Type
-        
-        init(scope: Storage.Scope) {
-            self.scope = scope
-            self.storageType = Storage.self
-        }
-        
+
         static func == (lhs: Self, rhs: Self) -> Bool {
-            lhs.scope == rhs.scope &&
-            lhs.storageType == rhs.storageType
+            lhs.scope == rhs.scope
         }
         
         func hash(into hasher: inout Hasher) {
             hasher.combine(scope)
-            hasher.combine(ObjectIdentifier(storageType))
+            hasher.combine(ObjectIdentifier(Storage.self))
         }
     }
 }
