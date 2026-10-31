@@ -38,6 +38,10 @@ public final class FileStorage: KeyValueDataStorage {
         try self.init(scope: scope, backingStore: DefaultFileBackingStoreWrapper(), locator: DefaultFileLocator())
     }
 
+    public convenience init() throws(Error) {
+        try self.init(scope: .default)
+    }
+
     // MARK: Main Functionality
 
     public func fetch(forKey key: Key) throws(Error) -> Data? {

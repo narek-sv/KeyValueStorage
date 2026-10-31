@@ -23,7 +23,7 @@ Enhance your development with the state-of-the-art key-value storage framework, 
 
 ## Choosing a Storage
 
-Every storage works through the same API: declare a typed key, then save, fetch, delete and observe its value with `UnifiedStorage`. Six storages are built in: In Memory, User Defaults, Keychain, File System, SQLite and iCloud Key-Value Store. You can add your own storage by conforming to `KeyValueDataStorage` (see [Custom Storages](#custom-storages)), and your own encoding by conforming to `DataCoder` (see [Coding](#coding)). Values can be shared with your app's extensions and your other apps (see [Setup](#setup)), and observed for changes (see [Observation](#observation)).
+Every storage works through the same API: declare a typed key, then save, fetch, delete and observe its value with `UnifiedStorage`. Six storages are built in: In Memory, User Defaults, Keychain, File System, SQLite and iCloud Key-Value Store. You can add your own storage, synchronous or asynchronous, by conforming to `KeyValueDataStorage` or `AsyncKeyValueDataStorage` (see [Custom Storages](#custom-storages)), and your own encoding by conforming to `DataCoder` (see [Coding](#coding)). Values can be shared with your app's extensions and your other apps (see [Setup](#setup)), and observed for changes (see [Observation](#observation)).
 
 Here's how the built-in storages compare:
 
@@ -264,25 +264,50 @@ try await storage.save(/* accepts only MyType*/, forKey: key)
 * `Ubiquitous` - This storage keeps the values in the iCloud key-value store, under `<namespace>!/<key>`, and syncs them across the user's devices. A value can be at most 1 MiB, and a stored key at most 128 UTF-16 code units.
 * `SQLite` - This storage keeps all values of a scope in one SQLite database, the hidden `.KeyValueStorage.sqlite` in the same folder as the `File-System` storage of the scope. Any string is a valid key, and all storages of a scope, in your app and its extensions, share the same database at the same time. Each operation is atomic across processes, but a fetch followed by a save is not: another process can save in between.
 
-You can also define your own storage, and it will work with it seamlessly with `UnifiedStorage` out of the box.
-All you need to do is:
-1. Define your own type that conforms to the `KeyValueDataStorage` protocol:
-```swift
-class NewStorage: KeyValueDataStorage { ... }
-```
-2. Define the new key type (optional, for ease of use):
-```swift
-typealias NewStorageKey<Value: CodingValue> = UnifiedStorageKey<NewStorage, Value>
-```
+You can also define your own storage, synchronous or asynchronous, and it works with `UnifiedStorage` and the coding storages out of the box:
+* A storage whose operations never suspend conforms to `KeyValueDataStorage`. Code that uses it directly never needs `await`, and neither does `KeyValueCodingStorage` on top of it.
+* A storage whose operations suspend, such as one backed by a server, conforms to `AsyncKeyValueDataStorage` and is used through `AsyncKeyValueCodingStorage` or `UnifiedStorage`. Every `KeyValueDataStorage` is an `AsyncKeyValueDataStorage` too.
 
-That's it. You can use it now as the built-in storages:
+Each storage implements every operation once, synchronous or `async`. Declare its `Key` and `Error` types: Swift doesn't infer them from typed throws.
 
 ```swift
-let key = NewStorageKey<UUID>(key: customKey)
+// Synchronous
+final class NewStorage: KeyValueDataStorage {
+    typealias Key = String
+    typealias Error = NewStorageError
+
+    let scope: NewStorageScope
+    init(scope: NewStorageScope) throws(NewStorageError) { ... }
+    func fetch(forKey key: String) throws(NewStorageError) -> Data? { ... }
+    // save, delete and clear
+}
+
+// Asynchronous
+actor RemoteStorage: AsyncKeyValueDataStorage {
+    typealias Key = String
+    typealias Error = URLError
+
+    nonisolated let scope: RemoteScope
+    init(scope: RemoteScope) async throws(URLError) { ... }
+    func fetch(forKey key: String) async throws(URLError) -> Data? { ... }
+    // save, delete and clear
+}
+```
+
+Then define a key type for it (optional, for ease of use), and use it like the built-in storages:
+
+```swift
+typealias RemoteKey<Value: CodingValue> = UnifiedStorageKey<RemoteStorage, Value>
+
+let key = RemoteKey<UUID>(key: "id")
 try await storage.save(UUID(), forKey: key)
+
+// A synchronous storage needs no `await`, also through its coding storage
+let coding = KeyValueCodingStorage(storage: try NewStorage(scope: .default))
+try coding.save(UUID(), forKey: KeyValueCodingStorageKey<NewStorage, UUID>(key: "id"))
 ```
 
-***NOTE***! You need to handle the thread safety of your storage on your own.
+***NOTE***! In `async` generic code, calls on a `KeyValueDataStorage` resolve to the `async` requirements and need `await`; synchronous generic code calls the synchronous ones. You need to handle the thread safety of your storage on your own: `UnifiedStorage` may call an `AsyncKeyValueDataStorage` from several tasks, so make it an actor or otherwise safe to share.
 
 ---
 ## Xcode autocompletion 
@@ -354,7 +379,7 @@ There are 3 built-in coders:
 * `JSONDataCoder` - JSON for every type.
 * `PropertyListDataCoder` - Binary property lists for every type. Pass a `PropertyListEncoder` with the `.xml` output format to get XML.
 
-Pass the coder to the factory, or conform your own type to `DataCoder`:
+Coders are synchronous. Pass the coder to the factory or to a coding storage, or conform your own type to `DataCoder`:
 
 ```swift
 let storage = UnifiedStorage(factory: DefaultUnifiedStorageFactory(coder: PropertyListDataCoder()))
@@ -409,7 +434,7 @@ However, it's important to note that only the changes made through observable st
 ---
 ## Error handling
 
-`UnifiedStorage` and `KeyValueCodingStorage` throw `KeyValueCodingStorage<Storage>.Error`:
+`UnifiedStorage`, `KeyValueCodingStorage` and `AsyncKeyValueCodingStorage` throw `KeyValueCodingError<Storage>`:
 * `.storage(error)` - the storage failed; `error` is the storage's own `Error`, listed below.
 * `.coding(error)` - the coder couldn't encode or decode the value, for example a `DecodingError` after the type of an existing key changed.
 
@@ -437,7 +462,7 @@ Something that isn't a value where a value goes. It's never replaced or removed:
 ---
 ## Thread Safety
 
-`UnifiedStorage` is an actor: you can call it from any thread, task or actor. The storages themselves, such as `FileStorage`, are synchronous and unsynchronized: use an instance from one thread or actor. A *sequence* of operations, such as a fetch followed by a save, isn't atomic: another task or process can change the value in between.
+`UnifiedStorage` is an actor: you can call it from any thread, task or actor. The storages themselves, such as `FileStorage`, and `KeyValueCodingStorage` are synchronous and unsynchronized: use an instance from one thread or actor. A *sequence* of operations, such as a fetch followed by a save, isn't atomic: another task or process can change the value in between.
 
 ---
 ## Tests

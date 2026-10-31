@@ -138,9 +138,9 @@ The library offers one consistent way to work with storages of very different na
 | D5 | **Locks only inside building blocks**, never in the public API: the shared `DefaultInMemoryBackingStoreWrapper` backing, the observation registry, the isolated facade's cache. | These are process-wide states that several instances share, which the type system can't see. |
 | D6 | **Backing stores:** one protocol per storage that is a minimal, **location-free** interface to the system. The storage gets the location (URL, suite name, service, bucket) from its locator (D17) and passes it in. Default adapters are thin and as branch-free as possible. | The backing and the scope can't disagree. Scope resolution is reachable from tests. Adapters need only integration tests. |
 | D7 | **Storages depend only on their backing store and their locator.** Every value read from the environment comes through the backing store: directories and App Group containers. | 100% coverage without the real system, including path and suite resolution. |
-| D8 | The protocol requires `init(scope:)` and `init()`, with `init()` defaulting to `.default`. Each storage adds a public `init(scope:backingStore:locator:)` taking its `XBackingStore` and its `XLocator`, both required, and its `init(scope:)` passes a new `DefaultXBackingStoreWrapper` and `DefaultXLocator`. **`scope` is non-optional.** | Consistent API; the scope is always known; `nil` and `.default` can't become two different storages. |
+| D8 | `AsyncKeyValueDataStorage` requires `init(scope:)`; every built-in storage also has its own `init()` with `.default` (2026-10-31: the protocol no longer requires or provides `init()`, see D22). Each storage adds a public `init(scope:backingStore:locator:)` taking its `XBackingStore` and its `XLocator`, both required, and its `init(scope:)` passes a new `DefaultXBackingStoreWrapper` and `DefaultXLocator`. **`scope` is non-optional.** | Consistent API; the scope is always known; `nil` and `.default` can't become two different storages. |
 | D9 | **App scopes include the app identifier** (bundle identifier, or process name for command-line tools) in paths and suite names; App Group scopes don't. | Same behaviour on every platform: on macOS without App Sandbox, `~/Library`, the temporary directory and `~/Documents` are shared by all apps. |
-| D10 | **Synchronous `DataCoder`.** | JSON and PropertyList coding are synchronous; `async` only forced hops and blocked locking. |
+| D10 | **Synchronous `DataCoder`** (done 2026-10-31). | JSON and PropertyList coding are synchronous; `async` only forced hops and blocked locking. |
 | D11 | **Observation is built into `KeyValueCodingStorage`** and always available. Delete `KeyValueObservableStorage` and `ObservableUnifiedStorageFactory`. | An empty registry costs one dictionary lookup per write. It removes a subclass, a factory and the `publisher(...) -> nil` APIs. |
 | D12 | `set(_:forKey:)` is a protocol extension, not a requirement. | It's the same five lines in every storage, and five copies to test. |
 | D13 | Storages and layers are `final class`, with no `open`/`required`. The default backing stores and locators are `open` classes. | Extension points are protocols, backing stores and locators. Subclassing a default changes one operation or one naming rule without rewriting the rest. |
@@ -151,6 +151,7 @@ The library offers one consistent way to work with storages of very different na
 | D18 | **System limits are enforced in the locator only**, and the protocol documents them. A custom locator must uphold them. | All naming in one place; the same trust model as a custom backing store, which can already crash or write anywhere. |
 | D19 | **Errors are typed end to end and carry what failed** (§4.4); invalid keys and namespaces carry the rule they break. | Errors are actionable without reading the code; no error is re-mapped or swallowed silently. |
 | D20 | **Stored names are disjoint across scopes, and `clear()` is scope-exact** (§4.5). | Root values and namespaced values can share one folder, suite or store without one scope's `clear()` deleting another's values. |
+| D22 | **Async storages, and sync stays sync** (2026-10-31). `AsyncKeyValueDataStorage` has `async` requirements; `KeyValueDataStorage` refines it and redeclares the four operations as synchronous. A storage implements each operation once: a synchronous method satisfies both. Concrete use of a synchronous storage never needs `await`, nor does `KeyValueCodingStorage` over it; `AsyncKeyValueCodingStorage` and `UnifiedStorage` take any storage. Rules: no extension members on `AsyncKeyValueDataStorage` (an `async` member of the same name wins inside `async` code, so synchronous storages would need `await`); `init(scope:)` isn't redeclared as synchronous (Swift 6.3 crashes compiling generic calls to a synchronous init that redeclares an `async` one); `async` generic code over a `KeyValueDataStorage` calls the `async` requirements. | Users can add server- or CloudKit-backed storages without making the built-in ones, or the code that uses them, `async`. |
 | D21 | **Sealed scopes** (§S): a scope says who sees the values, on which devices, how long they're kept and how they're protected; the library picks the place and owns every name in it. | Every input is a valid name, no two scopes or keys clash, and the storages stay interchangeable. Interop is a custom locator's job. |
 
 ## 3. Target architecture
@@ -192,16 +193,22 @@ try storage.save(token, forKey: KeychainKey<String>(key: .init(name: "token")))
 `Sources/KeyValueStorage/Layers/KeyValueDataStorage.swift`
 
 ```swift
-public protocol KeyValueDataStorage {
+public protocol AsyncKeyValueDataStorage {                 // no extension members (D22)
     associatedtype Key: Hashable & Sendable
-    associatedtype Scope: KeyValueDataStorageScope         // Hashable & Sendable, Namespace, static var default
+    associatedtype Scope: KeyValueDataStorageScope         // Hashable & Sendable, static var default
     associatedtype Error: Swift.Error & Sendable
 
     var scope: Scope { get }
 
-    init() throws(Error)
-    init(scope: Scope) throws(Error)
+    init(scope: Scope) async throws(Error)
 
+    func fetch(forKey key: Key) async throws(Error) -> Data?
+    func save(_ value: Data, forKey key: Key) async throws(Error)
+    func delete(forKey key: Key) async throws(Error)
+    func clear() async throws(Error)
+}
+
+public protocol KeyValueDataStorage: AsyncKeyValueDataStorage {
     func fetch(forKey key: Key) throws(Error) -> Data?
     func save(_ value: Data, forKey key: Key) throws(Error)
     func delete(forKey key: Key) throws(Error)
@@ -209,17 +216,13 @@ public protocol KeyValueDataStorage {
 }
 
 public extension KeyValueDataStorage {
-    init() throws(Error) {
-        try self.init(scope: .default)
-    }
-
     func set(_ value: Data?, forKey key: Key) throws(Error) {
         if let value { try save(value, forKey: key) } else { try delete(forKey: key) }
     }
 }
 ```
 
-- No `IsolatedKeyValueDataStorage` typealias, no `async` in requirements or initializers, no `Sendable` on the protocol.
+- No `IsolatedKeyValueDataStorage` typealias, and no `Sendable` on either protocol. `KeyValueDataStorage` has no `async` (D22).
 - `KeyValueDataStorageScope.defaultNamespace = "KeyValueStorage"`: every `default` scope's namespace.
 - Every scope names a namespace, a required `ExactString` that separates sets of values within the place: a folder (File, SQLite), a key prefix (UserDefaults, Ubiquitous), part of the service (Keychain) or a bucket (InMemory). There's no root (§S, done 2026-10-30).
 - Every `.own` place carries the app's identifier (D9, done 2026-10-30): File and SQLite paths and Keychain services (§5.2), and UserDefaults' suite of its own, `<encoded bundle ID>.KeyValueStorage` (§5.4), because two apps that pick the same namespace would otherwise share values. Paths and the suite name carry it encoded (§S).
@@ -459,7 +462,7 @@ The setup members are `createDirectory(at:)` (always creates intermediate direct
 
 ## 6. Coding layer
 
-**Status (2026-10-31): not started.** The code is 3.x-shaped: `async` `DataCoder`, an `open` `@unchecked Sendable` `KeyValueCodingStorage` without `update`, and observation in `KeyValueObservableStorage` on `CodingStorageActor`.
+**Status (2026-10-31):** synchronous coders (D10), and two coding storages (D22): a synchronous `KeyValueCodingStorage` over a `KeyValueDataStorage`, not `Sendable`, and `AsyncKeyValueCodingStorage` over any storage, `@unchecked Sendable` for today's `UnifiedStorage`. Both throw `KeyValueCodingError<Storage>` and share their encode and decode helpers. **Open:** `update`, and observation (§6.3): `KeyValueObservableStorage` still subclasses the async coding storage on `CodingStorageActor`, so the synchronous one can't be observed yet.
 
 `Sources/KeyValueStorage/Coding/`
 
@@ -563,7 +566,7 @@ extension IsolatedKeyValueStorage {
 
 - Global actors: `FileActor`, `SQLiteActor`, `KeychainActor`, `UserDefaultsActor`, `InMemoryActor` (done), `CodingStorageActor` (open, phase 7).
 - `@unchecked Sendable` on storages and layers; `open`/`required`; `nonisolated` on type declarations. Storages done; layers open (phases 7–9).
-- `async` on `KeyValueDataStorage` (done), `DataCoder` and `KeyValueCodingStorage` (open, phase 7).
+- `async` on `KeyValueDataStorage`, `DataCoder` and `KeyValueCodingStorage` (done 2026-10-31; async storages have their own protocol and coding storage, D22).
 - `KeyValueObservableStorage`, `ObservableUnifiedStorageFactory`, `DefaultUnifiedStorageFactory` (replaced by the protocol default). Open, phases 7 and 9.
 - `IsolatedKeyValueDataStorage` typealias, `KeyValueDataStorageScope.appIdentifier`. Done.
 - `Helpers/KeychainWrapper.swift`. Done.
@@ -575,7 +578,7 @@ extension IsolatedKeyValueStorage {
 
 ## 10. File layout
 
-**Status (2026-10-31): the target layout.** Today the layers are in `Layers/` and `Coders/`, and the shared types in `Helpers/` (`ExactString`, `String+UTF8`, `OwnIdentity`, `Lock`, `KeyValuePublisher`, `Typealiases`); the move comes with phases 7–9.
+**Status (2026-10-31): the target layout.** Today the layers are in `Layers/`: `KeyValueDataStorage.swift` and `UnifiedStorage.swift`, the coding layer in `Layers/Coding/` (`CodingStorage/` for the two coding storages, `DataCoders/` for the coders) and observation in `Layers/Observation/`; the shared types are in `Helpers/` (`ExactString`, `String+UTF8`, `OwnIdentity`, `Lock`, `KeyValuePublisher`, `Typealiases`); the move comes with phases 7–9.
 
 ```
 Sources/KeyValueStorage/

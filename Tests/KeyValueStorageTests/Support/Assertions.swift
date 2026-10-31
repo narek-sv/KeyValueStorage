@@ -25,6 +25,22 @@ func assertThrows<Value>(
     }
 }
 
+/// `assertThrows` for `async` code.
+func assertThrows<Value>(
+    _ expected: any Error,
+    file: StaticString = #filePath,
+    line: UInt = #line,
+    _ body: () async throws -> Value
+) async {
+    do {
+        let value = try await body()
+        XCTFail("Expected \(expected), got \(value)", file: file, line: line)
+    } catch {
+        XCTAssertTrue(type(of: error) == type(of: expected), "Expected a \(type(of: expected)), got \(type(of: error))", file: file, line: line)
+        XCTAssertEqual(String(reflecting: error), String(reflecting: expected), file: file, line: line)
+    }
+}
+
 /// Fails unless `actual` has exactly `expected`'s UTF-8 bytes: `XCTAssertEqual` takes `"é"` and `"e\u{301}"` for one.
 func assertBytes(_ actual: String?, _ expected: String, file: StaticString = #filePath, line: UInt = #line) {
     XCTAssertEqual(actual.map { Array($0.utf8) }, Array(expected.utf8), "\(actual.debugDescription) isn't \(expected.debugDescription)", file: file, line: line)

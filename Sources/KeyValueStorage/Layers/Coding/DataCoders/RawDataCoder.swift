@@ -29,7 +29,7 @@ public struct RawDataCoder: DataCoder {
     
     // Types are compared exactly, so wrapped types such as `Data?` or `[String]` go to the fallback
     
-    public func encode<Value: CodingValue>(_ value: Value) async throws -> Data {
+    public func encode<Value: CodingValue>(_ value: Value) throws -> Data {
         if Value.self == Data.self, let data = value as? Data {
             return data
         }
@@ -38,10 +38,10 @@ public struct RawDataCoder: DataCoder {
             return Data(string.utf8)
         }
         
-        return try await fallback.encode(value)
+        return try fallback.encode(value)
     }
     
-    public func decode<Value: CodingValue>(_ data: Data) async throws -> Value {
+    public func decode<Value: CodingValue>(_ data: Data) throws -> Value {
         if Value.self == Data.self, let value = data as? Value {
             return value
         }
@@ -54,6 +54,6 @@ public struct RawDataCoder: DataCoder {
             return value
         }
         
-        return try await fallback.decode(data)
+        return try fallback.decode(data)
     }
 }

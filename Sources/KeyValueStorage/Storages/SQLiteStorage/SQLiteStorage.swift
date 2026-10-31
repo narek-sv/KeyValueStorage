@@ -42,6 +42,10 @@ public final class SQLiteStorage: KeyValueDataStorage {
         try self.init(scope: scope, backingStore: DefaultSQLiteBackingStoreWrapper(), locator: DefaultSQLiteLocator())
     }
 
+    public convenience init() throws(Error) {
+        try self.init(scope: .default)
+    }
+
     // MARK: Main Functionality
 
     public func fetch(forKey key: Key) throws(Error) -> Data? {

@@ -38,6 +38,10 @@ public final class UserDefaultsStorage: KeyValueDataStorage {
         try self.init(scope: scope, backingStore: DefaultUserDefaultsBackingStoreWrapper(), locator: DefaultUserDefaultsLocator())
     }
 
+    public convenience init() throws(Error) {
+        try self.init(scope: .default)
+    }
+
     // MARK: Main Functionality
 
     public func fetch(forKey key: Key) -> Data? {

@@ -54,13 +54,13 @@ final class PublicAPITests: XCTestCase {
         XCTAssertEqual(factory.codingStorageCalls, 1)
     }
     
-    func testRawDataCoderIsConfigurable() async throws {
+    func testRawDataCoderIsConfigurable() throws {
         // Given
         let coder = RawDataCoder(fallback: PropertyListDataCoder())
         
         // When
-        let string = try await coder.encode("token")
-        let int = try await coder.encode(42)
+        let string = try coder.encode("token")
+        let int = try coder.encode(42)
         let expectedInt = try PropertyListDataCoder().encode(42)
         
         // Then
@@ -149,6 +149,54 @@ final class PublicAPITests: XCTestCase {
         XCTAssertNil(userDefaults.fetch(forKey: "key"))
     }
 
+    /// Compiles only while synchronous storages and the synchronous coding storage need no `await`, also inside `async` code.
+    func testSynchronousStoragesNeedNoAwaitInAsyncCode() async throws {
+        // Given
+        let storage = InMemoryStorage(scope: .own(namespace: .init("publicAPISync-\(UUID().uuidString)")))
+        let coding = KeyValueCodingStorage(storage: storage)
+        let key = KeyValueCodingStorageKey<InMemoryStorage, String>(key: "name")
+
+        // When
+        storage.save(Data([1]), forKey: "raw")
+        try coding.save("Alice", forKey: key)
+
+        // Then
+        XCTAssertEqual(storage.fetch(forKey: "raw"), Data([1]))
+        XCTAssertEqual(try coding.fetch(forKey: key), "Alice")
+        try coding.clear()
+        XCTAssertNil(try coding.fetch(forKey: key))
+    }
+
+    /// An app's own asynchronous storage, such as a server-backed one, works through `UnifiedStorage` with a key of its own.
+    func testAnAsyncStorageWorksThroughUnifiedStorage() async throws {
+        // Given
+        let storage = UnifiedStorage(factory: ObservableUnifiedStorageFactory())
+        let key = RemoteKey<String>(key: "name", scope: .init(namespace: "publicAPI-\(UUID().uuidString)"))
+        let publisher = try await storage.publisher(forKey: key, includingCurrentValue: false)
+        let published = expectation(description: "published")
+        let subscription = publisher?.sink { value in
+            if value == "Alice" {
+                published.fulfill()
+            }
+        }
+
+        // When
+        try await storage.save("Alice", forKey: key)
+        let fetched = try await storage.fetch(forKey: key)
+        try await storage.delete(forKey: key)
+        let deleted = try await storage.fetch(forKey: key)
+        try await storage.save("Bob", forKey: key)
+        try await storage.clear(storage: RemoteStorage.self, forScope: key.scope)
+        let cleared = try await storage.fetch(forKey: key)
+
+        // Then
+        XCTAssertEqual(fetched, "Alice")
+        XCTAssertNil(deleted)
+        XCTAssertNil(cleared)
+        await fulfillment(of: [published], timeout: 5)
+        subscription?.cancel()
+    }
+
     /// Compiles only while the storage and its locator throw `FileStorage.Error`, and clients can match every case.
     func testFileStorageThrowsItsOwnErrors() {
         let key = FileStorage.Key(String(repeating: "a", count: 256))
@@ -235,13 +283,54 @@ private final class CountingFactory: DefaultUnifiedStorageFactory, @unchecked Se
     private(set) var dataStorageCalls = 0
     private(set) var codingStorageCalls = 0
 
-    override func dataStorage<Storage: KeyValueDataStorage>(for scope: Storage.Scope) async throws(Storage.Error) -> Storage {
+    override func dataStorage<Storage: AsyncKeyValueDataStorage>(for scope: Storage.Scope) async throws(Storage.Error) -> Storage {
         dataStorageCalls += 1
         return try await super.dataStorage(for: scope)
     }
 
-    override func codingStorage<Storage: KeyValueDataStorage>(for storage: Storage) async -> KeyValueCodingStorage<Storage> {
+    override func codingStorage<Storage: AsyncKeyValueDataStorage>(for storage: Storage) async -> AsyncKeyValueCodingStorage<Storage> {
         codingStorageCalls += 1
         return await super.codingStorage(for: storage)
     }
 }
+
+// MARK: - RemoteStorage
+
+/// An app's own asynchronous storage, as a server-backed one would be.
+private actor RemoteStorage: AsyncKeyValueDataStorage {
+    typealias Key = String
+    typealias Error = URLError
+
+    struct Scope: KeyValueDataStorageScope {
+        let namespace: String
+
+        static var `default`: Self {
+            .init(namespace: "default")
+        }
+    }
+
+    nonisolated let scope: Scope
+    private var values = [String: Data]()
+
+    init(scope: Scope) async throws(URLError) {
+        self.scope = scope
+    }
+
+    func fetch(forKey key: String) async throws(URLError) -> Data? {
+        values[key]
+    }
+
+    func save(_ value: Data, forKey key: String) async throws(URLError) {
+        values[key] = value
+    }
+
+    func delete(forKey key: String) async throws(URLError) {
+        values[key] = nil
+    }
+
+    func clear() async throws(URLError) {
+        values = [:]
+    }
+}
+
+private typealias RemoteKey<Value: CodingValue> = UnifiedStorageKey<RemoteStorage, Value>

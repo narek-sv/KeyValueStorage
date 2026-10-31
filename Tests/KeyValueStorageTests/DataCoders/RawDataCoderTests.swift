@@ -10,14 +10,14 @@ import Foundation
 @testable import KeyValueStorage
 
 final class RawDataCoderTests: XCTestCase {
-    func testDataIsStoredAsIs() async throws {
+    func testDataIsStoredAsIs() throws {
         // Given
         let coder = RawDataCoder()
         
         for value in [Data([0x00, 0xFF, 0x10]), Data()] {
             // When
-            let encoded = try await coder.encode(value)
-            let decoded = try await coder.decode(encoded) as Data
+            let encoded = try coder.encode(value)
+            let decoded = try coder.decode(encoded) as Data
             
             // Then
             XCTAssertEqual(encoded, value)
@@ -25,14 +25,14 @@ final class RawDataCoderTests: XCTestCase {
         }
     }
     
-    func testStringIsStoredAsUTF8() async throws {
+    func testStringIsStoredAsUTF8() throws {
         // Given
         let coder = RawDataCoder()
         
         for value in ["token", "ключ 🔑", ""] {
             // When
-            let encoded = try await coder.encode(value)
-            let decoded = try await coder.decode(encoded) as String
+            let encoded = try coder.encode(value)
+            let decoded = try coder.decode(encoded) as String
             
             // Then
             XCTAssertEqual(encoded, Data(value.utf8))
@@ -40,13 +40,13 @@ final class RawDataCoderTests: XCTestCase {
         }
     }
     
-    func testDecodingInvalidUTF8Throws() async throws {
+    func testDecodingInvalidUTF8Throws() throws {
         // Given
         let coder = RawDataCoder()
         
         do {
             // When
-            _ = try await coder.decode(Data([0xFF, 0xFE])) as String
+            _ = try coder.decode(Data([0xFF, 0xFE])) as String
             XCTFail("Expected error")
         } catch DecodingError.dataCorrupted {
             // Then
@@ -55,7 +55,7 @@ final class RawDataCoderTests: XCTestCase {
         }
     }
     
-    func testOtherTypesUseFallback() async throws {
+    func testOtherTypesUseFallback() throws {
         // JSONEncoder doesn't keep the order of keys stable, so the bytes are only comparable when the keys are sorted
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
@@ -65,26 +65,26 @@ final class RawDataCoderTests: XCTestCase {
             let coder = RawDataCoder(fallback: fallback)
             
             // When - Then
-            try await assertUsesFallback(42, coder, fallback)
-            try await assertUsesFallback(true, coder, fallback)
-            try await assertUsesFallback(3.5, coder, fallback)
-            try await assertUsesFallback(Date(timeIntervalSince1970: 3), coder, fallback)
-            try await assertUsesFallback(["a", "b"], coder, fallback)
-            try await assertUsesFallback(Optional("token"), coder, fallback)
-            try await assertUsesFallback(Optional(Data([0xAA])), coder, fallback)
-            try await assertUsesFallback(Custom(id: 1, name: "name"), coder, fallback)
+            try assertUsesFallback(42, coder, fallback)
+            try assertUsesFallback(true, coder, fallback)
+            try assertUsesFallback(3.5, coder, fallback)
+            try assertUsesFallback(Date(timeIntervalSince1970: 3), coder, fallback)
+            try assertUsesFallback(["a", "b"], coder, fallback)
+            try assertUsesFallback(Optional("token"), coder, fallback)
+            try assertUsesFallback(Optional(Data([0xAA])), coder, fallback)
+            try assertUsesFallback(Custom(id: 1, name: "name"), coder, fallback)
         }
     }
     
-    func testCodingStorageUsesRawCoderByDefault() async throws {
+    func testCodingStorageUsesRawCoderByDefault() throws {
         // Given
         let underlyingStorage = InMemoryStorage(scope: .own(namespace: "rawDefault"))
         let storage = KeyValueCodingStorage(storage: underlyingStorage)
         
         // When
-        try await storage.save(Data([0xAA, 0xBB]), forKey: KeyValueCodingStorageKey<InMemoryStorage, Data>(key: "data"))
-        try await storage.save("token", forKey: KeyValueCodingStorageKey<InMemoryStorage, String>(key: "string"))
-        try await storage.save(42, forKey: KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "int"))
+        try storage.save(Data([0xAA, 0xBB]), forKey: KeyValueCodingStorageKey<InMemoryStorage, Data>(key: "data"))
+        try storage.save("token", forKey: KeyValueCodingStorageKey<InMemoryStorage, String>(key: "string"))
+        try storage.save(42, forKey: KeyValueCodingStorageKey<InMemoryStorage, Int>(key: "int"))
         
         // Then
         let data = underlyingStorage.fetch(forKey: "data")
@@ -117,10 +117,10 @@ final class RawDataCoderTests: XCTestCase {
     
     // MARK: Helpers
     
-    private func assertUsesFallback<Value: CodingValue & Equatable>(_ value: Value, _ coder: RawDataCoder, _ fallback: any DataCoder, line: UInt = #line) async throws {
-        let encoded = try await coder.encode(value)
-        let expected = try await fallback.encode(value)
-        let decoded = try await coder.decode(encoded) as Value
+    private func assertUsesFallback<Value: CodingValue & Equatable>(_ value: Value, _ coder: RawDataCoder, _ fallback: any DataCoder, line: UInt = #line) throws {
+        let encoded = try coder.encode(value)
+        let expected = try fallback.encode(value)
+        let decoded = try coder.decode(encoded) as Value
         
         XCTAssertEqual(encoded, expected, line: line)
         XCTAssertEqual(decoded, value, line: line)

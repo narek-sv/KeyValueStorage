@@ -7,19 +7,34 @@
 
 import Foundation
 
-// MARK: - KeyValueDataStorage
+// MARK: - AsyncKeyValueDataStorage
 
-/// - Warning: Synchronous and unsynchronized: use an instance from one thread or actor.
-public protocol KeyValueDataStorage {
+/// A storage whose operations may suspend, such as one backed by a server.
+/// - Note: Every `KeyValueDataStorage` is one too, with its synchronous methods.
+/// - Note: No extension members: an `async` member here would win over a synchronous one of the same name inside `async` code,
+///   so calls on synchronous storages would need `await`.
+public protocol AsyncKeyValueDataStorage {
     associatedtype Key: Hashable & Sendable
     associatedtype Scope: KeyValueDataStorageScope
     associatedtype Error: Swift.Error & Sendable
-    
+
     var scope: Scope { get }
-    
-    init() throws(Error)
-    init(scope: Scope) throws(Error)
-    
+
+    init(scope: Scope) async throws(Error)
+
+    func fetch(forKey key: Key) async throws(Error) -> Data?
+    func save(_ value: Data, forKey key: Key) async throws(Error)
+    func delete(forKey key: Key) async throws(Error)
+    func clear() async throws(Error)
+}
+
+// MARK: - KeyValueDataStorage
+
+/// A storage whose operations never suspend, so code that uses it directly never needs `await`.
+/// - Note: Its `init(scope:)` is synchronous too, but isn't redeclared here: Swift 6.3 crashes compiling generic calls
+///   to a synchronous init that redeclares an `async` one.
+/// - Warning: Synchronous and unsynchronized: use an instance from one thread or actor.
+public protocol KeyValueDataStorage: AsyncKeyValueDataStorage {
     func fetch(forKey key: Key) throws(Error) -> Data?
     func save(_ value: Data, forKey key: Key) throws(Error)
     func delete(forKey key: Key) throws(Error)
@@ -29,10 +44,6 @@ public protocol KeyValueDataStorage {
 // MARK: - KeyValueDataStorage + Defaults
 
 public extension KeyValueDataStorage {
-    init() throws(Error) {
-        try self.init(scope: .default)
-    }
-    
     /// Saves `value`, or deletes it if `nil`.
     func set(_ value: Data?, forKey key: Key) throws(Error) {
         if let value {

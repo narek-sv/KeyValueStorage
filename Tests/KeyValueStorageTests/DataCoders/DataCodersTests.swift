@@ -95,16 +95,16 @@ final class DataCodersTests: XCTestCase {
         }
     }
     
-    func testPropertyListCodingStorage() async throws {
+    func testPropertyListCodingStorage() throws {
         // Given
         let storage = KeyValueCodingStorage(storage: InMemoryStorage(scope: .own(namespace: "propertyList")), coder: PropertyListDataCoder())
         let key = KeyValueCodingStorageKey<InMemoryStorage, String>(key: "key")
         
         // When
-        try await storage.save("Alice", forKey: key)
+        try storage.save("Alice", forKey: key)
         
         // Then
-        let fetched = try await storage.fetch(forKey: key)
+        let fetched = try storage.fetch(forKey: key)
         XCTAssertEqual(fetched, "Alice")
     }
 }

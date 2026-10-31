@@ -9,7 +9,7 @@ import Foundation
 
 // MARK: - KeyValueCodingStorageKey
 
-public struct KeyValueCodingStorageKey<Storage: KeyValueDataStorage, Value: CodingValue>: Sendable {
+public struct KeyValueCodingStorageKey<Storage: AsyncKeyValueDataStorage, Value: CodingValue>: Sendable {
     public let key: Storage.Key
     public let codingType: Value.Type
     
@@ -38,12 +38,23 @@ extension KeyValueCodingStorageKey: Hashable {
     }
 }
 
+// MARK: - KeyValueCodingError
+
+/// The errors a `KeyValueCodingStorage` or an `AsyncKeyValueCodingStorage` throws.
+public enum KeyValueCodingError<Storage: AsyncKeyValueDataStorage>: Swift.Error, Sendable {
+    /// The underlying storage failed.
+    case storage(Storage.Error)
+    /// The coder couldn't encode or decode the value.
+    case coding(any Swift.Error)
+}
+
 // MARK: - KeyValueCodingStorage
 
-/// Encodes values and passes them to the underlying data storage.
-/// It holds only immutable state, so it doesn't need an actor: encoding runs in parallel on the callers' tasks.
-open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Sendable {
-    
+/// Encodes values and passes them to a synchronous data storage, so code that uses it never needs `await`.
+/// - Warning: Synchronous and unsynchronized, like its storage: use an instance from one thread or actor.
+open class KeyValueCodingStorage<Storage: KeyValueDataStorage> {
+    public typealias Error = KeyValueCodingError<Storage>
+
     // MARK: Properties
 
     private let coder: any DataCoder
@@ -62,7 +73,7 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
     
     // MARK: Main Functionality
     
-    public func fetch<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws(Error) -> Value? {
+    public func fetch<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) throws(Error) -> Value? {
         let data: Data?
         do throws(Storage.Error) {
             data = try storage.fetch(forKey: key.key)
@@ -74,22 +85,11 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
             return nil
         }
 
-        do {
-            // Explicit, because the return type would otherwise make the coder decode `Value?`
-            return try await coder.decode(data) as Value
-        } catch {
-            throw .coding(error)
-        }
+        return try coder.decoded(data, as: Value.self, for: Storage.self)
     }
 
-    public func save<Value: CodingValue>(_ value: Value, forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws(Error) {
-        let encoded: Data
-        do {
-            encoded = try await coder.encode(value)
-        } catch {
-            throw .coding(error)
-        }
-
+    public func save<Value: CodingValue>(_ value: Value, forKey key: KeyValueCodingStorageKey<Storage, Value>) throws(Error) {
+        let encoded = try coder.encoded(value, for: Storage.self)
         do throws(Storage.Error) {
             try storage.save(encoded, forKey: key.key)
         } catch {
@@ -97,15 +97,15 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
         }
     }
 
-    public func set<Value: CodingValue>(_ value: Value?, forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws(Error) {
+    public func set<Value: CodingValue>(_ value: Value?, forKey key: KeyValueCodingStorageKey<Storage, Value>) throws(Error) {
         if let value {
-            try await save(value, forKey: key)
+            try save(value, forKey: key)
         } else {
-            try await delete(forKey: key)
+            try delete(forKey: key)
         }
     }
 
-    public func delete<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws(Error) {
+    public func delete<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>) throws(Error) {
         do throws(Storage.Error) {
             try storage.delete(forKey: key.key)
         } catch {
@@ -113,24 +113,12 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage>: @unchecked Senda
         }
     }
 
-    public func clear() async throws(Error) {
+    public func clear() throws(Error) {
         do throws(Storage.Error) {
             try storage.clear()
         } catch {
             throw .storage(error)
         }
-    }
-}
-
-// MARK: - KeyValueCodingStorage + Error
-
-public extension KeyValueCodingStorage {
-    /// The errors a `KeyValueCodingStorage` throws.
-    enum Error: Swift.Error, Sendable {
-        /// The underlying storage failed.
-        case storage(Storage.Error)
-        /// The coder couldn't encode or decode the value.
-        case coding(any Swift.Error)
     }
 }
 

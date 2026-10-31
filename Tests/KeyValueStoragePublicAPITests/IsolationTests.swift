@@ -51,7 +51,7 @@ private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #is
     
     // Coders
     for coder in [JSONDataCoder() as DataCoder, PropertyListDataCoder(), RawDataCoder(), RawDataCoder(fallback: PropertyListDataCoder())] {
-        let decoded: Int = try await coder.decode(coder.encode(42))
+        let decoded: Int = try coder.decode(coder.encode(42))
         XCTAssertEqual(decoded, 42, "\(type(of: coder)) from \(context)")
     }
     
@@ -97,27 +97,9 @@ private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #is
 private func exercise<Storage: KeyValueDataStorage>(_ storage: Storage, key: Storage.Key, context: String,
                                                     isolation: isolated (any Actor)? = #isolation) async throws {
     let description = "\(Storage.self) from \(context)"
-    let data = Data([1, 2, 3])
-    
-    // Data storage
-    _ = storage.scope
-    try storage.save(data, forKey: key)
-    let saved = try storage.fetch(forKey: key)
-    try storage.set(nil, forKey: key)
-    let setToNil = try storage.fetch(forKey: key)
-    try storage.set(data, forKey: key)
-    try storage.delete(forKey: key)
-    let deleted = try storage.fetch(forKey: key)
-    try storage.save(data, forKey: key)
-    try storage.clear()
-    let cleared = try storage.fetch(forKey: key)
-    
-    XCTAssertEqual(saved, data, description)
-    XCTAssertNil(setToNil, description)
-    XCTAssertNil(deleted, description)
-    XCTAssertNil(cleared, description)
-    
-    // Coding and observation, which read the storage's scope on CodingStorageActor
+    try exerciseSynchronously(storage, key: key, description: description)
+
+    // Async coding and observation, which read the storage's scope on CodingStorageActor
     let observable = KeyValueObservableStorage(storage: storage, coder: RawDataCoder())
     let codingKey = KeyValueCodingStorageKey<Storage, Int>(key: key)
     let published = Values<Int?>()
@@ -138,6 +120,45 @@ private func exercise<Storage: KeyValueDataStorage>(_ storage: Storage, key: Sto
     XCTAssertEqual(firstStreamed, 1, description)
     XCTAssertEqual(published.all, [nil, 1, nil, nil], description)
     subscription.cancel()
+}
+
+/// The data and coding storages without `await`: a synchronous storage stays synchronous in generic code too.
+/// - Note: Synchronous on purpose: inside `async` code, the same calls would resolve to the `async` requirements.
+private func exerciseSynchronously<Storage: KeyValueDataStorage>(_ storage: Storage, key: Storage.Key, description: String) throws {
+    let data = Data([1, 2, 3])
+    
+    // Data storage
+    _ = storage.scope
+    try storage.save(data, forKey: key)
+    let saved = try storage.fetch(forKey: key)
+    try storage.set(nil, forKey: key)
+    let setToNil = try storage.fetch(forKey: key)
+    try storage.set(data, forKey: key)
+    try storage.delete(forKey: key)
+    let deleted = try storage.fetch(forKey: key)
+    try storage.save(data, forKey: key)
+    try storage.clear()
+    let cleared = try storage.fetch(forKey: key)
+    
+    XCTAssertEqual(saved, data, description)
+    XCTAssertNil(setToNil, description)
+    XCTAssertNil(deleted, description)
+    XCTAssertNil(cleared, description)
+
+    // Coding storage
+    let coding = KeyValueCodingStorage(storage: storage)
+    let codingKey = KeyValueCodingStorageKey<Storage, Int>(key: key)
+    try coding.save(1, forKey: codingKey)
+    let fetched = try coding.fetch(forKey: codingKey)
+    try coding.set(nil, forKey: codingKey)
+    let afterSet = try coding.fetch(forKey: codingKey)
+    try coding.save(2, forKey: codingKey)
+    try coding.clear()
+    let afterClear = try coding.fetch(forKey: codingKey)
+
+    XCTAssertEqual(fetched, 1, description)
+    XCTAssertNil(afterSet, description)
+    XCTAssertNil(afterClear, description)
 }
 
 /// Collects values delivered on any thread.
