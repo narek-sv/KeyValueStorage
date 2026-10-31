@@ -462,7 +462,23 @@ Something that isn't a value where a value goes. It's never replaced or removed:
 ---
 ## Thread Safety
 
-`UnifiedStorage` is an actor: you can call it from any thread, task or actor. The storages themselves, such as `FileStorage`, and `KeyValueCodingStorage` are synchronous and unsynchronized: use an instance from one thread or actor. A *sequence* of operations, such as a fetch followed by a save, isn't atomic: another task or process can change the value in between.
+`UnifiedStorage` is an actor: you can call it from any thread, task or actor. The storages themselves, such as `FileStorage`, and `KeyValueCodingStorage` are synchronous and unsynchronized: use an instance from one thread or actor. To share a synchronous storage between tasks or threads, wrap it in `IsolatedKeyValueDataStorage`, an actor that runs its operations one at a time and is an `AsyncKeyValueDataStorage` itself:
+
+```swift
+let shared = IsolatedKeyValueDataStorage(try SQLiteStorage(scope: .default))
+try await shared.save(data, forKey: "key")
+
+// Several operations as one atomic step
+try await shared.withStorage { storage in
+    let count = try storage.fetch(forKey: "count")
+    try storage.save(increment(count), forKey: "count")
+}
+
+// Through UnifiedStorage, by key type
+typealias SharedSQLiteKey<Value: CodingValue> = UnifiedStorageKey<IsolatedKeyValueDataStorage<SQLiteStorage>, Value>
+```
+
+***NOTE***! `UnifiedStorage` doesn't isolate storages by itself yet: use an isolated key type for a `SQLiteStorage` that concurrent tasks share. A *sequence* of operations, such as a fetch followed by a save, isn't atomic: another task or process can change the value in between.
 
 ---
 ## Tests

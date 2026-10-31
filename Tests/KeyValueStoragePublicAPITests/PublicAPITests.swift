@@ -197,6 +197,36 @@ final class PublicAPITests: XCTestCase {
         subscription?.cancel()
     }
 
+    /// A synchronous storage isolated by its key type: `UnifiedStorage` shares it between concurrent tasks safely.
+    func testAnIsolatedKeySharesASynchronousStorageSafely() async throws {
+        // Given
+        let scope = SQLiteStorage.Scope.own(.temporary, namespace: .init("publicAPIIsolated-\(UUID().uuidString)"))
+        let folder = try DefaultSQLiteLocator().databaseURL(for: scope).deletingLastPathComponent().deletingLastPathComponent()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let storage = UnifiedStorage()
+
+        // When: concurrent saves and fetches of 200 keys
+        let values = try await withThrowingTaskGroup(of: (Int, Int?).self) { group in
+            for index in 0..<200 {
+                group.addTask {
+                    let key = IsolatedSQLiteKey<Int>(key: .init("key\(index)"), scope: scope)
+                    try await storage.save(index, forKey: key)
+                    return (index, try await storage.fetch(forKey: key))
+                }
+            }
+
+            return try await group.reduce(into: [Int: Int?]()) { $0[$1.0] = $1.1 }
+        }
+
+        // Then
+        XCTAssertEqual(values.count, 200)
+        for (index, value) in values {
+            XCTAssertEqual(value, index)
+        }
+
+        try await storage.clear(storage: IsolatedKeyValueDataStorage<SQLiteStorage>.self, forScope: scope)
+    }
+
     /// Compiles only while the storage and its locator throw `FileStorage.Error`, and clients can match every case.
     func testFileStorageThrowsItsOwnErrors() {
         let key = FileStorage.Key(String(repeating: "a", count: 256))
@@ -334,3 +364,4 @@ private actor RemoteStorage: AsyncKeyValueDataStorage {
 }
 
 private typealias RemoteKey<Value: CodingValue> = UnifiedStorageKey<RemoteStorage, Value>
+private typealias IsolatedSQLiteKey<Value: CodingValue> = UnifiedStorageKey<IsolatedKeyValueDataStorage<SQLiteStorage>, Value>

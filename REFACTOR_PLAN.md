@@ -133,8 +133,8 @@ The library offers one consistent way to work with storages of very different na
 |---|---|---|
 | D1 | No backward compatibility; ship as **4.0.0** | Paths, suite names, APIs and defaults all change; there are no users to migrate. |
 | D2 | **Storages are synchronous, not `Sendable`, not isolated.** No global actors (`FileActor`, `SQLiteActor`, `KeychainActor`, `UserDefaultsActor`, `InMemoryActor`, `CodingStorageActor`). | Most apps are single-threaded, especially with Swift 6.2's default `MainActor` isolation. A non-`Sendable` value can't be sent to another actor or task unless it's disconnected, so single-threaded use is compiler-checked, not hoped for. Synchronous calls cost nothing. |
-| D3 | **One opt-in isolation wrapper: `IsolatedKeyValueStorage<Wrapped>`, a generic actor.** No `LockedStorage`. | Synchronous access from many threads is a GCD-era need: sync use is covered by D2, shared use is `async` anyway. A lock blocks the caller (including the main thread) during I/O, needs a recursive lock for observers, and is a second way to do the same thing. The actor moves I/O off the caller and the compiler enforces ownership (`sending`). |
-| D4 | **Isolation is the outermost layer**, wrapping the coding storage. | Coding must work without isolation (D2). With synchronous coders, encoding inside the actor costs microseconds next to the I/O. Change events emitted inside the isolated operation come out in commit order. |
+| D3 | **One opt-in isolation wrapper: `IsolatedKeyValueDataStorage<Wrapped: KeyValueDataStorage>`, a generic actor that is an `AsyncKeyValueDataStorage`** (done 2026-10-31). No `LockedStorage`. | Synchronous access from many threads is a GCD-era need: sync use is covered by D2, shared use is `async` anyway. A lock blocks the caller (including the main thread) during I/O, needs a recursive lock for observers, and is a second way to do the same thing. The actor moves I/O off the caller and the compiler enforces ownership (`sending`). |
+| D4 | **Isolation wraps the data storage; coding stays outside** (2026-10-31, replacing "isolation is the outermost layer"). | The isolated storage is just another async storage (D22), so `AsyncKeyValueCodingStorage`, observation and `UnifiedStorage` take it unchanged. Encoding runs on the callers' tasks in parallel, and the actor serializes only the storage calls. Change events are emitted after the `await`, so their order across concurrent writers isn't guaranteed. |
 | D5 | **Locks only inside building blocks**, never in the public API: the shared `DefaultInMemoryBackingStoreWrapper` backing, the observation registry, the isolated facade's cache. | These are process-wide states that several instances share, which the type system can't see. |
 | D6 | **Backing stores:** one protocol per storage that is a minimal, **location-free** interface to the system. The storage gets the location (URL, suite name, service, bucket) from its locator (D17) and passes it in. Default adapters are thin and as branch-free as possible. | The backing and the scope can't disagree. Scope resolution is reachable from tests. Adapters need only integration tests. |
 | D7 | **Storages depend only on their backing store and their locator.** Every value read from the environment comes through the backing store: directories and App Group containers. | 100% coverage without the real system, including path and suite resolution. |
@@ -511,41 +511,31 @@ public final class KeyValueCodingStorage<Storage: KeyValueDataStorage> {
 
 ## 7. Isolation layer
 
-**Status (2026-10-31): not started.** No `IsolatedKeyValueStorage` yet.
-
-`Sources/KeyValueStorage/Isolation/IsolatedKeyValueStorage.swift`
+**Status (2026-10-31): done.** `Sources/KeyValueStorage/Layers/Isolation/IsolatedKeyValueDataStorage.swift`.
 
 ```swift
-public protocol KeyValueScopeProviding {            // KeyValueDataStorage and KeyValueCodingStorage conform
-    associatedtype Scope: KeyValueDataStorageScope
-    var scope: Scope { get }
-}
-
-public actor IsolatedKeyValueStorage<Wrapped: KeyValueScopeProviding> {
-    public nonisolated let scope: Wrapped.Scope
-    private let wrapped: Wrapped
-
+public actor IsolatedKeyValueDataStorage<Wrapped: KeyValueDataStorage>: AsyncKeyValueDataStorage {
+    public nonisolated let scope: Wrapped.Scope              // Key, Scope and Error are Wrapped's
     public init(_ wrapped: sending Wrapped)
-    public func withStorage<T: Sendable>(_ body: @Sendable (Wrapped) throws -> T) throws -> T
+    public nonisolated init(scope: Scope) async throws(Error)
+    public func fetch(forKey:) throws(Error) -> Data?        // save, delete, clear and set too: synchronous inside
+    public func withStorage<T: Sendable, E: Error>(_ body: @Sendable (Wrapped) throws(E) -> T) throws(E) -> T
 }
-
-// Typed conveniences: fetch/save/set/delete/clear/update/publisher/stream
-extension IsolatedKeyValueStorage {
-    public func fetch<S, V: CodingValue>(forKey key: KeyValueCodingStorageKey<S, V>) throws -> V?
-        where Wrapped == KeyValueCodingStorage<S>
-    // …
-}
-// Byte-level conveniences where Wrapped: KeyValueDataStorage
 ```
 
-- `sending` (Swift 6.0) makes sure the caller gives up the storage.
-- Methods never suspend inside, so every operation is atomic and actor reentrancy can't interleave them.
-- **Document:** the actor runs blocking I/O on a thread of the Swift concurrency pool. That's fine for milliseconds of file, SQLite or keychain work. If keychain access control with user presence (biometric prompts) is ever added, use a custom executor on a serial `DispatchQueue` (iOS 17+).
+- **A decorator at the data level:** the isolated storage is an `AsyncKeyValueDataStorage`, so it works with `AsyncKeyValueCodingStorage`, observation and `UnifiedStorage` (through a key type such as `UnifiedStorageKey<IsolatedKeyValueDataStorage<SQLiteStorage>, V>`).
+- **Performance:** one actor per storage instance, so scopes never wait for each other; encoding stays outside the actor (D4); each operation is one hop.
+- **Atomic:** methods never suspend inside, so actor reentrancy can't interleave them. `withStorage` makes several operations, such as a read-modify-write, one step. Its body takes the synchronous storage, so a `KeyValueCodingStorage` built inside it codes atomically too.
+- **`sending`** (Swift 6.0) makes the caller give up the storage.
+- **Errors are the wrapped storage's**, unchanged: an isolated `InMemoryStorage` throws `Never`, so its calls need no `try`.
+- **`init(scope:)` is `async`, as `AsyncKeyValueDataStorage` requires,** and `nonisolated`. Generic code can only reach the wrapped storage's `async` init (D22). The new storage is `nonisolated(unsafe)`, because `Wrapped.Type` can't be `SendableMetatype` before Swift 6.2. With Swift 6.2 as the minimum, `Wrapped: SendableMetatype` removes that, and a fixed init crash would allow a synchronous `init(scope:)`.
+- **Executor:** the default. Its calls block a thread of the Swift concurrency pool, which is fine for milliseconds of file, SQLite or keychain work. If keychain access control with user presence (biometric prompts) is ever added, use a custom executor on a serial `DispatchQueue` (iOS 17+).
 - **README escape hatch:** for synchronous use from several threads, a user writes their own lock wrapper around a storage and takes responsibility for it.
+- **Tests:** forwarding and typed errors; `scope` without `await`; `init(scope:)`; 1,000 concurrent `withStorage` increments end at 1,000; no two calls overlap under 100 concurrent tasks; coding on top. Client-side: concurrent `UnifiedStorage` round trips over an isolated `SQLiteStorage`, and every isolation context.
 
 ## 8. Facade
 
-**Status (2026-10-31): not started.** `UnifiedStorage` is still the 3.x actor with `nonisolated` operations, `DefaultUnifiedStorageFactory` and `ObservableUnifiedStorageFactory`; `UbiquitousKey` exists next to the five typealiases.
+**Status (2026-10-31): not started.** Isolation is opt-in per key type today (§7); the facade makes it the default, which also removes the SQLite shared-statement race. `UnifiedStorage` is still the 3.x actor with `nonisolated` operations, `DefaultUnifiedStorageFactory` and `ObservableUnifiedStorageFactory`; `UbiquitousKey` exists next to the five typealiases.
 
 `Sources/KeyValueStorage/Unified/`
 
@@ -829,7 +819,7 @@ Each phase ends with: the library builds on every CI toolchain, the phase's test
 ## 13. Open decisions
 
 1. **Open: macOS minimum 10.15 → 11.** Removes the untestable `#available` branch in `FileStorage.writingOptions` and simplifies the protection options. Recommended.
-2. **Open, before phase 8: names:** `IsolatedKeyValueStorage` vs `ActorKeyValueStorage`; keep `KeyValueCodingStorage` or shorten it to `CodingStorage`.
+2. **Names:** decided for isolation, `IsolatedKeyValueDataStorage` (2026-10-31). Open: keep `KeyValueCodingStorage` or shorten it to `CodingStorage`.
 3. **Open, before phase 9: isolated facade:** one actor per (type, scope) (recommended, §8) vs a single actor around `UnifiedStorage`.
 4. **Open, before phase 7: observation always on** (recommended, D11) vs opt-in.
 5. ~~**Typed throws** on the data layer.~~ Adopted: every storage, the locators and the coding layer throw typed errors, and they build for the iOS 13 / macOS 10.15 deployment targets.

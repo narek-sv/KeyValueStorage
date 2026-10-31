@@ -68,6 +68,19 @@ private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #is
                            key: "key", context: context)
     }
 
+    // An isolated storage, directly (no `try`: it keeps `InMemoryStorage`'s `Never`) and through the async coding storage
+    let isolated = IsolatedKeyValueDataStorage(InMemoryStorage(scope: .own(namespace: .init("\(id)-isolated"))))
+    await isolated.save(Data([1]), forKey: "key")
+    let isolatedFetched = await isolated.fetch(forKey: "key")
+    await isolated.set(nil, forKey: "key")
+    let isolatedCoding = AsyncKeyValueCodingStorage(storage: isolated)
+    try await isolatedCoding.save(7, forKey: KeyValueCodingStorageKey(key: "coded"))
+    let isolatedDecoded: Int? = try await isolatedCoding.fetch(forKey: KeyValueCodingStorageKey(key: "coded"))
+    await isolated.clear()
+    XCTAssertEqual(isolatedFetched, Data([1]), "IsolatedKeyValueDataStorage from \(context)")
+    XCTAssertEqual(isolatedDecoded, 7, "IsolatedKeyValueDataStorage coding from \(context)")
+    XCTAssertEqual(isolated.scope, .own(namespace: .init("\(id)-isolated")), "IsolatedKeyValueDataStorage scope from \(context)")
+
     // Unified storage
     let storage = UnifiedStorage(factory: ObservableUnifiedStorageFactory())
     let key = InMemoryKey<Int>(key: "unified", scope: .own(namespace: .init(id)))
