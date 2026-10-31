@@ -3,6 +3,8 @@
 
 import PackageDescription
 
+let swiftSettings: [SwiftSetting] = [.enableUpcomingFeature("ExistentialAny")]
+
 let package = Package(
     name: "KeyValueStorage",
     platforms: [
@@ -23,12 +25,19 @@ let package = Package(
         .target(
             name: "KeyValueStorage",
             dependencies: [],
-            resources: [.process("Resources/PrivacyInfo.xcprivacy")]),
+            resources: [.process("Resources/PrivacyInfo.xcprivacy")],
+            swiftSettings: swiftSettings),
         .testTarget(
             name: "KeyValueStorageTests",
-            dependencies: ["KeyValueStorage"]),
+            dependencies: ["KeyValueStorage"],
+            swiftSettings: swiftSettings),
         .testTarget(
             name: "KeyValueStoragePublicAPITests",
-            dependencies: ["KeyValueStorage"]),
+            dependencies: ["KeyValueStorage"],
+            swiftSettings: swiftSettings),
+        .testTarget(
+            name: "KeyValueStorageIntegrationTests",
+            dependencies: ["KeyValueStorage"],
+            swiftSettings: swiftSettings),
     ]
 )

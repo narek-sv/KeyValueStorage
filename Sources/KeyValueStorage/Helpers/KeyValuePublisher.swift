@@ -1,11 +1,13 @@
 //
 //  KeyValuePublisher.swift
-//
+//  KeyValueStorage
 //
 //  Created by Narek Sahakyan on 15.10.26.
 //
 
 import Combine
+
+// MARK: - KeyValuePublisher
 
 /// Publishes the changes of a stored value, and can be passed between concurrency domains.
 ///
