@@ -168,7 +168,7 @@ final class UserDefaultsIntegrationTests: XCTestCase {
 
         // Then
         XCTAssertNil(fetched)
-        assertKeyOccupied("ns!/key") { try storage.save(Data([1]), forKey: "key") }
+        assertKeyOccupied("key") { try storage.save(Data([1]), forKey: "key") }
         XCTAssertEqual(defaults.string(forKey: "ns!/key"), "text")
     }
 
@@ -178,7 +178,7 @@ final class UserDefaultsIntegrationTests: XCTestCase {
         UserDefaults.standard.register(defaults: ["ns!/\(key)": "text"])
 
         // When - Then
-        assertKeyOccupied("ns!/\(key)") { try storage().save(Data([1]), forKey: .init(key)) }
+        assertKeyOccupied(.init(key)) { try storage().save(Data([1]), forKey: .init(key)) }
     }
 
     func testClearRemovesExactlyTheScopesValues() throws {
@@ -243,10 +243,10 @@ final class UserDefaultsIntegrationTests: XCTestCase {
         try UserDefaultsStorage(scope: scope ?? self.scope, backingStore: DefaultUserDefaultsBackingStoreWrapper(), locator: locator)
     }
 
-    private func assertKeyOccupied(_ storedKey: String, file: StaticString = #filePath, line: UInt = #line, _ body: () throws -> Void) {
+    private func assertKeyOccupied(_ key: UserDefaultsStorage.Key, file: StaticString = #filePath, line: UInt = #line, _ body: () throws -> Void) {
         XCTAssertThrowsError(try body(), file: file, line: line) { error in
-            guard case .keyOccupied(storedKey)? = error as? UserDefaultsStorage.Error else {
-                return XCTFail("Expected .keyOccupied(\(storedKey)), got \(error)", file: file, line: line)
+            guard case .keyOccupied(key)? = error as? UserDefaultsStorage.Error else {
+                return XCTFail("Expected .keyOccupied(\(key)), got \(error)", file: file, line: line)
             }
         }
     }

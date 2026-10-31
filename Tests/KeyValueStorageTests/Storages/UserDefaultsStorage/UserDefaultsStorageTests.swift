@@ -84,7 +84,7 @@ final class UserDefaultsStorageTests: XCTestCase {
 
             // Then
             XCTAssertNil(fetched)
-            assertThrows(UserDefaultsStorage.Error.keyOccupied("located-key")) { try storage.save(data, forKey: "key") }
+            assertThrows(UserDefaultsStorage.Error.keyOccupied("key")) { try storage.save(data, forKey: "key") }
             XCTAssertEqual(suite.calls, [.read("located-key"), .read("located-key"), .keys, .read("located-key"), .read("located-key")])
             XCTAssertTrue((suite.values["located-key"] as AnyObject).isEqual(value), "\(value)")
         }

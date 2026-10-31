@@ -54,7 +54,7 @@ public final class UbiquitousStorage: KeyValueDataStorage, Sendable {
         }
 
         if let object = backingStore.read(forKey: storedKey), !(object is Data) {
-            throw .keyOccupied(storedKey)
+            throw .keyOccupied(key)
         }
 
         backingStore.write(value, forKey: storedKey)

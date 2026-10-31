@@ -15,7 +15,7 @@ public extension UbiquitousStorage {
         case invalidKey(Key)
         /// The value is over 1 MiB, the store's limit per value.
         case valueTooLarge(key: Key, size: Int)
-        /// A value that isn't `Data` is under this stored key; it's never replaced or removed.
-        case keyOccupied(String)
+        /// A value that isn't `Data` is under this key's stored key; it's never replaced or removed.
+        case keyOccupied(Key)
     }
 }

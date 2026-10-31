@@ -52,7 +52,7 @@ public final class UserDefaultsStorage: KeyValueDataStorage, Sendable {
     public func save(_ value: Data, forKey key: Key) throws(Error) {
         let storedKey = storedKey(for: key)
         if let object = suite.read(forKey: storedKey), !(object is Data) {
-            throw .keyOccupied(storedKey)
+            throw .keyOccupied(key)
         }
 
         suite.write(value, forKey: storedKey)

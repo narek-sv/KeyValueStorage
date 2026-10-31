@@ -67,7 +67,7 @@ final class UbiquitousStorageTests: XCTestCase {
 
             // Then
             XCTAssertNil(fetched)
-            assertThrows(UbiquitousStorage.Error.keyOccupied("located-key")) { try storage.save(data, forKey: "key") }
+            assertThrows(UbiquitousStorage.Error.keyOccupied("key")) { try storage.save(data, forKey: "key") }
             XCTAssertEqual(backingStore.calls, [.read("located-key"), .read("located-key"), .keys, .read("located-key"), .read("located-key")])
             XCTAssertTrue((backingStore.values["located-key"] as AnyObject).isEqual(value), "\(value)")
         }

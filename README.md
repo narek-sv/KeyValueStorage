@@ -482,7 +482,7 @@ Keys, namespaces and values over a storage's limits:
 
 Something that isn't a value where a value goes. It's never replaced or removed:
 * `FileStorage.Error.pathOccupied(url)` - for example a folder at a key's file, or a file where the scope's folder goes.
-* `.keyOccupied(storedKey)` (`UserDefaultsStorage`, `UbiquitousStorage`) - a value that isn't `Data` is under the key. In `UserDefaults`, registered defaults count.
+* `.keyOccupied(key)` (`UserDefaultsStorage`, `UbiquitousStorage`) - a value that isn't `Data` is under the key's stored key. In `UserDefaults`, registered defaults count.
 
 `FileStorage` and `SQLiteStorage` wrap any other failure in `.other(error)`, keeping the original error. `InMemoryStorage` never throws.
 

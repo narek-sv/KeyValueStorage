@@ -52,7 +52,6 @@ This file is the source of truth for the 4.0 refactor, written so that anyone, h
 - **Done: shared names and exactness** (2026-10-31): the encodings the locators shared moved to `Helpers/String+UTF8.swift`, each locator's marks and separators are named members, `DefaultInMemoryBackingStoreWrapper` keys by `ExactString`, `ExactString` hashes its bytes in one buffer with their count, and every storage claims stored names byte for byte (`FileStorage.clear()` no longer removes a file whose name differs from its own only in Unicode form). `ExistentialAny` is on for every target.
 - **Done: the README** on the sealed scopes (2026-10-31): scopes, places, protection, `UbiquitousStorage`, errors and thread safety. Left for the release: Installation's version and "Migrating from 2.x".
 - **Open in phase 6b:**
-  - `.keyOccupied` (UserDefaults, Ubiquitous) carries the stored key, not the key passed (E5).
   - The test revisit and the tests for unmeasured behavior (§11.3): none of the "To add" tests are written yet.
 - **Done: the facade's isolation** (2026-10-31, D24): `UnifiedStorage` is a `Sendable` final class with a lock-protected cache, no actor, so storages of different types or scopes never wait for each other.
 - **Done: observation** (2026-10-31, D26): `ObservableKeyValueStorage`, a decorator around `AsyncKeyValueCodingStorage`, delivers on the writer's thread through a lock-protected registry; the factory's `observableStorage(for:)` opts in (`nil` by default; `ObservableUnifiedStorageFactory` observes every storage). `CodingStorageActor`, `KeyValueObservableStorage` and `ObservableUnifiedStorageFactory` are gone.
@@ -289,7 +288,7 @@ What stays in the storages: system calls and their retries (File's `createDirect
 - **Done: the errors refactored with the sealed scopes** (2026-10-31, §13 item 8), against E1–E8, except where marked:
   - drop the cases the redesign removes: `.invalidDirectory` (no `.directory(at:)`), Keychain's `.keyOccupied` (gone already, §5.2);
   - one name for one meaning across storages: a group the app isn't in (`.groupDirectoryNotFound`, `.invalidSuiteName`, `.keychain(status: errSecMissingEntitlement)` today), an occupied place (`.pathOccupied`, `.keyOccupied`), and a locked device (`.protectedDataUnavailable` for File and for Keychain's `errSecInteractionNotAllowed`; SQLite's locked result once the device test names it, §13 item 7);
-  - cases carry `ExactString` keys and namespaces, the failing input as the caller passed it (E5). **Open:** `.keyOccupied` still carries the stored key;
+  - cases carry `ExactString` keys and namespaces, the failing input as the caller passed it (E5), `.keyOccupied` included (2026-11-01);
   - every case documented and every throw site tested again (E7);
   - one place per storage translates its backing store's failures: an internal `Error.init(_:)` (File and SQLite from a thrown error, Keychain from a `KeychainOperationStatus`). UserDefaults, Ubiquitous and InMemory have nothing to translate.
 
@@ -321,8 +320,8 @@ One rule in every storage: the library never replaces or removes other code's da
 | Storage | A value is | Otherwise |
 |---|---|---|
 | File | a regular file, never a folder or a link | `.pathOccupied(URL)` |
-| UserDefaults | a `Data` object; registered defaults count, process-wide | `.keyOccupied(storedKey)` |
-| Ubiquitous | a `Data` object | `.keyOccupied(storedKey)` |
+| UserDefaults | a `Data` object; registered defaults count, process-wide | `.keyOccupied(key)` |
+| Ubiquitous | a `Data` object | `.keyOccupied(key)` |
 | Keychain | any generic password at the scope's service and account, one without data included (it fetches as `nil`) | — (§5.2: under the scope's own names, an item holds nothing of other code's to keep) |
 | SQLite, InMemory | — | exclusive locations: the database file and the bucket are the scope's alone, and their values are typed (`BLOB`, `Data`), so there is no other code's entry to keep |
 
@@ -421,7 +420,7 @@ The setup members are `createDirectory(at:)` (always creates intermediate direct
 
 **Locator** (sealed scopes, 2026-10-30): `suiteName(for:)` is `<app>.KeyValueStorage` for `.own`, `<app>` being the bundle ID, or the process name without one, in File's encoding; for `.appGroup`, the group id, unless it's empty, one of the global domain's names, or the app scope's suite name → `.invalidSuiteName` (§4.5, item 1). `storedKey(forKey:in:)` is `<namespace>!/<key>`, with `%` → `%25` and NUL → `%00` in both and `/` → `%2F` in the namespace, byte by byte (Foundation's `replacingOccurrences` skips a `/` that carries a combining mark), so its first `/` always ends the namespace (D27). `key(forStoredKey:in:)` strips the prefix, compared by bytes, and unescapes the key strictly: a stored key the escaping never writes isn't claimed, so the two are exact inverses.
 
-**Storage:** only `Data` is a value (§4.6). `fetch` returns `nil` for anything else; `save` throws `.keyOccupied(storedKey)` instead of replacing it; `delete` and `clear()` never remove it. `clear()` removes the `Data` at every stored key the locator claims and maps back byte for byte. Keys are exact bytes: the suite keeps `"é"` and `"e\u{301}"` apart.
+**Storage:** only `Data` is a value (§4.6). `fetch` returns `nil` for anything else; `save` throws `.keyOccupied(key)` instead of replacing it; `delete` and `clear()` never remove it. `clear()` removes the `Data` at every stored key the locator claims and maps back byte for byte. Keys are exact bytes: the suite keeps `"é"` and `"e\u{301}"` apart.
 - Registered defaults are process-wide, so a registered non-`Data` default under a stored key makes `save` throw in every suite.
 - `keys()` lists the global domain's keys too, but removing one only touches the suite's own domain, so `clear()` never changes the global domain.
 - **Sealed scopes (done 2026-10-30):** `.own(namespace:)` and `.appGroup(id:, namespace:)`; `Key` and `Namespace` are `ExactString`.
@@ -456,7 +455,7 @@ The setup members are `createDirectory(at:)` (always creates intermediate direct
 
 **Locator:** the same scheme as UserDefaults' (§5.4): `<namespace>!/<key>`, `%` and NUL escaped byte by byte in both and `/` in the namespace, and a byte-compared prefix strip plus a strict unescape as the inverse. `keys()` lists through `NSDictionary`, as UserDefaults' does. `storedKey(forKey:in:)` also enforces the store's limit: a stored key, namespace, mark and escapes included, of more than 128 UTF-16 code units throws `.invalidKey(key)`, because the store raises an Objective-C exception, a crash, for longer keys.
 
-**Storage:** only `Data` is a value (§4.6): `fetch` returns `nil` for anything else, `save` throws `.keyOccupied(storedKey)` instead of replacing it, and `delete` and `clear()` never remove it. `clear()` removes the `Data` at every stored key the locator claims and maps back byte for byte. `save` checks the key, then the 1 MiB value limit (`.valueTooLarge`), both before calling the store.
+**Storage:** only `Data` is a value (§4.6): `fetch` returns `nil` for anything else, `save` throws `.keyOccupied(key)` instead of replacing it, and `delete` and `clear()` never remove it. `clear()` removes the `Data` at every stored key the locator claims and maps back byte for byte. `save` checks the key, then the 1 MiB value limit (`.valueTooLarge`), both before calling the store.
 
 - **Availability:** `@available(watchOS 9.0, *)`, matching `NSUbiquitousKeyValueStore`; the package supports watchOS 6. Raising the watchOS minimum to 9 would remove the annotations (see Open decisions).
 - **Store and sharing:** a process can reach exactly one store, `NSUbiquitousKeyValueStore.default`, chosen only by its signed `com.apple.developer.ubiquity-kvstore-identifier` entitlement and the Apple Account. There's no API to pick a store, App Groups have no effect on it, and on iOS the code can't read the entitlement. So the scope has one case, `.iCloud(.own, namespace:)` (sealed scopes, 2026-10-30; `Key` and `Namespace` are `ExactString`, and `.invalidKey` and `.valueTooLarge` carry the key passed). The docs explain the setup:
@@ -814,7 +813,7 @@ Tests/
 
 Each phase ends with: the library builds on every CI toolchain, the phase's tests pass, and its gated files have 100% coverage.
 
-**Status (2026-10-31):** phases 0–6 done; 6b done except the `.keyOccupied` input (E5) and the test revisit (§11.3); 7–11 not started.
+**Status (2026-10-31):** phases 0–6 done; 6b done except the test revisit (§11.3); 7–11 not started.
 
 | Phase | Work | Done when |
 |---|---|---|
