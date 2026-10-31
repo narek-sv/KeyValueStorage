@@ -76,7 +76,7 @@ open class ObservableKeyValueStorage<Storage: AsyncKeyValueDataStorage & Sendabl
     /// - Parameter includingCurrentValue: Whether the publisher first emits the currently stored value, or `nil` if there's none.
     ///   Reading it can throw, for example when the stored data can't be decoded.
     open func publisher<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>,
-                                              includingCurrentValue: Bool = true) async throws(Error) -> KeyValuePublisher<Value?> {
+                                            includingCurrentValue: Bool = true) async throws(Error) -> KeyValuePublisher<Value?> {
         let scopeID = scopeID
         let observation = registry.register(key, in: scopeID)
         let token = ObservationToken { [registry] in
@@ -106,7 +106,7 @@ open class ObservableKeyValueStorage<Storage: AsyncKeyValueDataStorage & Sendabl
     /// - Parameter includingCurrentValue: Whether the stream starts with the currently stored value, or `nil` if there's none.
     ///   Reading it can throw, for example when the stored data can't be decoded.
     open func stream<Value: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, Value>,
-                                           includingCurrentValue: Bool = true) async throws(Error) -> AsyncStream<Value?> {
+                                         includingCurrentValue: Bool = true) async throws(Error) -> AsyncStream<Value?> {
         let publisher = try await publisher(forKey: key, includingCurrentValue: includingCurrentValue)
         return AsyncStream(bufferingPolicy: .unbounded) { continuation in
             let subscription = Subscription(publisher.sink {

@@ -55,7 +55,7 @@ This file is the source of truth for the 4.0 refactor, written so that anyone, h
   - The test revisit and the tests for unmeasured behavior (§11.3): none of the "To add" tests are written yet.
 - **Done: the facade's isolation** (2026-10-31, D24): `UnifiedStorage` is a `Sendable` final class with a lock-protected cache, no actor, so storages of different types or scopes never wait for each other.
 - **Done: observation** (2026-10-31, D26): `ObservableKeyValueStorage`, a decorator around `AsyncKeyValueCodingStorage`, delivers on the writer's thread through a lock-protected registry; the factory's `observableStorage(for:)` opts in (`nil` by default; `ObservableUnifiedStorageFactory` observes every storage). `CodingStorageActor`, `KeyValueObservableStorage` and `ObservableUnifiedStorageFactory` are gone.
-- **Then: the rest of phase 7**: `update`.
+- **Dropped: `update`** (2026-11-01, D28): phase 7 is done.
 - **Fixed: unchecked sharing of synchronous storages** (2026-10-31, D23). The coding storages claimed `@unchecked Sendable` whatever their storage, so `UnifiedStorage` shared a `SQLiteStorage` across concurrent tasks, and `DefaultSQLiteDatabase`'s prepared statements could interleave two operations' bindings. Now only `Sendable` storages are shared (the key-type wrapping that first fixed it is superseded by D25). A clean build has no warnings: the 4 `Storage.Type` ones went with it, because a `Sendable` type's metatype is `Sendable`.
 - **Done: built-in storages thread-safe and `Sendable`** (2026-10-31, D25): the dependency protocols are `Sendable`, `DefaultSQLiteDatabase` locks each operation (an integration test with 200 threads on one instance fails without the lock), `FileStorage`'s delete treats a file removed meanwhile as deleted, and `KeychainStorage.save` updates again when a concurrent add wins. The built-in keys name plain storages again.
 
@@ -153,6 +153,7 @@ The library offers one consistent way to work with storages of very different na
 | D18 | **System limits are enforced in the locator only**, and the protocol documents them. A custom locator must uphold them. | All naming in one place; the same trust model as a custom backing store, which can already crash or write anywhere. |
 | D19 | **Errors are typed end to end and carry what failed** (§4.4); invalid keys and namespaces carry the rule they break. | Errors are actionable without reading the code; no error is re-mapped or swallowed silently. |
 | D20 | **Stored names are disjoint across scopes, and `clear()` is scope-exact** (§4.5). | Root values and namespaced values can share one folder, suite or store without one scope's `clear()` deleting another's values. |
+| D28 | **No `update`** (2026-11-01). The coding layer and the facade have no read-modify-write. | It's only atomic where the storage owns a lock that every write takes, so it would add a lock to File, UserDefaults, Ubiquitous and Keychain, and still not cover other instances or processes. An atomic sequence stays explicit: `IsolatedKeyValueDataStorage.withStorage`. |
 | D27 | **UserDefaults and Ubiquitous escape `%` and NUL in keys and namespaces, and `/` in namespaces, with a strict inverse** (2026-11-01). | A key or namespace with NUL works in memory but never reaches the suite's file, so its value is silently gone on relaunch; measured for every control character and non-ASCII probes, NUL is the only one lost. A strict `percentUnescaping` claims only names the escaping writes, so no two stored keys decode to one key. Assumed for Ubiquitous, whose store can't be tested without the entitlement. |
 | D26 | **Observation is a decorator, `ObservableKeyValueStorage`** (2026-10-31, superseding D11). It holds an `AsyncKeyValueCodingStorage<Storage: AsyncKeyValueDataStorage & Sendable>`, forwards fetch, save, set, delete and clear, and adds `publisher` and `stream`. An internal `ObservationRegistry` behind `Lock` keys observations by storage type, scope and `KeyValueCodingStorageKey` (value type included); each `Observation` sends under its own recursive lock, outside the registry's. Changes are delivered on the writer's thread, right after the write. The factory decides, like the coding storage: `observableStorage(for:)` returns one, or `nil` (the default) for a storage whose changes aren't published; `ObservableUnifiedStorageFactory` observes every storage. `ObservableKeyValueStorage` is `open` (`@unchecked Sendable`, subclasses must stay thread-safe), so a factory can return a subclass. `UnifiedStorage` sends every call through the observable storage when there is one; `publisher` and `stream` are `nil` otherwise. | One responsibility per type: coding storages know nothing about observation. Every sync storage is an async one, so one decorator covers all. No actor: no hop per write, and releasing is synchronous. Opt-in per storage, in the factory that already creates the storages, keeps unobserved ones free of the registry and `UnifiedStorage` free of options. The cost: only writes through an observable storage are published, and concurrent writers of one key may deliver out of order. |
 | D25 | **The built-in storages are thread-safe and `Sendable`** (2026-10-31, superseding D2's "not `Sendable`", D15, and D23's key-type wrapping). The backing-store, `SQLiteDatabase`, `UserDefaultsSuite` and locator protocols inherit `Sendable`, so the six storages' `Sendable` conformance is checked; the default `open` wrappers and locators are `@unchecked Sendable` and warn that subclasses must stay thread-safe. `DefaultSQLiteDatabase` holds a lock per operation. Two check-then-act races are tolerated in the storages: `FileStorage` treats `fileNoSuchFile` from a removal as already deleted, and `KeychainStorage.save` runs its update again after a `.duplicate` add, so the last save wins. The storage protocols stay non-`Sendable`; `UnifiedStorage` takes `AsyncKeyValueDataStorage & Sendable`; the built-in keys name plain storages; `IsolatedKeyValueDataStorage` (no `Sendable` constraint on what it wraps) is the opt-in for storages that aren't thread-safe and for atomic sequences (`withStorage`). | Keys say what is stored, not how it's shared; a simple custom storage needs nothing new; no existentials, overloads or erasure. Five storages were thread-safe already, through their system calls; only SQLite's shared statements needed a lock. Wrapping the built-in storages in an actor instead would serialize each scope (no parallel file I/O) and leave other instances and processes racing. The cost: SQLite callers wait on a lock, blocking their threads, where an actor would suspend them; `IsolatedKeyValueDataStorage` gives that when it matters. |
@@ -168,7 +169,7 @@ UnifiedStorage / IsolatedUnifiedStorage   facade: key → (storage type, scope) 
           │
 IsolatedKeyValueStorage<Wrapped>          OPTIONAL actor, outermost; withStorage { … } + typed conveniences
           │
-KeyValueCodingStorage<Storage>            sync, not Sendable: Value ↔ Data, atomic update, observation
+KeyValueCodingStorage<Storage>            sync, not Sendable: Value ↔ Data
           │
 FileStorage · SQLiteStorage · KeychainStorage · UserDefaultsStorage · InMemoryStorage · UbiquitousStorage
           │                               sync, not Sendable: business logic (system calls, retries,
@@ -188,7 +189,8 @@ try settings.save(user, forKey: userKey)
 // Shared across actors: I/O never runs on the caller, and no unisolated reference survives (`sending`)
 let shared = IsolatedKeyValueStorage(try KeyValueCodingStorage(storage: SQLiteStorage(scope: .default)))
 try await shared.save(user, forKey: userKey)
-try await shared.withStorage { try $0.update(counterKey) { ($0 ?? 0) + 1 } }   // atomic read-modify-write
+let counter = IsolatedKeyValueDataStorage(try SQLiteStorage(scope: .default))
+try await counter.withStorage { try $0.save(increment($0.fetch(forKey: "count")), forKey: "count") }   // atomic read-modify-write
 
 // Facade
 let storage = UnifiedStorage()
@@ -469,7 +471,7 @@ The setup members are `createDirectory(at:)` (always creates intermediate direct
 
 ## 6. Coding layer
 
-**Status (2026-10-31):** synchronous coders (D10), and two coding storages (D22): a synchronous `KeyValueCodingStorage` over a `KeyValueDataStorage`, not `Sendable`, and `AsyncKeyValueCodingStorage` over any storage, `@unchecked Sendable` for today's `UnifiedStorage`. Both throw `KeyValueCodingError<Storage>` and share their encode and decode helpers. **Open:** `update`. Observation is a separate decorator (§6.3, D26).
+**Status (2026-10-31):** synchronous coders (D10), and two coding storages (D22): a synchronous `KeyValueCodingStorage` over a `KeyValueDataStorage`, not `Sendable`, and `AsyncKeyValueCodingStorage` over any storage, `@unchecked Sendable` for today's `UnifiedStorage`. Both throw `KeyValueCodingError<Storage>` and share their encode and decode helpers. No `update` (D28). Observation is a separate decorator (§6.3, D26).
 
 `Sources/KeyValueStorage/Coding/`
 
@@ -496,15 +498,13 @@ public final class KeyValueCodingStorage<Storage: KeyValueDataStorage> {
     public func set<V: CodingValue>(_ value: V?, forKey key: KeyValueCodingStorageKey<Storage, V>) throws
     public func delete<V: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, V>) throws
     public func clear() throws
-    @discardableResult
-    public func update<V: CodingValue>(_ key: KeyValueCodingStorageKey<Storage, V>, _ transform: (V?) throws -> V?) throws -> V?
 
     public func publisher<V: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, V>, includingCurrentValue: Bool = true) throws -> KeyValuePublisher<V?>
     public func stream<V: CodingValue>(forKey key: KeyValueCodingStorageKey<Storage, V>, includingCurrentValue: Bool = true) throws -> AsyncStream<V?>
 }
 ```
 
-`update` reads, transforms and writes in one call. It's atomic when the storage is used from one isolation domain, or inside `IsolatedKeyValueStorage`. If `transform` returns `nil`, the key is deleted.
+No `update` (D28): a read-modify-write that must be atomic runs inside `IsolatedKeyValueDataStorage.withStorage`.
 
 ### 6.3 Observation (done 2026-10-31, D26)
 
@@ -545,7 +545,7 @@ public actor IsolatedKeyValueDataStorage<Wrapped: KeyValueDataStorage>: AsyncKey
 
 ## 8. Facade
 
-**Status (2026-10-31): done (D23, D24), except `update` and the observation redesign (§6.3).**
+**Status (2026-10-31): done (D23, D24, D26).**
 
 `Sources/KeyValueStorage/Layers/UnifiedStorage.swift`
 
@@ -564,7 +564,6 @@ public actor IsolatedKeyValueDataStorage<Wrapped: KeyValueDataStorage>: AsyncKey
   Every requirement has a default in a protocol extension, so a factory implements only what it changes; requirements dispatch dynamically, so a custom `coder(for:)` reaches the default `codingStorage(for:)` (tested). `DefaultUnifiedStorageFactory` is an empty struct: no state, no subclassing, `Sendable` checked by the compiler. `ObservableUnifiedStorageFactory` is an empty struct too, whose `observableStorage(for:)` observes every storage (D26).
 - **`UnifiedStorage`** (`final class`, `@unchecked Sendable`, D24): `async` `fetch`, `save`, `set`, `delete`, `clear(storage:forScope: = .default)`, `publisher` and `stream` (both `nil` unless the factory is observable). It creates one coding storage per storage type and scope on first use, and adds no isolation of its own.
 - **Tests** (`UnifiedStorageTests`): one storage per type and scope, given or default; scopes and types apart; 100 concurrent first calls create once; a failed creation is reported and retried; a waiting storage never blocks another; `.storage` and `.coding` errors; only the observable factory publishes. Client-side: concurrent `SQLiteKey` round trips, async storages, every isolation context.
-- **Open:** `update`, in phase 7.
 
 ## 9. Removals checklist
 
@@ -736,7 +735,6 @@ Tests/
 - fetch: `nil`; decode success; decode throws; storage throws.
 - save: encode throws (no write); write throws (no event); success (event).
 - delete, clear: success emits events (clear notifies every observed key of the scope); failure emits nothing.
-- update: `nil` → value; value → `nil` (delete); value → value; transform throws; decode, encode or storage throws.
 - observation:
   - with and without the current value; reading the current value throws.
   - a different key isn't notified; a different scope isn't notified; another instance on the same scope is notified.
@@ -746,7 +744,7 @@ Tests/
 **IsolatedKeyValueStorage:**
 - forwards every operation and error;
 - `scope` is readable without `await`;
-- `withStorage` is atomic: 1000 concurrent `update` increments end at 1000;
+- `withStorage` is atomic: 1000 concurrent read-modify-write increments end at 1000;
 - a mock storage records overlapping entries and must record none;
 - callable from every isolation context (public API target).
 
@@ -813,7 +811,7 @@ Tests/
 
 Each phase ends with: the library builds on every CI toolchain, the phase's tests pass, and its gated files have 100% coverage.
 
-**Status (2026-10-31):** phases 0–6 done; 6b done except the test revisit (§11.3); 7–11 not started.
+**Status (2026-10-31):** phases 0–7 done; 6b done except the test revisit (§11.3); 8–11 not started.
 
 | Phase | Work | Done when |
 |---|---|---|
@@ -825,7 +823,7 @@ Each phase ends with: the library builds on every CI toolchain, the phase's test
 | 5 | InMemoryStorage: `DefaultInMemoryBackingStoreWrapper`; mock tests | InMemory inventory covered |
 | 6 | SQLiteStorage: extract `DefaultSQLiteBackingStoreWrapper`/`DefaultSQLiteDatabase`; mock tests; move the SQLite integration tests | SQLite inventory covered |
 | 6b | **Sealed scopes** (§S, Appendix A): `ExactString`, the new scopes, places and marks, the planned items of §5.2–5.7, the error refactor (§4.4) and the test revisit (§11.3). Pilot on File, then the other five | §S in all six storages; gated files 100%; macOS, iOS Simulator and KeychainHost green |
-| 7 | Synchronous coders; `KeyValueCodingStorage` with `update` and built-in observation; delete `KeyValueObservableStorage` | Coding inventory covered |
+| 7 | Synchronous coders; `KeyValueCodingStorage` and built-in observation; delete `KeyValueObservableStorage` | Coding inventory covered |
 | 8 | `IsolatedKeyValueStorage` + tests | Isolation inventory covered |
 | 9 | `UnifiedStorage`, `IsolatedUnifiedStorage`, factory protocol + tests | Facade inventory covered |
 | 10 | Integration test target, KeychainHost update, public API and isolation tests rewritten | All targets green on CI |
@@ -853,7 +851,7 @@ Each phase ends with: the library builds on every CI toolchain, the phase's test
 
 ## 14. Risks and notes
 
-- **Cross-process consistency:** isolation is per instance and per process. The app and an extension writing the same scope are only protected by the system itself (SQLite transactions and WAL, atomic file replace, UserDefaults and keychain internals). `update` isn't atomic across processes.
+- **Cross-process consistency:** isolation is per instance and per process. The app and an extension writing the same scope are only protected by the system itself (SQLite transactions and WAL, atomic file replace, UserDefaults and keychain internals). `withStorage` isn't atomic across processes.
 - **iOS group containers:** the system terminates a suspended app that holds a file lock in a group container (`0xdead10cc`). SQLite in an App Group scope should finish its work before suspension. This is already in the scope docs.
 - **Observation across instances on different actors** has no ordering guarantee; in-process users should go through one facade.
 - **Actor I/O on the concurrency pool**, see §7.
