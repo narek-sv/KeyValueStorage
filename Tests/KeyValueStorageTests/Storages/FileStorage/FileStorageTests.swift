@@ -244,6 +244,15 @@ final class FileStorageTests: XCTestCase {
         XCTAssertEqual(backingStore.items, [root.path: .directory, path("other"): .file(data)])
     }
 
+    func testAFileRemovedByAnotherCallSinceTheCheckIsDeleted() throws {
+        // Given: the check finds the file, and another call removes it before this one does
+        backingStore.items = [root.path: .directory, path("key"): .file(data)]
+        backingStore.errors = [(.remove(file("key")), CocoaError(.fileNoSuchFile))]
+
+        // When - Then
+        try makeStorage().delete(forKey: "key")
+    }
+
     // MARK: Clear
 
     func testClearRemovesOnlyTheScopesFiles() throws {

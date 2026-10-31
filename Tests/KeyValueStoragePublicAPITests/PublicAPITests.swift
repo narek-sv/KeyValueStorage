@@ -225,7 +225,42 @@ final class PublicAPITests: XCTestCase {
             XCTAssertEqual(value, index)
         }
 
-        try await storage.clear(storage: IsolatedSQLiteStorage.self, forScope: scope)
+        try await storage.clear(storage: SQLiteStorage.self, forScope: scope)
+    }
+
+    /// Compiles only while the built-in storages are `Sendable`: an instance can be shared between tasks.
+    func testBuiltInStoragesAreSendable() async {
+        // Given
+        let storage = InMemoryStorage(scope: .own(namespace: .init("publicAPISendable-\(UUID().uuidString)")))
+
+        // When: used from another task while this one keeps it
+        await Task.detached { storage.save(Data([1]), forKey: "key") }.value
+        let fetched = storage.fetch(forKey: "key")
+
+        // Then
+        XCTAssertEqual(fetched, Data([1]))
+        _ = { (storage: FileStorage, sqlite: SQLiteStorage, keychain: KeychainStorage, defaults: UserDefaultsStorage) in
+            Task.detached { _ = (storage, sqlite, keychain, defaults) }
+        }
+    }
+
+    /// A custom synchronous storage that's `Sendable` works through `UnifiedStorage` as it is,
+    /// and one that isn't, through `IsolatedKeyValueDataStorage`.
+    func testCustomSynchronousStoragesWorkThroughUnifiedStorage() async throws {
+        // Given
+        let storage = UnifiedStorage()
+        let shared = UnifiedStorageKey<LockedStorage, String>(key: "name", scope: .init(namespace: "publicAPI-\(UUID().uuidString)"))
+        let isolated = UnifiedStorageKey<IsolatedKeyValueDataStorage<PlainStorage>, String>(key: "name")
+
+        // When
+        try await storage.save("Alice", forKey: shared)
+        try await storage.save("Bob", forKey: isolated)
+
+        // Then
+        let sharedValue = try await storage.fetch(forKey: shared)
+        let isolatedValue = try await storage.fetch(forKey: isolated)
+        XCTAssertEqual(sharedValue, "Alice")
+        XCTAssertEqual(isolatedValue, "Bob")
     }
 
     /// Compiles only while the storage and its locator throw `FileStorage.Error`, and clients can match every case.
@@ -257,7 +292,8 @@ final class PublicAPITests: XCTestCase {
     func testFileStorageAcceptsALocator() throws {
         // Given: a locator that keeps values in a folder of the app's choice, under a legacy prefix,
         // as an app adopting existing files might
-        final class LegacyLocator: DefaultFileLocator {
+        /// Unchecked: used from one test at a time.
+        final class LegacyLocator: DefaultFileLocator, @unchecked Sendable {
             let folder: URL
 
             init(folder: URL) {
@@ -373,3 +409,50 @@ private actor RemoteStorage: AsyncKeyValueDataStorage {
 }
 
 private typealias RemoteKey<Value: CodingValue> = UnifiedStorageKey<RemoteStorage, Value>
+
+// MARK: - Custom Storages
+
+private struct NamespaceScope: KeyValueDataStorageScope {
+    let namespace: String
+
+    static var `default`: Self {
+        .init(namespace: "default")
+    }
+}
+
+/// An app's own synchronous storage that isn't thread-safe.
+private final class PlainStorage: KeyValueDataStorage {
+    typealias Key = String
+    typealias Error = Never
+
+    let scope: NamespaceScope
+    private var values = [String: Data]()
+
+    init(scope: NamespaceScope) {
+        self.scope = scope
+    }
+
+    func fetch(forKey key: String) -> Data? { values[key] }
+    func save(_ value: Data, forKey key: String) { values[key] = value }
+    func delete(forKey key: String) { values[key] = nil }
+    func clear() { values = [:] }
+}
+
+/// An app's own synchronous storage that is thread-safe, so `Sendable`.
+private final class LockedStorage: KeyValueDataStorage, @unchecked Sendable {
+    typealias Key = String
+    typealias Error = Never
+
+    let scope: NamespaceScope
+    private let lock = NSLock()
+    private var values = [String: Data]()
+
+    init(scope: NamespaceScope) {
+        self.scope = scope
+    }
+
+    func fetch(forKey key: String) -> Data? { lock.withLock { values[key] } }
+    func save(_ value: Data, forKey key: String) { lock.withLock { values[key] = value } }
+    func delete(forKey key: String) { _ = lock.withLock { values.removeValue(forKey: key) } }
+    func clear() { lock.withLock { values = [:] } }
+}

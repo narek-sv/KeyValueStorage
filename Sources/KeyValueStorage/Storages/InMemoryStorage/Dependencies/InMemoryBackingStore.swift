@@ -10,7 +10,7 @@ import Foundation
 // MARK: - InMemoryBackingStore
 
 /// - Note: Buckets and keys are their exact bytes, as in the other storages: `"é"` and `"e\u{301}"` are two keys.
-public protocol InMemoryBackingStore {
+public protocol InMemoryBackingStore: Sendable {
     func read(forKey key: String, in bucket: String) -> Data?
     func write(_ data: Data, forKey key: String, in bucket: String)
     func remove(forKey key: String, in bucket: String)

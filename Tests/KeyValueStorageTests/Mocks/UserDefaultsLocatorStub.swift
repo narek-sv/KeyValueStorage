@@ -9,7 +9,8 @@ import Foundation
 @testable import KeyValueStorage
 
 /// Fixed names, to check that the storage uses exactly what its locator returns; records each call.
-final class UserDefaultsLocatorStub: UserDefaultsLocator {
+/// Unchecked: used from one test at a time.
+final class UserDefaultsLocatorStub: UserDefaultsLocator, @unchecked Sendable {
     enum Call: Equatable {
         case suiteName(UserDefaultsStorage.Scope)
         case storedKey(UserDefaultsStorage.Key, UserDefaultsStorage.Scope)

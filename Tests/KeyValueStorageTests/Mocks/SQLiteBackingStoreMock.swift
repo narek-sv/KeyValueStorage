@@ -9,7 +9,8 @@ import Foundation
 @testable import KeyValueStorage
 
 /// Records every call, and throws the error set for a call instead of answering it.
-final class SQLiteBackingStoreMock: SQLiteBackingStore {
+/// Unchecked: used from one test at a time.
+final class SQLiteBackingStoreMock: SQLiteBackingStore, @unchecked Sendable {
     enum Call: Equatable {
         case createDirectory(URL)
         case open(URL, FileProtectionType?)
@@ -38,7 +39,8 @@ final class SQLiteBackingStoreMock: SQLiteBackingStore {
 }
 
 /// An in-memory table; records every call, and throws `error` instead of answering.
-final class SQLiteDatabaseMock: SQLiteDatabase {
+/// Unchecked: used from one test at a time.
+final class SQLiteDatabaseMock: SQLiteDatabase, @unchecked Sendable {
     enum Call: Equatable {
         case read(String)
         case write(Data, String)

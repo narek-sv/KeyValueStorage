@@ -9,7 +9,8 @@ import Foundation
 @testable import KeyValueStorage
 
 /// Buckets of its own, unlike the default, which the whole process shares; records every call.
-final class InMemoryBackingStoreMock: InMemoryBackingStore {
+/// Unchecked: used from one test at a time.
+final class InMemoryBackingStoreMock: InMemoryBackingStore, @unchecked Sendable {
     enum Call: Equatable {
         case read(String, String)
         case write(Data, String, String)

@@ -175,7 +175,8 @@ final class DefaultFileLocatorTests: XCTestCase {
 
     func testSubclassesCanCallSuperForBothNameMethods() {
         // Given
-        final class PrefixedLocator: DefaultFileLocator {
+        /// Unchecked: used from one test at a time.
+        final class PrefixedLocator: DefaultFileLocator, @unchecked Sendable {
             override func fileName(forKey key: FileStorage.Key, in scope: FileStorage.Scope) throws(FileStorage.Error) -> String {
                 try "v2-" + super.fileName(forKey: key, in: scope)
             }

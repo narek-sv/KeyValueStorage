@@ -179,6 +179,28 @@ final class FileIntegrationTests: XCTestCase {
         XCTAssertEqual(result.partial, 0)
     }
 
+    // MARK: Concurrency
+
+    func testConcurrentDeletesOfOneFileAllSucceed() throws {
+        // Given
+        let storage = try storage()
+        try storage.save(Data([1]), forKey: "key")
+        let failures = Failures()
+
+        // When: 100 threads delete the same file at once
+        DispatchQueue.concurrentPerform(iterations: 100) { _ in
+            do {
+                try storage.delete(forKey: "key")
+            } catch {
+                failures.append("\(error)")
+            }
+        }
+
+        // Then
+        XCTAssertEqual(failures.all, [])
+        XCTAssertNil(try storage.fetch(forKey: "key"))
+    }
+
     // MARK: Clashes
 
     func testScopesThatDifferOnlyInRetentionProtectionOrGroupKeepTheirValuesApart() throws {

@@ -10,7 +10,8 @@ import Foundation
 
 /// An in-memory file system with Foundation's rules: `remove` deletes a folder with everything inside, `write` needs
 /// the folder, missing items throw, and links aren't followed. Records every call, and throws the error set for a call.
-final class FileBackingStoreMock: FileBackingStore {
+/// Unchecked: used from one test at a time.
+final class FileBackingStoreMock: FileBackingStore, @unchecked Sendable {
     enum Call: Equatable {
         case itemType(URL)
         case read(URL)

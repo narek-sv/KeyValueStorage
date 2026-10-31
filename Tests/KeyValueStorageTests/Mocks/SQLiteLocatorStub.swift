@@ -9,7 +9,8 @@ import Foundation
 @testable import KeyValueStorage
 
 /// Fixed names, to check that the storage uses exactly what its locator returns; records each call.
-final class SQLiteLocatorStub: SQLiteLocator {
+/// Unchecked: used from one test at a time.
+final class SQLiteLocatorStub: SQLiteLocator, @unchecked Sendable {
     enum Call: Equatable {
         case databaseURL(SQLiteStorage.Scope)
         case storedKey(SQLiteStorage.Key, SQLiteStorage.Scope)

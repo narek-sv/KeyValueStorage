@@ -10,7 +10,9 @@ import Foundation
 // MARK: - SQLiteStorage
 
 /// Values in a SQLite database, one row per key; `clear()` empties the whole database.
-public final class SQLiteStorage: KeyValueDataStorage {
+/// - Note: Thread-safe: an instance can be shared between threads and tasks, but a sequence of operations isn't atomic.
+///   Calls on one instance wait for each other, blocking their threads; wrap it in `IsolatedKeyValueDataStorage` to have them suspend instead.
+public final class SQLiteStorage: KeyValueDataStorage, Sendable {
 
     // MARK: Properties
 

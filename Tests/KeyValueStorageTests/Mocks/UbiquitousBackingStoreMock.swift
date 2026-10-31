@@ -10,7 +10,8 @@ import Foundation
 
 /// A store in memory that holds any property-list value, as the iCloud key-value store does; records every call.
 /// - Note: Its keys compare with Swift's `==`, so keys the real store tells apart by bytes can share an entry.
-final class UbiquitousBackingStoreMock: UbiquitousBackingStore {
+/// Unchecked: used from one test at a time.
+final class UbiquitousBackingStoreMock: UbiquitousBackingStore, @unchecked Sendable {
     enum Call: Equatable {
         case read(String)
         case write(Data, String)

@@ -12,8 +12,9 @@ import Foundation
 /// Values in the iCloud key-value store, one per stored key, of up to 1 MiB each.
 /// - Note: Only `Data` at a stored key is a value. Anything else there fetches as `nil`, is never removed, and makes `save`
 ///   throw `.keyOccupied`.
+/// - Note: Thread-safe: an instance can be shared between threads and tasks, but a sequence of operations isn't atomic.
 @available(watchOS 9.0, *)
-public final class UbiquitousStorage: KeyValueDataStorage {
+public final class UbiquitousStorage: KeyValueDataStorage, Sendable {
 
     // MARK: Properties
 

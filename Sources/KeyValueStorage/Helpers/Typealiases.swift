@@ -9,21 +9,10 @@
 
 public typealias CodingValue = Codable & Sendable
 
-// The built-in thread-safe variants of the data storages
-public typealias IsolatedUserDefaultsStorage = IsolatedKeyValueDataStorage<UserDefaultsStorage>
-public typealias IsolatedKeychainStorage = IsolatedKeyValueDataStorage<KeychainStorage>
-public typealias IsolatedInMemoryStorage = IsolatedKeyValueDataStorage<InMemoryStorage>
-public typealias IsolatedFileStorage = IsolatedKeyValueDataStorage<FileStorage>
-public typealias IsolatedSQLiteStorage = IsolatedKeyValueDataStorage<SQLiteStorage>
+public typealias UserDefaultsKey<Value: CodingValue> = UnifiedStorageKey<UserDefaultsStorage, Value>
+public typealias KeychainKey<Value: CodingValue> = UnifiedStorageKey<KeychainStorage, Value>
+public typealias InMemoryKey<Value: CodingValue> = UnifiedStorageKey<InMemoryStorage, Value>
+public typealias FileKey<Value: CodingValue> = UnifiedStorageKey<FileStorage, Value>
+public typealias SQLiteKey<Value: CodingValue> = UnifiedStorageKey<SQLiteStorage, Value>
 @available(watchOS 9.0, *)
-public typealias IsolatedUbiquitousStorage = IsolatedKeyValueDataStorage<UbiquitousStorage>
-
-// The built-in storages are synchronous and not `Sendable`, so `UnifiedStorage` reaches them through `IsolatedKeyValueDataStorage`
-public typealias UserDefaultsKey<Value: CodingValue> = UnifiedStorageKey<IsolatedUserDefaultsStorage, Value>
-public typealias KeychainKey<Value: CodingValue> = UnifiedStorageKey<IsolatedKeychainStorage, Value>
-public typealias InMemoryKey<Value: CodingValue> = UnifiedStorageKey<IsolatedInMemoryStorage, Value>
-public typealias FileKey<Value: CodingValue> = UnifiedStorageKey<IsolatedFileStorage, Value>
-public typealias SQLiteKey<Value: CodingValue> = UnifiedStorageKey<IsolatedSQLiteStorage, Value>
-@available(watchOS 9.0, *)
-public typealias UbiquitousKey<Value: CodingValue> = UnifiedStorageKey<IsolatedUbiquitousStorage, Value>
-
+public typealias UbiquitousKey<Value: CodingValue> = UnifiedStorageKey<UbiquitousStorage, Value>

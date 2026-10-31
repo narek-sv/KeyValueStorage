@@ -228,12 +228,29 @@ final class KeychainStorageTests: XCTestCase {
         }
     }
 
-    func testAnItemAddedBetweenSavesUpdateAndAddIsReported() {
-        // Given: another process adds the item after the update found none
-        backingStore.failures[.add] = .duplicate
+    func testAnItemAddedBetweenSavesUpdateAndAddIsReplaced() throws {
+        // Given: another call adds the item after the update found none
+        let other = item("key", data: Data([9]))
+        backingStore.beforeAdd = { [backingStore] in backingStore.items.append(other) }
+
+        // When
+        try makeStorage().save(data, forKey: "key")
+
+        // Then: the last save wins
+        XCTAssertEqual(backingStore.items.map(\.data), [data])
+        XCTAssertEqual(backingStore.calls.map(operation), [.update, .add, .update])
+    }
+
+    func testAFailingUpdateAfterADuplicateIsReported() {
+        // Given: another call adds the item, and the second update fails
+        let other = item("key", data: Data([9]))
+        backingStore.beforeAdd = { [backingStore] in
+            backingStore.items.append(other)
+            backingStore.failures[.update] = .missingEntitlement
+        }
 
         // When - Then
-        assertThrows(KeychainStorage.Error.keychain(status: errSecDuplicateItem)) { try makeStorage().save(data, forKey: "key") }
+        assertThrows(KeychainStorage.Error.keychain(status: errSecMissingEntitlement)) { try makeStorage().save(data, forKey: "key") }
     }
 
     // MARK: Set
@@ -290,6 +307,15 @@ final class KeychainStorageTests: XCTestCase {
 
     private func makeStorage(_ scope: KeychainStorage.Scope? = nil) -> KeychainStorage {
         KeychainStorage(scope: scope ?? self.scope, backingStore: backingStore, locator: locator)
+    }
+
+    private func operation(_ call: KeychainBackingStoreMock.Call) -> KeychainBackingStoreMock.Operation {
+        switch call {
+        case .read:     return .read
+        case .add:      return .add
+        case .update:   return .update
+        case .remove:   return .remove
+        }
     }
 
     private func item(

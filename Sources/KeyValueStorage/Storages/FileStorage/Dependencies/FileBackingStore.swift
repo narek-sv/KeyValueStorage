@@ -10,7 +10,7 @@ import Foundation
 // MARK: - FileBackingStore
 
 /// One system call per member, without rules: the storage owns them.
-public protocol FileBackingStore {
+public protocol FileBackingStore: Sendable {
     /// `FileManager.attributesOfItem(atPath:)`, which describes a link itself.
     func itemType(at url: URL) throws -> FileAttributeType?
     /// `Data(contentsOf:)`.
@@ -29,7 +29,8 @@ public protocol FileBackingStore {
 // MARK: - DefaultFileBackingStoreWrapper
 
 /// The live file system.
-open class DefaultFileBackingStoreWrapper: FileBackingStore {
+/// - Warning: Subclasses inherit `Sendable`: their own state must be thread-safe too.
+open class DefaultFileBackingStoreWrapper: FileBackingStore, @unchecked Sendable {
     private var fileManager: FileManager { .default }
 
     public init() { }

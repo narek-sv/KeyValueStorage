@@ -15,7 +15,7 @@ import Foundation
 /// - never return a name starting with `.`: SQLite and the system keep dot files in the same folders;
 /// - never give two keys names the volume sees as one, such as names that differ only in case;
 /// - make `key(forFileName:in:)` the exact inverse of `fileName(forKey:in:)`, or `clear()` leaves files behind.
-public protocol FileLocator {
+public protocol FileLocator: Sendable {
     func directory(for scope: FileStorage.Scope) throws(FileStorage.Error) -> URL
 
     func fileName(forKey key: FileStorage.Key, in scope: FileStorage.Scope) throws(FileStorage.Error) -> String
@@ -31,7 +31,8 @@ public protocol FileLocator {
 /// A scope's folder is `<namespace>!/<protection>`, in `<base>/<app identifier>` for `.own` and in the group's container for `.appGroup`.
 /// - Note: Names are exact bytes, not normalized: `"é"` and `"e\u{301}"` are two keys.
 /// - Note: A subclass that changes names overrides both name methods.
-open class DefaultFileLocator: FileLocator {
+/// - Warning: Subclasses inherit `Sendable`: their own state must be thread-safe too.
+open class DefaultFileLocator: FileLocator, @unchecked Sendable {
     private static let maximumNameLength = 255
     /// Ends namespace folders: a portable name never does, so they never clash with items named like keys.
     private static let namespaceMark = "!"

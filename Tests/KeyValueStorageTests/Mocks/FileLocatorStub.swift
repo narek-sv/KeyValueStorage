@@ -9,7 +9,8 @@ import Foundation
 @testable import KeyValueStorage
 
 /// Fixed names, to check that the storage uses exactly what its locator returns; records each call.
-final class FileLocatorStub: FileLocator {
+/// Unchecked: used from one test at a time.
+final class FileLocatorStub: FileLocator, @unchecked Sendable {
     enum Call: Equatable {
         case directory(FileStorage.Scope)
         case fileName(FileStorage.Key, FileStorage.Scope)

@@ -12,7 +12,8 @@ import Security
 /// An in-memory keychain that matches queries as the real one does: a query without an access group or account
 /// matches every group or account, one without `synchronizable` matches only local items, and an item can have no data.
 /// Saves without an access group go to `defaultGroup`. Records every call, and answers a failing operation with its status.
-final class KeychainBackingStoreMock: KeychainBackingStore {
+/// Unchecked: used from one test at a time.
+final class KeychainBackingStoreMock: KeychainBackingStore, @unchecked Sendable {
     enum Call: Equatable {
         case read(KeychainQuery)
         case add(KeychainQuery)
@@ -36,6 +37,8 @@ final class KeychainBackingStoreMock: KeychainBackingStore {
     let defaultGroup = "default.group"
     var items = [Item]()
     var failures = [Operation: KeychainOperationStatus]()
+    /// Runs as an add starts, such as another caller adding the same item first.
+    var beforeAdd: (() -> Void)?
     private(set) var calls = [Call]()
 
     func read(_ query: KeychainQuery) -> (KeychainOperationStatus, AnyObject?) {
@@ -53,6 +56,7 @@ final class KeychainBackingStoreMock: KeychainBackingStore {
 
     func add(_ attributes: KeychainQuery) -> KeychainOperationStatus {
         calls.append(.add(attributes))
+        beforeAdd?()
         if let failure = failures[.add] {
             return failure
         }

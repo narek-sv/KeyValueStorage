@@ -10,7 +10,7 @@ import Foundation
 // MARK: - KeychainLocator
 
 /// - Note: `clear()` removes every item of the scope's service and access group, so a custom locator gives each scope its own.
-public protocol KeychainLocator {
+public protocol KeychainLocator: Sendable {
     /// `kSecAttrService`.
     func service(for scope: KeychainStorage.Scope) -> String
 
@@ -27,7 +27,8 @@ public protocol KeychainLocator {
 /// and `<group>/<namespace>/<protection>` for `.appGroup`, with `%`, `/` and `:` percent-encoded in each name. So no two
 /// scopes share a service, which matters because `.own` queries reach every access group the app has, and apps can share one.
 /// `.iCloud` uses its owner's services, for synced items, which the other scopes' queries never match.
-open class DefaultKeychainLocator: KeychainLocator {
+/// - Warning: Subclasses inherit `Sendable`: their own state must be thread-safe too.
+open class DefaultKeychainLocator: KeychainLocator, @unchecked Sendable {
     /// Separate the parts of `.own` services, so they never match an App Group's.
     private static let ownSeparator = ":"
     /// Separate the parts of `.appGroup` services.

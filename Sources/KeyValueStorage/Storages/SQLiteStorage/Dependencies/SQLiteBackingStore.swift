@@ -10,7 +10,7 @@ import SQLite3
 
 // MARK: - SQLiteBackingStore
 
-public protocol SQLiteBackingStore {
+public protocol SQLiteBackingStore: Sendable {
     /// `FileManager.createDirectory(atPath:withIntermediateDirectories: true)`.
     func createDirectory(at url: URL) throws
     /// `sqlite3_open_v2`, creating the database and its table if needed.
@@ -19,7 +19,7 @@ public protocol SQLiteBackingStore {
 
 // MARK: - SQLiteDatabase
 
-public protocol SQLiteDatabase: AnyObject {
+public protocol SQLiteDatabase: AnyObject, Sendable {
     /// `SELECT value … WHERE key = ?`.
     func read(forKey key: String) throws(SQLiteError) -> Data?
     /// `INSERT OR REPLACE`.
@@ -45,7 +45,8 @@ public struct SQLiteError: Error, Sendable, Equatable {
 // MARK: - DefaultSQLiteBackingStoreWrapper
 
 /// The live SQLite library and file system.
-open class DefaultSQLiteBackingStoreWrapper: SQLiteBackingStore {
+/// - Warning: Subclasses inherit `Sendable`: their own state must be thread-safe too.
+open class DefaultSQLiteBackingStoreWrapper: SQLiteBackingStore, @unchecked Sendable {
     private var fileManager: FileManager { .default }
 
     public init() { }
@@ -61,10 +62,14 @@ open class DefaultSQLiteBackingStoreWrapper: SQLiteBackingStore {
 
 // MARK: - DefaultSQLiteDatabase
 
-final class DefaultSQLiteDatabase: SQLiteDatabase {
+/// Thread-safe: each operation holds the connection's lock, because its prepared statements serve one call at a time.
+/// - Note: Calls on one database wait for each other, blocking their threads meanwhile.
+final class DefaultSQLiteDatabase: SQLiteDatabase, @unchecked Sendable {
     // MARK: Properties
 
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+
+    private let lock = Lock()
 
     private let database: OpaquePointer
     private let readStatement: OpaquePointer
@@ -168,13 +173,16 @@ final class DefaultSQLiteDatabase: SQLiteDatabase {
         }
     }
 
+    /// Under the lock, from binding to reset; `Result` keeps the error typed through the lock's `rethrows`.
     private func run<T>(_ statement: OpaquePointer, _ body: (OpaquePointer) throws(SQLiteError) -> T) throws(SQLiteError) -> T {
-        defer {
-            sqlite3_reset(statement)
-            sqlite3_clear_bindings(statement)
-        }
+        try lock.withLock {
+            defer {
+                sqlite3_reset(statement)
+                sqlite3_clear_bindings(statement)
+            }
 
-        return try body(statement)
+            return Result { () throws(SQLiteError) in try body(statement) }
+        }.get()
     }
 
     private func bind(_ key: String, to statement: OpaquePointer, index: Int32) -> Int32 {

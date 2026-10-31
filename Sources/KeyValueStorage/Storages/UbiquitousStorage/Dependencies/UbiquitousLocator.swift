@@ -13,7 +13,7 @@ import Foundation
 /// - keep stored keys within 128 UTF-16 code units: the store raises an Objective-C exception, a crash, for longer ones;
 /// - make `key(forStoredKey:in:)` the exact inverse of `storedKey(forKey:in:)`, or `clear()` leaves values behind.
 @available(watchOS 9.0, *)
-public protocol UbiquitousLocator {
+public protocol UbiquitousLocator: Sendable {
     /// `.invalidKey` over 128 UTF-16 code units.
     func storedKey(forKey key: UbiquitousStorage.Key, in scope: UbiquitousStorage.Scope) throws(UbiquitousStorage.Error) -> String
 
@@ -27,7 +27,8 @@ public protocol UbiquitousLocator {
 /// in a store the app's other code also writes to.
 /// - Note: A subclass that changes stored keys overrides both key methods.
 @available(watchOS 9.0, *)
-open class DefaultUbiquitousLocator: UbiquitousLocator {
+/// - Warning: Subclasses inherit `Sendable`: their own state must be thread-safe too.
+open class DefaultUbiquitousLocator: UbiquitousLocator, @unchecked Sendable {
     private static let maximumKeyLength = 128
     /// Ends the namespace, and marks the library's entries in a store other code also writes to.
     /// The escaped namespace has no `/`, so the first `/` always ends it.

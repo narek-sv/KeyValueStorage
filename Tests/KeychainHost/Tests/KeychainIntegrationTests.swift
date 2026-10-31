@@ -55,6 +55,25 @@ final class KeychainIntegrationTests: XCTestCase {
         XCTAssertEqual(try storage.fetch(forKey: "e\u{301}"), Data([2]))
     }
 
+    func testConcurrentFirstSavesOfOneKeyAllSucceed() throws {
+        // Given: one instance, and no item yet
+        let storage = storage(.own(namespace: namespace()))
+        let failures = Failures()
+
+        // When: 20 threads save the same key at once, so several find no item and add it
+        DispatchQueue.concurrentPerform(iterations: 20) { index in
+            do {
+                try storage.save(Data([UInt8(index)]), forKey: "key")
+            } catch {
+                failures.append("\(error)")
+            }
+        }
+
+        // Then: every save succeeded, and one of the values is stored
+        XCTAssertEqual(failures.all, [])
+        XCTAssertEqual(try storage.fetch(forKey: "key")?.count, 1)
+    }
+
     // MARK: Protection
 
     func testTheScopesProtectionIsTheItemsAccessibility() throws {
@@ -257,5 +276,21 @@ final class KeychainIntegrationTests: XCTestCase {
                 return XCTFail("Expected .keychain(status: \(expected)), got \(error)", file: file, line: line)
             }
         }
+    }
+}
+
+// MARK: - Failures
+
+/// Collects failures reported from any thread.
+private final class Failures: @unchecked Sendable {
+    private let lock = NSLock()
+    private var failures = [String]()
+
+    var all: [String] {
+        lock.withLock { failures }
+    }
+
+    func append(_ failure: String) {
+        lock.withLock { failures.append(failure) }
     }
 }

@@ -11,7 +11,8 @@ import KeyValueStorage // intentionally not @testable: the backing storage proto
 
 /// Keeps items in memory, because the real keychain needs entitlements that test bundles can't have.
 /// Items are identified like in the keychain: by service, account, access group and whether they're synchronizable.
-final class InMemoryKeychain: KeychainBackingStore {
+/// Unchecked: used from one test at a time.
+final class InMemoryKeychain: KeychainBackingStore, @unchecked Sendable {
     private struct Item {
         let service: String?
         let accessGroup: String?
@@ -60,7 +61,8 @@ final class InMemoryKeychain: KeychainBackingStore {
 }
 
 /// Keeps values in memory, because the real iCloud key-value store needs an entitlement that test bundles can't have.
-final class InMemoryUbiquitousStore: UbiquitousBackingStore {
+/// Unchecked: used from one test at a time.
+final class InMemoryUbiquitousStore: UbiquitousBackingStore, @unchecked Sendable {
     private var values = [String: Data]()
 
     func read(forKey key: String) -> Any? {
@@ -85,7 +87,8 @@ final class InMemoryUbiquitousStore: UbiquitousBackingStore {
 }
 
 /// Buckets of its own, unlike the default in-memory backing store, which the whole process shares.
-final class IsolatedInMemoryStore: InMemoryBackingStore {
+/// Unchecked: used from one test at a time.
+final class IsolatedInMemoryStore: InMemoryBackingStore, @unchecked Sendable {
     private var buckets = [String: [String: Data]]()
 
     func read(forKey key: String, in bucket: String) -> Data? {

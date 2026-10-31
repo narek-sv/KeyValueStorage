@@ -114,7 +114,8 @@ final class DefaultKeychainLocatorTests: XCTestCase {
 }
 
 /// The default locator with the app's identifier fixed.
-private final class FixedIdentifierKeychainLocator: DefaultKeychainLocator {
+/// Unchecked: used from one test at a time.
+private final class FixedIdentifierKeychainLocator: DefaultKeychainLocator, @unchecked Sendable {
     var identifier = "com.test.App"
 
     override var ownIdentifier: String {

@@ -149,6 +149,30 @@ final class SQLiteIntegrationTests: XCTestCase {
         }
     }
 
+    // MARK: Concurrency
+
+    func testOneInstanceIsSafeToShareBetweenThreads() throws {
+        // Given
+        let storage = try storage()
+        let failures = Failures()
+
+        // When: 200 threads save and fetch keys of their own at once
+        DispatchQueue.concurrentPerform(iterations: 200) { index in
+            let key = SQLiteStorage.Key("key\(index)")
+            do {
+                try storage.save(Data([UInt8(index % 256)]), forKey: key)
+                if try storage.fetch(forKey: key) != Data([UInt8(index % 256)]) {
+                    failures.append("key\(index) read back another value")
+                }
+            } catch {
+                failures.append("key\(index): \(error)")
+            }
+        }
+
+        // Then
+        XCTAssertEqual(failures.all, [])
+    }
+
     // MARK: Errors
 
     func testAFileWhereTheFolderGoesIsReportedAndKept() throws {

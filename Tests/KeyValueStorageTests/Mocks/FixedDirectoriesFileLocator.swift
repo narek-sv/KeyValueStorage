@@ -9,7 +9,8 @@ import Foundation
 @testable import KeyValueStorage
 
 /// The default locator with its lookups fixed; remove a directory to make its lookup fail.
-final class FixedDirectoriesFileLocator: DefaultFileLocator {
+/// Unchecked: used from one test at a time.
+final class FixedDirectoriesFileLocator: DefaultFileLocator, @unchecked Sendable {
     var temporary = URL(fileURLWithPath: "/temporary", isDirectory: true)
     var directories: [FileManager.SearchPathDirectory: URL] = [
         .applicationSupportDirectory: URL(fileURLWithPath: "/support", isDirectory: true),

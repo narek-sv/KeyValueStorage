@@ -12,7 +12,8 @@ import Foundation
 /// Values in a `UserDefaults` suite, one per stored key.
 /// - Note: Only `Data` at a stored key is a value. Anything else there fetches as `nil`, is never removed, and makes `save`
 ///   throw `.keyOccupied`.
-public final class UserDefaultsStorage: KeyValueDataStorage {
+/// - Note: Thread-safe: an instance can be shared between threads and tasks, but a sequence of operations isn't atomic.
+public final class UserDefaultsStorage: KeyValueDataStorage, Sendable {
 
     // MARK: Properties
 

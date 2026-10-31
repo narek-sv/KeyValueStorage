@@ -10,7 +10,7 @@ import Foundation
 // MARK: - UserDefaultsLocator
 
 /// - Note: Make `key(forStoredKey:in:)` the exact inverse of `storedKey(forKey:in:)`, or `clear()` leaves values behind.
-public protocol UserDefaultsLocator {
+public protocol UserDefaultsLocator: Sendable {
     func suiteName(for scope: UserDefaultsStorage.Scope) throws(UserDefaultsStorage.Error) -> String
 
     func storedKey(forKey key: UserDefaultsStorage.Key, in scope: UserDefaultsStorage.Scope) -> String
@@ -25,7 +25,8 @@ public protocol UserDefaultsLocator {
 /// `DefaultFileLocator`'s encoding; `.appGroup` uses the group's suite. Keys are stored as `<namespace>!/<key>`, with `%` and
 /// `/` percent-encoded in the namespace: the `!` marks the library's keys in a suite other code also writes to.
 /// - Note: A subclass that changes stored keys overrides both key methods.
-open class DefaultUserDefaultsLocator: UserDefaultsLocator {
+/// - Warning: Subclasses inherit `Sendable`: their own state must be thread-safe too.
+open class DefaultUserDefaultsLocator: UserDefaultsLocator, @unchecked Sendable {
     /// Every suite reads the global domain, so a suite of it would reach every scope.
     private static let globalDomainNames: Set = ["NSGlobalDomain", ".GlobalPreferences", "kCFPreferencesAnyApplication", "Apple Global Domain"]
     /// Ends the namespace, and marks the library's entries in a suite other code also writes to.

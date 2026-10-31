@@ -9,14 +9,14 @@ import Foundation
 
 // MARK: - UserDefaultsBackingStore
 
-public protocol UserDefaultsBackingStore {
+public protocol UserDefaultsBackingStore: Sendable {
     /// `UserDefaults(suiteName:)`.
     func suite(named name: String) -> (any UserDefaultsSuite)?
 }
 
 // MARK: - UserDefaultsSuite
 
-public protocol UserDefaultsSuite: AnyObject {
+public protocol UserDefaultsSuite: AnyObject, Sendable {
     /// `UserDefaults.object(forKey:)`, which also returns registered defaults.
     func read(forKey key: String) -> Any?
     /// `UserDefaults.set(_:forKey:)`.
@@ -30,7 +30,8 @@ public protocol UserDefaultsSuite: AnyObject {
 // MARK: - DefaultUserDefaultsBackingStoreWrapper
 
 /// The live `UserDefaults`.
-open class DefaultUserDefaultsBackingStoreWrapper: UserDefaultsBackingStore {
+/// - Warning: Subclasses inherit `Sendable`: their own state must be thread-safe too.
+open class DefaultUserDefaultsBackingStoreWrapper: UserDefaultsBackingStore, @unchecked Sendable {
     public init() { }
 
     open func suite(named name: String) -> (any UserDefaultsSuite)? {
@@ -40,7 +41,8 @@ open class DefaultUserDefaultsBackingStoreWrapper: UserDefaultsBackingStore {
 
 // MARK: - DefaultUserDefaultsSuite
 
-final class DefaultUserDefaultsSuite: UserDefaultsSuite {
+/// Unchecked only because `UserDefaults` isn't marked `Sendable` on every SDK; it's thread-safe.
+final class DefaultUserDefaultsSuite: UserDefaultsSuite, @unchecked Sendable {
     private let userDefaults: UserDefaults
 
     init(_ userDefaults: UserDefaults) {

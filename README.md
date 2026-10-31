@@ -235,7 +235,7 @@ try await storage.set(nil, forKey: key) // delete
 
 // Removes every value of the storage's scope, `.default` when omitted,
 // including the values saved in previous launches
-try await storage.clear(storage: IsolatedKeychainStorage.self, forScope: .own(namespace: "auth"))
+try await storage.clear(storage: KeychainStorage.self, forScope: .own(namespace: "auth"))
 ```
 
 Clearing removes only the values the library saved in that scope. Other code's values in the same suite, folder or store are never touched.
@@ -294,10 +294,9 @@ actor RemoteStorage: AsyncKeyValueDataStorage {
 }
 ```
 
-Then define a key type for it, and use it like the built-in storages. `UnifiedStorage` shares its storages between tasks, so it takes only `Sendable` ones, and the compiler enforces it:
-* an asynchronous storage, which is usually an actor, as is;
-* a synchronous storage that's `Sendable`, as is;
-* any other synchronous storage wrapped in `IsolatedKeyValueDataStorage`, as the built-in keys do.
+Then define a key type for it, and use it like the built-in storages. `UnifiedStorage` shares its storages between tasks, so it takes only `Sendable` ones, and the compiler enforces it (see [Thread Safety](#thread-safety)):
+* a synchronous or asynchronous storage that's `Sendable`, such as an actor or a storage behind a lock, as is;
+* any other synchronous storage wrapped in `IsolatedKeyValueDataStorage`.
 
 ```swift
 typealias RemoteKey<Value: CodingValue> = UnifiedStorageKey<RemoteStorage, Value>
@@ -311,7 +310,7 @@ let coding = KeyValueCodingStorage(storage: try NewStorage(scope: .default))
 try coding.save(UUID(), forKey: KeyValueCodingStorageKey<NewStorage, UUID>(key: "id"))
 ```
 
-***NOTE***! In `async` generic code, calls on a `KeyValueDataStorage` resolve to the `async` requirements and need `await`; synchronous generic code calls the synchronous ones. An asynchronous storage that isn't an actor must be `Sendable` and safe to call from several tasks at once.
+***NOTE***! In `async` generic code, calls on a `KeyValueDataStorage` resolve to the `async` requirements and need `await`; synchronous generic code calls the synchronous ones. Outside `UnifiedStorage`, your storage's thread safety is up to you.
 
 ---
 ## Xcode autocompletion 
@@ -388,7 +387,7 @@ Coders are synchronous. Pass the coder to a coding storage, or conform your own 
 ```swift
 struct AppStorageFactory: UnifiedStorageFactory {
     func coder<Storage: AsyncKeyValueDataStorage & Sendable>(for storage: Storage) -> any DataCoder {
-        storage is IsolatedFileStorage ? PropertyListDataCoder() : RawDataCoder()
+        storage is FileStorage ? PropertyListDataCoder() : RawDataCoder()
     }
 }
 
@@ -474,22 +473,30 @@ Something that isn't a value where a value goes. It's never replaced or removed:
 ---
 ## Thread Safety
 
-`UnifiedStorage` is safe to call from any thread, task or actor, and adds no locking or actor of its own around operations: calls on storages of different types or scopes, such as a User Defaults fetch and a file write, never wait for each other. Each storage runs the operations of its own scope one at a time.
-
-The storages themselves, such as `FileStorage`, and `KeyValueCodingStorage` are synchronous and unsynchronized, and need no locks: use an instance from one thread or actor, for example the main actor. They aren't `Sendable`, so in Swift 6 the compiler stops code that would use one from two threads or tasks at once. Only when you need to share a synchronous storage between tasks or threads, wrap it in `IsolatedKeyValueDataStorage`, an actor that runs its operations one at a time and is an `AsyncKeyValueDataStorage` itself. Each built-in storage has a name for it, such as `IsolatedSQLiteStorage` for `IsolatedKeyValueDataStorage<SQLiteStorage>`:
+**The built-in storages are thread-safe.** Each one is `Sendable`, so an instance can be used from any thread or task, and the compiler lets you share it. A *sequence* of operations, such as a fetch followed by a save, isn't atomic: another task or process can change the value in between.
 
 ```swift
-let shared = IsolatedSQLiteStorage(try SQLiteStorage(scope: .default))
-try await shared.save(data, forKey: "key")
+let storage = try FileStorage(scope: .default)
+Task.detached { try storage.save(data, forKey: "avatar") }   // fine: FileStorage is Sendable
+```
 
-// Several operations as one atomic step
-try await shared.withStorage { storage in
+**`UnifiedStorage` takes only `Sendable` storages, and adds no locking of its own.** It's safe to call from any thread, task or actor, and calls on storages of different types or scopes, such as a User Defaults fetch and a file write, never wait for each other. For your own storages, thread safety is your responsibility: one that's `Sendable`, such as an actor or a class behind a lock, works as it is, and one that isn't doesn't compile as a key.
+
+**`IsolatedKeyValueDataStorage` makes the rest easy.** It's an actor around any synchronous storage, `Sendable` and an `AsyncKeyValueDataStorage` itself, that runs the storage's operations one at a time:
+
+```swift
+// Make your own storage usable in UnifiedStorage, however simple it is
+typealias NotesKey<Value: CodingValue> = UnifiedStorageKey<IsolatedKeyValueDataStorage<NotesStorage>, Value>
+
+// Several operations as one atomic step, on any storage
+let counter = IsolatedKeyValueDataStorage(try SQLiteStorage(scope: .default))
+try await counter.withStorage { storage in
     let count = try storage.fetch(forKey: "count")
     try storage.save(increment(count), forKey: "count")
 }
 ```
 
-`UnifiedStorage` does this for you: the built-in keys, such as `SQLiteKey`, reach their storages through `IsolatedKeyValueDataStorage`, and it accepts only `Sendable` storages (see [Custom Storages](#custom-storages)). A *sequence* of operations, such as a fetch followed by a save, isn't atomic: another task or process can change the value in between.
+***NOTE***! Calls on one `SQLiteStorage` wait for each other behind its lock, blocking their threads meanwhile. An app that drives one SQLite scope from many tasks at once can wrap it in `IsolatedKeyValueDataStorage`, so that waiting calls suspend instead.
 
 ---
 ## Tests

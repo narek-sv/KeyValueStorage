@@ -103,7 +103,8 @@ final class DefaultUserDefaultsLocatorTests: XCTestCase {
 }
 
 /// The default locator with the app's identifier fixed.
-private final class FixedIdentifierUserDefaultsLocator: DefaultUserDefaultsLocator {
+/// Unchecked: used from one test at a time.
+private final class FixedIdentifierUserDefaultsLocator: DefaultUserDefaultsLocator, @unchecked Sendable {
     var identifier = "com.test.App"
 
     override var ownIdentifier: String {

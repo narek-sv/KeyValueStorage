@@ -9,7 +9,7 @@ import Foundation
 
 // MARK: - UbiquitousBackingStore
 
-public protocol UbiquitousBackingStore {
+public protocol UbiquitousBackingStore: Sendable {
     /// `NSUbiquitousKeyValueStore.object(forKey:)`.
     func read(forKey key: String) -> Any?
     /// `NSUbiquitousKeyValueStore.set(_:forKey:)`.
@@ -26,7 +26,8 @@ public protocol UbiquitousBackingStore {
 
 /// The live iCloud key-value store.
 @available(watchOS 9.0, *)
-open class DefaultUbiquitousBackingStoreWrapper: UbiquitousBackingStore {
+/// - Warning: Subclasses inherit `Sendable`: their own state must be thread-safe too.
+open class DefaultUbiquitousBackingStoreWrapper: UbiquitousBackingStore, @unchecked Sendable {
     private var store: NSUbiquitousKeyValueStore { .default }
 
     public init() { }

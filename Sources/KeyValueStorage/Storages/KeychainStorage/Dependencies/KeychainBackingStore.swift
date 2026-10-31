@@ -10,7 +10,7 @@ import Security
 
 // MARK: - KeychainBackingStore
 
-public protocol KeychainBackingStore {
+public protocol KeychainBackingStore: Sendable {
     /// `SecItemCopyMatching`.
     func read(_ query: KeychainQuery) -> (KeychainOperationStatus, AnyObject?)
     /// `SecItemAdd`.
@@ -24,7 +24,8 @@ public protocol KeychainBackingStore {
 // MARK: - DefaultKeychainBackingStoreWrapper
 
 /// The live keychain.
-open class DefaultKeychainBackingStoreWrapper: KeychainBackingStore {
+/// - Warning: Subclasses inherit `Sendable`: their own state must be thread-safe too.
+open class DefaultKeychainBackingStoreWrapper: KeychainBackingStore, @unchecked Sendable {
     public init() { }
     
     open func read(_ query: KeychainQuery) -> (KeychainOperationStatus, AnyObject?) {

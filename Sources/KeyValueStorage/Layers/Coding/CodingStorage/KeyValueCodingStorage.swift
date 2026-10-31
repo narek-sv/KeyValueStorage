@@ -51,7 +51,7 @@ public enum KeyValueCodingError<Storage: AsyncKeyValueDataStorage>: Swift.Error,
 // MARK: - KeyValueCodingStorage
 
 /// Encodes values and passes them to a synchronous data storage, so code that uses it never needs `await`.
-/// - Warning: Synchronous and unsynchronized, like its storage: use an instance from one thread or actor.
+/// - Note: As thread-safe as its storage: `Sendable` when its storage is.
 open class KeyValueCodingStorage<Storage: KeyValueDataStorage> {
     public typealias Error = KeyValueCodingError<Storage>
 
@@ -121,6 +121,11 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage> {
         }
     }
 }
+
+// MARK: - KeyValueCodingStorage + Sendable
+
+/// Unchecked only because the class is open: its state is immutable, and the coder and the storage are `Sendable`.
+extension KeyValueCodingStorage: @unchecked Sendable where Storage: Sendable { }
 
 // MARK: - CodingStorageActor
 

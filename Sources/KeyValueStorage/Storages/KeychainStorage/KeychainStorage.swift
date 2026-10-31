@@ -13,8 +13,8 @@ import Security
 /// Values in generic password items, one per key, in the scope's service and access group.
 /// - Note: `save`, `delete` and `clear()` never read an item first: reading decrypts it, which fails while the device is locked.
 ///   An item without data fetches as `nil`, and is replaced and removed like any value.
-/// - Warning: If another process adds the key's item between `save`'s update and its add, the add's error is thrown.
-public final class KeychainStorage: KeyValueDataStorage {
+/// - Note: Thread-safe: an instance can be shared between threads and tasks, but a sequence of operations isn't atomic.
+public final class KeychainStorage: KeyValueDataStorage, Sendable {
 
     // MARK: Properties
 
@@ -60,12 +60,14 @@ public final class KeychainStorage: KeyValueDataStorage {
 
     public func save(_ value: Data, forKey key: Key) throws(Error) {
         let account = account(for: key)
-        let status = backingStore.update(query(account: account), with: KeychainQuery(accessibility: accessibility, valueData: value))
+        let status = update(value, account: account)
         guard status == .notFound else {
             return try check(status)
         }
 
-        try check(backingStore.add(query(account: account, accessibility: accessibility, valueData: value)))
+        let added = backingStore.add(query(account: account, accessibility: accessibility, valueData: value))
+        // Added by another call since the update: replace it, so the last save wins
+        try check(added == .duplicate ? update(value, account: account) : added)
     }
 
     public func delete(forKey key: Key) throws(Error) {
@@ -77,6 +79,10 @@ public final class KeychainStorage: KeyValueDataStorage {
     }
 
     // MARK: Helpers
+
+    private func update(_ value: Data, account: String) -> KeychainOperationStatus {
+        backingStore.update(query(account: account), with: KeychainQuery(accessibility: accessibility, valueData: value))
+    }
 
     private func removeValue(matching query: KeychainQuery) throws(Error) {
         let status = backingStore.remove(query)

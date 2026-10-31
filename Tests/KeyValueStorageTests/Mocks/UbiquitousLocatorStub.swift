@@ -10,7 +10,8 @@ import Foundation
 
 /// Fixed names, to check that the storage uses exactly what its locator returns; records each call.
 @available(watchOS 9.0, *)
-final class UbiquitousLocatorStub: UbiquitousLocator {
+/// Unchecked: used from one test at a time.
+final class UbiquitousLocatorStub: UbiquitousLocator, @unchecked Sendable {
     enum Call: Equatable {
         case storedKey(UbiquitousStorage.Key, UbiquitousStorage.Scope)
         case key(String, UbiquitousStorage.Scope)

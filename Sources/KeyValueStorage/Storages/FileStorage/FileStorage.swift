@@ -13,7 +13,8 @@ import Foundation
 /// - Note: Only a regular file at a key's path is a value. Anything else there, or anything but a folder where the scope's
 ///   folder goes, is never read or removed, and `save` throws `.pathOccupied`. Links are never followed.
 /// - Warning: A folder that another process puts at a key's path between `delete`'s check and its removal is removed.
-public final class FileStorage: KeyValueDataStorage {
+/// - Note: Thread-safe: an instance can be shared between threads and tasks, but a sequence of operations isn't atomic.
+public final class FileStorage: KeyValueDataStorage, Sendable {
 
     // MARK: Properties
 
@@ -102,7 +103,13 @@ public final class FileStorage: KeyValueDataStorage {
             return
         }
 
-        try Self.execute { try backingStore.remove(at: url) }
+        try Self.execute {
+            do {
+                try backingStore.remove(at: url)
+            } catch CocoaError.fileNoSuchFile {
+                // Removed by another call since the check: the value is gone either way
+            }
+        }
     }
 
     /// Only names this storage writes, byte for byte: a locator's reverse mapping can accept more.

@@ -9,7 +9,8 @@ import Foundation
 @testable import KeyValueStorage
 
 /// Fixed names, to check that the storage uses exactly what its locator returns; records each call.
-final class InMemoryLocatorStub: InMemoryLocator {
+/// Unchecked: used from one test at a time.
+final class InMemoryLocatorStub: InMemoryLocator, @unchecked Sendable {
     enum Call: Equatable {
         case bucket(InMemoryStorage.Scope)
         case storedKey(InMemoryStorage.Key, InMemoryStorage.Scope)

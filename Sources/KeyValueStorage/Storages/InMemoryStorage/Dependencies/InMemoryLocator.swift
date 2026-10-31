@@ -10,7 +10,7 @@ import Foundation
 // MARK: - InMemoryLocator
 
 /// - Note: `clear()` empties the scope's whole bucket, so a custom locator gives each scope its own.
-public protocol InMemoryLocator {
+public protocol InMemoryLocator: Sendable {
     func bucket(for scope: InMemoryStorage.Scope) -> String
 
     func storedKey(forKey key: InMemoryStorage.Key, in scope: InMemoryStorage.Scope) -> String
@@ -19,7 +19,8 @@ public protocol InMemoryLocator {
 // MARK: - DefaultInMemoryLocator
 
 /// The bucket is the namespace, and the stored key the key, both as they are.
-open class DefaultInMemoryLocator: InMemoryLocator {
+/// - Warning: Subclasses inherit `Sendable`: their own state must be thread-safe too.
+open class DefaultInMemoryLocator: InMemoryLocator, @unchecked Sendable {
     public init() { }
 
     open func bucket(for scope: InMemoryStorage.Scope) -> String {

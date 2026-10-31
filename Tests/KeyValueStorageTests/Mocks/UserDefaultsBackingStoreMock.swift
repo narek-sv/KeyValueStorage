@@ -9,7 +9,8 @@ import Foundation
 @testable import KeyValueStorage
 
 /// Opens the suites in `suites`; any other name is rejected, as `UserDefaults` rejects some. Records every call.
-final class UserDefaultsBackingStoreMock: UserDefaultsBackingStore {
+/// Unchecked: used from one test at a time.
+final class UserDefaultsBackingStoreMock: UserDefaultsBackingStore, @unchecked Sendable {
     var suites = [String: UserDefaultsSuiteMock]()
     private(set) var calls = [String]()
 
@@ -21,7 +22,8 @@ final class UserDefaultsBackingStoreMock: UserDefaultsBackingStore {
 
 /// A suite in memory that holds any property-list value, as `UserDefaults` does; records every call.
 /// - Note: Its keys compare with Swift's `==`, so keys the real suite tells apart by bytes can share an entry.
-final class UserDefaultsSuiteMock: UserDefaultsSuite {
+/// Unchecked: used from one test at a time.
+final class UserDefaultsSuiteMock: UserDefaultsSuite, @unchecked Sendable {
     enum Call: Equatable {
         case read(String)
         case write(Data, String)
