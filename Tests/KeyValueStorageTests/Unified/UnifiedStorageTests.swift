@@ -128,17 +128,55 @@ final class UnifiedStorageTests: XCTestCase {
 
     // MARK: Observation
 
-    func testOnlyTheObservableFactoryPublishes() async throws {
+    func testAFactoryCanObserveThroughItsOwnSubclass() async throws {
+        // Given: a factory that returns a subclass, which counts the saves it publishes
+        let storage = UnifiedStorage(factory: CountingObservableFactory())
+        let key = Key<Int>(key: "key", scope: .init(name: "subclass"))
+        let values = Values<Int?>()
+        let subscription = try await storage.publisher(forKey: key, includingCurrentValue: false)?.sink { values.append($0) }
+
+        // When
+        try await storage.save(1, forKey: key)
+        try await storage.save(2, forKey: key)
+
+        // Then
+        XCTAssertEqual(values.all, [1, 2])
+        XCTAssertEqual(Counter.shared.value, 2)
+        subscription?.cancel()
+    }
+
+    func testOnlyAnObservableStoragePublishes() async throws {
         // Given
         let key = Key<Int>(key: "key", scope: .init(name: "observation"))
 
         // When
         let unobserved = try await UnifiedStorage().publisher(forKey: key)
         let observed = try await UnifiedStorage(factory: ObservableUnifiedStorageFactory()).publisher(forKey: key)
+        let streamed = try await UnifiedStorage(factory: ObservableUnifiedStorageFactory()).stream(forKey: key)
 
         // Then
         XCTAssertNil(unobserved)
         XCTAssertNotNil(observed)
+        XCTAssertNotNil(streamed)
+    }
+
+    func testAnObservableStoragePublishesItsWrites() async throws {
+        // Given
+        let storage = UnifiedStorage(factory: RecordingFactory(observable: true))
+        let key = Key<Int>(key: "key", scope: .init(name: "published"))
+        let values = Values<Int?>()
+        let subscription = try await storage.publisher(forKey: key, includingCurrentValue: false)?.sink { values.append($0) }
+
+        // When
+        try await storage.save(1, forKey: key)
+        try await storage.set(2, forKey: key)
+        try await storage.delete(forKey: key)
+        try await storage.save(3, forKey: key)
+        try await storage.clear(storage: AsyncDataStorageMock.self, forScope: key.scope)
+
+        // Then
+        XCTAssertEqual(values.all, [1, 2, nil, 3, nil])
+        subscription?.cancel()
     }
 }
 
@@ -150,6 +188,7 @@ private final class RecordingFactory: UnifiedStorageFactory, @unchecked Sendable
 
     private let lock = NSLock()
     private let dataCoder: any DataCoder
+    private let observable: Bool
     private var failures: Int
     private var dataStorages = 0
     private var codingStorages = 0
@@ -162,12 +201,13 @@ private final class RecordingFactory: UnifiedStorageFactory, @unchecked Sendable
         lock.withLock { codingStorages }
     }
 
-    init(failures: Int = 0, coder: any DataCoder = DataCoderMock()) {
+    init(failures: Int = 0, coder: any DataCoder = DataCoderMock(), observable: Bool = false) {
         self.failures = failures
         self.dataCoder = coder
+        self.observable = observable
     }
 
-    func dataStorage<Storage: AsyncKeyValueDataStorage & Sendable>(for scope: Storage.Scope) async throws(Storage.Error) -> Storage {
+    func dataStorage<Storage: UnifiedStorable>(for scope: Storage.Scope) async throws(Storage.Error) -> Storage {
         let fails = lock.withLock {
             dataStorages += 1
             failures -= 1
@@ -181,13 +221,17 @@ private final class RecordingFactory: UnifiedStorageFactory, @unchecked Sendable
         return try await Storage(scope: scope)
     }
 
-    func coder<Storage: AsyncKeyValueDataStorage & Sendable>(for storage: Storage) -> any DataCoder {
+    func coder<Storage: UnifiedStorable>(for storage: Storage) -> any DataCoder {
         dataCoder
     }
 
-    func codingStorage<Storage: AsyncKeyValueDataStorage & Sendable>(for storage: Storage) async -> AsyncKeyValueCodingStorage<Storage> {
+    func codingStorage<Storage: UnifiedStorable>(for storage: Storage) async -> AsyncKeyValueCodingStorage<Storage> {
         lock.withLock { codingStorages += 1 }
         return AsyncKeyValueCodingStorage(storage: storage, coder: coder(for: storage))
+    }
+
+    func observableStorage<Storage: UnifiedStorable>(for storage: AsyncKeyValueCodingStorage<Storage>) async -> ObservableKeyValueStorage<Storage>? {
+        observable ? ObservableKeyValueStorage(storage) : nil
     }
 }
 
@@ -266,5 +310,60 @@ private final class Gate: @unchecked Sendable {
         }
 
         waiter?.resume()
+    }
+}
+
+// MARK: - Values
+
+/// Collects values delivered on any thread.
+private final class Values<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values = [Value]()
+
+    var all: [Value] {
+        lock.withLock { values }
+    }
+
+    func append(_ value: Value) {
+        lock.withLock { values.append(value) }
+    }
+}
+
+// MARK: - CountingObservableFactory
+
+/// Observes through `CountingObservableStorage`.
+private struct CountingObservableFactory: UnifiedStorageFactory {
+    func coder<Storage: UnifiedStorable>(for storage: Storage) -> any DataCoder {
+        DataCoderMock()
+    }
+
+    func observableStorage<Storage: UnifiedStorable>(for storage: AsyncKeyValueCodingStorage<Storage>) async -> ObservableKeyValueStorage<Storage>? {
+        CountingObservableStorage(storage)
+    }
+}
+
+// MARK: - CountingObservableStorage
+
+/// Counts its saves, then saves and publishes as its superclass does.
+private final class CountingObservableStorage<Storage: UnifiedStorable>: ObservableKeyValueStorage<Storage>, @unchecked Sendable {
+    override func save<Value: CodingValue>(_ value: Value, forKey key: KeyValueCodingStorageKey<Storage, Value>) async throws(Error) {
+        Counter.shared.increment()
+        try await super.save(value, forKey: key)
+    }
+}
+
+/// A count shared by every specialization of `CountingObservableStorage`.
+private final class Counter: @unchecked Sendable {
+    static let shared = Counter()
+
+    private let lock = NSLock()
+    private var count = 0
+
+    var value: Int {
+        lock.withLock { count }
+    }
+
+    func increment() {
+        lock.withLock { count += 1 }
     }
 }

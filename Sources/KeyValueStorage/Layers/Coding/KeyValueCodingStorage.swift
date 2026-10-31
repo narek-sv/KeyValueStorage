@@ -126,12 +126,3 @@ open class KeyValueCodingStorage<Storage: KeyValueDataStorage> {
 
 /// Unchecked only because the class is open: its state is immutable, and the coder and the storage are `Sendable`.
 extension KeyValueCodingStorage: @unchecked Sendable where Storage: Sendable { }
-
-// MARK: - CodingStorageActor
-
-/// Serializes the observation registry and the delivery of changes to `KeyValueObservableStorage` subscribers.
-@globalActor
-public final class CodingStorageActor {
-    public actor Actor { }
-    public static let shared = Actor()
-}

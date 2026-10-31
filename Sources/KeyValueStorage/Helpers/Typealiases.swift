@@ -8,6 +8,8 @@
 // MARK: - Typealiases
 
 public typealias CodingValue = Codable & Sendable
+/// A storage `UnifiedStorage` can share between tasks: any storage, synchronous or not, that is `Sendable`.
+public typealias UnifiedStorable = AsyncKeyValueDataStorage & Sendable
 
 public typealias UserDefaultsKey<Value: CodingValue> = UnifiedStorageKey<UserDefaultsStorage, Value>
 public typealias KeychainKey<Value: CodingValue> = UnifiedStorageKey<KeychainStorage, Value>

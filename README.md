@@ -294,7 +294,7 @@ actor RemoteStorage: AsyncKeyValueDataStorage {
 }
 ```
 
-Then define a key type for it, and use it like the built-in storages. `UnifiedStorage` shares its storages between tasks, so it takes only `Sendable` ones, and the compiler enforces it (see [Thread Safety](#thread-safety)):
+Then define a key type for it, and use it like the built-in storages. `UnifiedStorage` shares its storages between tasks, so it takes only `Sendable` ones, `UnifiedStorable` for short, and the compiler enforces it (see [Thread Safety](#thread-safety)):
 * a synchronous or asynchronous storage that's `Sendable`, such as an actor or a storage behind a lock, as is;
 * any other synchronous storage wrapped in `IsolatedKeyValueDataStorage`.
 
@@ -386,7 +386,7 @@ Coders are synchronous. Pass the coder to a coding storage, or conform your own 
 
 ```swift
 struct AppStorageFactory: UnifiedStorageFactory {
-    func coder<Storage: AsyncKeyValueDataStorage & Sendable>(for storage: Storage) -> any DataCoder {
+    func coder<Storage: UnifiedStorable>(for storage: Storage) -> any DataCoder {
         storage is FileStorage ? PropertyListDataCoder() : RawDataCoder()
     }
 }
@@ -401,13 +401,20 @@ A factory implements only what it changes: `dataStorage(for:)` creates each stor
 ---
 ## Observation
 
-The `UnifiedStorage` initializer takes a `factory` parameter that conforms to the `UnifiedStorageFactory` protocol, enabling customized storage instantiation and configuration. This feature is particularly valuable for mocking storage in tests or substituting default implementations with custom ones.
-
-By default, this parameter is set to `DefaultUnifiedStorageFactory`, which omits observation capabilities to avoid excessive class burden. However, supplying an `ObservableUnifiedStorageFactory` instance as the parameter activates observation of all underlying storages for changes.
+Observation is opt-in, through the factory: its `observableStorage(for:)` returns the `ObservableKeyValueStorage` of each storage, or `nil` for one whose changes aren't published, which is the default. `ObservableUnifiedStorageFactory` makes every storage observable:
 
 ```swift
 let storage = UnifiedStorage(factory: ObservableUnifiedStorageFactory())
+
+// Or decide per storage, and observe through your own subclass
+struct AppStorageFactory: UnifiedStorageFactory {
+    func observableStorage<Storage: UnifiedStorable>(for storage: AsyncKeyValueCodingStorage<Storage>) async -> ObservableKeyValueStorage<Storage>? {
+        storage is AsyncKeyValueCodingStorage<KeychainStorage> ? nil : LoggingObservableStorage(storage)
+    }
+}
 ```
+
+`ObservableKeyValueStorage` is an `open` class, so a subclass can change how it saves, deletes or publishes, and call `super` for the rest.
 
 Publishers and streams start with the currently stored value, or `nil` if there's none, followed by every change. Pass `includingCurrentValue: false` to get only the changes.
 
@@ -415,7 +422,7 @@ Combine style publishers:
 ```swift
 let key = InMemoryKey<String>(key: "key")
 guard let publisher = try await storage.publisher(forKey: key) else {
-    // The storage is not properly configured
+    // The factory doesn't make this storage observable
     return
 }
 
@@ -429,7 +436,7 @@ let subscription = publisher
 Concurrency style async streams:
 ```swift
 guard let stream = try await storage.stream(forKey: key) else {
-    // The storage is not properly configured
+    // The factory doesn't make this storage observable
     return
 }
 
@@ -438,9 +445,18 @@ for await value in stream {
 }
 ```
 
-Changes are delivered on a background executor, so move to the main thread before updating the UI. Streams resume on the executor of the task that iterates them.
+Without `UnifiedStorage`, wrap a coding storage in `ObservableKeyValueStorage`, which saves, fetches and deletes like it and adds `publisher` and `stream`:
 
-However, it's important to note that only the changes made through observable storages of the current process are published. Changes made by other processes (for example, App Extensions), by storages without observation, or written directly to `UserDefaults`, the keychain or files aren't.
+```swift
+let settings = ObservableKeyValueStorage(AsyncKeyValueCodingStorage(storage: try FileStorage(scope: .default)))
+for await theme in try await settings.stream(forKey: KeyValueCodingStorageKey<FileStorage, String>(key: "theme")) {
+    apply(theme)
+}
+```
+
+Changes are delivered on the thread that makes them, right after the write succeeds, so move to the main thread before updating the UI. Streams resume on the executor of the task that iterates them. An observer sees only the values saved with its own value type.
+
+However, it's important to note that only the changes made through observable storages of the current process are published, from any instance of the same storage type and scope. Changes made by other processes (for example, App Extensions), on the user's other devices, by storages without observation, or written directly to `UserDefaults`, the keychain or files aren't. Two calls that save one key at the same moment may deliver their values in the other order than they were written.
 
 ---
 ## Error handling

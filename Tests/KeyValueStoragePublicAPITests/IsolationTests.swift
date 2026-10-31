@@ -25,11 +25,6 @@ final class IsolationTests: XCTestCase {
     func testCustomActor() async throws {
         try await Caller().run()
     }
-    
-    @CodingStorageActor
-    func testCodingStorageActor() async throws {
-        try await exerciseAPI(context: "CodingStorageActor")
-    }
 }
 
 // MARK: - Helpers
@@ -112,8 +107,8 @@ private func exercise<Storage: KeyValueDataStorage>(_ storage: sending Storage, 
     let description = "\(Storage.self) from \(context)"
     try exerciseSynchronously(storage, key: key, description: description)
 
-    // Async coding and observation, which reach the storage from CodingStorageActor, so through the isolated wrapper
-    let observable = KeyValueObservableStorage(storage: IsolatedKeyValueDataStorage(storage), coder: RawDataCoder())
+    // Async coding and observation; the storage is only known to be synchronous here, so through the isolated wrapper
+    let observable = ObservableKeyValueStorage(AsyncKeyValueCodingStorage(storage: IsolatedKeyValueDataStorage(storage), coder: RawDataCoder()))
     let codingKey = KeyValueCodingStorageKey<IsolatedKeyValueDataStorage<Storage>, Int>(key: key)
     let published = Values<Int?>()
     let subscription = try await observable.publisher(forKey: codingKey).sink { published.append($0) }

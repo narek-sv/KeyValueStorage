@@ -351,12 +351,12 @@ private final class CountingFactory: UnifiedStorageFactory, @unchecked Sendable 
     private(set) var dataStorageCalls = 0
     private(set) var codingStorageCalls = 0
 
-    func dataStorage<Storage: AsyncKeyValueDataStorage & Sendable>(for scope: Storage.Scope) async throws(Storage.Error) -> Storage {
+    func dataStorage<Storage: UnifiedStorable>(for scope: Storage.Scope) async throws(Storage.Error) -> Storage {
         dataStorageCalls += 1
         return try await Storage(scope: scope)
     }
 
-    func codingStorage<Storage: AsyncKeyValueDataStorage & Sendable>(for storage: Storage) async -> AsyncKeyValueCodingStorage<Storage> {
+    func codingStorage<Storage: UnifiedStorable>(for storage: Storage) async -> AsyncKeyValueCodingStorage<Storage> {
         codingStorageCalls += 1
         return AsyncKeyValueCodingStorage(storage: storage, coder: coder(for: storage))
     }
@@ -364,7 +364,7 @@ private final class CountingFactory: UnifiedStorageFactory, @unchecked Sendable 
 
 /// Picks the coder and nothing else.
 private struct PropertyListFactory: UnifiedStorageFactory {
-    func coder<Storage: AsyncKeyValueDataStorage & Sendable>(for storage: Storage) -> any DataCoder {
+    func coder<Storage: UnifiedStorable>(for storage: Storage) -> any DataCoder {
         PropertyListDataCoder()
     }
 }
