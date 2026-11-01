@@ -47,6 +47,38 @@ final class UnifiedIntegrationTests: XCTestCase {
         try await assertRoundTrips(InMemoryStorage.self, scopes: [.own(namespace: .init(namespace)), .own(namespace: .init(namespace + "\0")), .own(namespace: .init(namespace + "/"))])
     }
 
+    // MARK: Moves
+
+    func testAMoveCarriesTheValueToANewProtectionOrNamespace() async throws {
+        // Given: values saved before their keys' scopes changed
+        let storage = UnifiedStorage(factory: factory)
+        let file = FileKey<String>(key: "avatar", scope: .own(protection: .untilFirstUnlock, namespace: "ns"))
+        let sqlite = SQLiteKey<String>(key: "record", scope: .own(namespace: "moved"))
+        let defaults = UserDefaultsKey<String>(key: "flag", scope: .own(namespace: "moved"))
+        try await storage.save("file", forKey: FileKey<String>(key: "avatar", scope: .own(namespace: "ns")))
+        try await storage.save("sqlite", forKey: SQLiteKey<String>(key: "record", scope: .own(namespace: "ns")))
+        try await storage.save("defaults", forKey: UserDefaultsKey<String>(key: "flag", scope: .own(namespace: "ns")))
+
+        // When
+        try await storage.move(file, from: .own(namespace: "ns"))
+        try await storage.move(sqlite, from: .own(namespace: "ns"))
+        try await storage.move(defaults, from: .own(namespace: "ns"))
+
+        // Then: each value is in its key's new scope only
+        let movedFile = try await storage.fetch(forKey: file)
+        let movedRecord = try await storage.fetch(forKey: sqlite)
+        let movedFlag = try await storage.fetch(forKey: defaults)
+        XCTAssertEqual(movedFile, "file")
+        XCTAssertEqual(movedRecord, "sqlite")
+        XCTAssertEqual(movedFlag, "defaults")
+        let oldFile = try await storage.fetch(forKey: FileKey<String>(key: "avatar", scope: .own(namespace: "ns")))
+        let oldRecord = try await storage.fetch(forKey: SQLiteKey<String>(key: "record", scope: .own(namespace: "ns")))
+        let oldFlag = try await storage.fetch(forKey: UserDefaultsKey<String>(key: "flag", scope: .own(namespace: "ns")))
+        XCTAssertNil(oldFile)
+        XCTAssertNil(oldRecord)
+        XCTAssertNil(oldFlag)
+    }
+
     // MARK: Values
 
     func testEveryValueTypeKeepsItsBytesThroughEachStorage() async throws {

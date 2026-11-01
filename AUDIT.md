@@ -14,8 +14,7 @@ The core is solid. Scope isolation holds for all six storages with the default l
 the naming encodings are injective and safe on case- and normalization-insensitive volumes, and the test suite is
 unusually thorough. What stands between the branch and a release:
 
-1. Changing a scope's protection in an app update hides every existing value (§4a).
-2. `IsolatedDataStorage.withStorage` is atomic only within one instance, but the README calls it an atomic step (§4b).
+1. `IsolatedDataStorage.withStorage` is atomic only within one instance, but the README calls it an atomic step (§4a).
 
 ---
 
@@ -58,8 +57,6 @@ unusually thorough. What stands between the branch and a release:
 4. **Observation is narrow (low, design).** Only changes made in this process, through the same storage type and scope,
    with the same value type, are seen. Ubiquitous's `didChangeExternallyNotification` and UserDefaults'
    `didChangeNotification` could feed it.
-5. **Protection is part of a scope's identity.** Defensible, since it rules out two scopes rewriting each other's
-   accessibility, but it causes §4a.
 
 ---
 
@@ -71,14 +68,14 @@ Measured per call, in-memory storage, release build:
 | --- | --- |
 | `InMemoryStorage.fetch` (sync) | 0.12 µs |
 | `AsyncCodingStorage.fetch` (String) | 0.28 µs |
-| `UnifiedStorage.fetch` (String) | 1.27 µs |
-| `UnifiedStorage.save` (Int, JSON) | 1.66 µs |
-| `UnifiedStorage(observable: true).save` (Int) | 1.96 µs |
+| `UnifiedStorage.fetch` (String) | 1.50 µs |
+| `UnifiedStorage.save` (Int, JSON) | 1.86 µs |
+| `UnifiedStorage(observable: true).save` (Int) | 2.20 µs |
 
 Breakdown of the facade's lookup: boxing `UnderlyingStorageKey` into `AnyHashable` and looking it up costs ~0.38 µs;
 the lock, the `as?` cast and awaiting the finished task add ~0.07 µs.
 
-1. **Facade cache key (low–medium).** ~1 µs per call over the coding storage, ~4.5×. A typed two-level cache,
+1. **Facade cache key (low–medium).** ~1.2 µs per call over the coding storage, ~5×, about 0.2 µs of it the scope lock `move` needs. A typed two-level cache,
    `[ObjectIdentifier: TypedCache<Storage>]` with `[Storage.Scope: CreationTask]` inside, removes the `AnyHashable`
    boxing. Matters only for InMemory and UserDefaults; the other storages' I/O dwarfs it.
 2. **SQLite copies every blob (low).** `bind` uses `SQLITE_TRANSIENT`, so SQLite copies the whole value before
@@ -108,38 +105,32 @@ crash there. Verify on the oldest supported systems (`REFACTOR_PLAN §2`); only 
 
 ## 4. Business-logic gaps and data-loss risks
 
-### 4a. Changing a scope's protection hides its values (high, docs)
-
-Protection is part of the place, so an update that changes `.own(protection: .whileLocked)` to `.untilFirstUnlock`
-finds nothing. The README recommends exactly that change ("Use `.untilFirstUnlock` if your app needs the items while in
-the background"). The rule is documented; the consequence and a migration recipe are not. Same for any namespace change.
-
-### 4b. `withStorage` is atomic only per instance (medium, docs)
+### 4a. `withStorage` is atomic only per instance (medium, docs)
 
 README: "Several operations as one atomic step, on any storage." It excludes only calls through the same
 `IsolatedDataStorage` instance: not `UnifiedStorage`'s own storage of the scope, other instances, or other processes.
 Read-modify-write written from the README example loses updates. See §1.2.
 
-### 4c. UserDefaults before first unlock (medium, verify)
+### 4b. UserDefaults before first unlock (medium, verify)
 
 During prewarming or before the first unlock after a reboot, the preferences file is unreadable and UserDefaults returns
 `nil` for every key. File and Keychain throw `.protectedDataUnavailable` in the same situation; UserDefaults can't tell.
 Apps will take it for a first launch. Writes in that window may not persist, or may replace the real values once the
 file is readable. At least a `- Warning:` on the storage.
 
-### 4d. Large UserDefaults values (low–medium, verify)
+### 4c. Large UserDefaults values (low–medium, verify)
 
 CFPreferences logs values of 4 MiB or more as invalid on iOS, and tvOS's limit is much lower. `set` reports nothing,
 so a value can be dropped silently. `UbiquitousStorage` checks value size; `UserDefaultsStorage` doesn't. Document, and
 consider a `valueTooLarge` check like Ubiquitous's.
 
-### 4e. App Group SQLite and suspension (medium, docs, verify)
+### 4d. App Group SQLite and suspension (medium, docs, verify)
 
 `REFACTOR_PLAN §4` says "the scope docs say so" about `0xdead10cc`, but no scope doc mentions it. An open WAL connection
 keeps a shared lock on the `-shm` file, and the system terminates an app suspended while holding a lock in a shared
 container. Document on `SQLiteStorage.Scope.appGroup`; confirm on a device whether an idle connection triggers it.
 
-### 4f. Minor
+### 4e. Minor
 
 - FileStorage's durability on power loss isn't stated (SQLite's is): `Data.write(.atomic)` doesn't `fsync`.
 - Interrupted atomic writes leave hidden temp files (`.dat.nosync…`) that `clear()` never removes: disk space, not values.
@@ -152,8 +143,8 @@ container. Document on `SQLiteStorage.Scope.appGroup`; confirm on a device wheth
 
 ### Docs and comments
 
-- `REFACTOR_PLAN §4` claims the App Group scope docs warn about suspension; they don't (§4e).
-- README `withStorage`: needs "only against calls through this instance" (§4b).
+- `REFACTOR_PLAN §4` claims the App Group scope docs warn about suspension; they don't (§4d).
+- README `withStorage`: needs "only against calls through this instance" (§4a).
 - README Thread Safety note: "so that waiting calls suspend instead" — callers suspend, but the actor's thread still
   blocks for the whole call.
 - `UserDefaultsStorage.Scope`: lists launch arguments and registered defaults, not the global domain, which every suite
@@ -226,4 +217,4 @@ No data races found:
 - Creation is deduplicated without a race, and failures aren't cached.
 - The observation's version check lets a change win over a concurrent read.
 
-The remaining races are logical: observation delivery order (documented) and per-instance atomicity (§4b).
+The remaining races are logical: observation delivery order (documented) and per-instance atomicity (§4a).

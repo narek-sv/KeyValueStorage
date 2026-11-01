@@ -240,6 +240,18 @@ try await storage.clear(storage: KeychainStorage.self, forScope: .own(namespace:
 
 Clearing removes only the values the library saved in that scope. Other code's values in the same suite, folder or store are never touched.
 
+### Moving values between scopes
+
+A scope is where values live, so a key whose scope changes, such as its protection or namespace in an app update, finds none of the values saved before. Move each key's value into its new scope, for example at launch:
+
+```swift
+// An app update that reads the token while the device is locked changes its protection from the default `.whileLocked`
+let token = KeychainKey<String>(key: "token", scope: .own(protection: .untilFirstUnlock, namespace: "auth"))
+try await storage.move(token, from: .own(protection: .whileLocked, namespace: "auth"))
+```
+
+`move` saves the value in the key's scope, unless a value is there already, and only then removes it from the old scope, so the value is never lost; a failed or interrupted move is finished by calling it again. Calls through the same `UnifiedStorage` in either scope wait until the move is done. Other `UnifiedStorage` instances, storages used directly and other processes don't wait, so move values before they use the key.
+
 ---
 ## Type Inference
 
@@ -345,7 +357,7 @@ then Xcode will suggest all the keys specified in the extension when you put a d
 
 The scope's `protection` sets when its items can be read. By default `.whileLocked` is used: the items can be read only while the device is unlocked, one of the most restrictive options with good data protection.
 
-Use `.untilFirstUnlock` if your app needs the items while in the background. Note that it is less secure than `.whileLocked`.
+Use `.untilFirstUnlock` if your app needs the items while in the background. Note that it is less secure than `.whileLocked`. Changing an existing key's protection moves it to a new place, so move its items with `move(_:from:)` (see [Moving values between scopes](#moving-values-between-scopes)), or users lose them, such as a signed-in session.
 
 Here are all the protection levels:
 * `untilFirstUnlock` (`kSecAttrAccessibleAfterFirstUnlock`)
@@ -496,7 +508,14 @@ let storage = try FileStorage(scope: .default)
 Task.detached { try storage.save(data, forKey: "avatar") }   // fine: FileStorage is Sendable
 ```
 
-**`UnifiedStorage` takes only `Sendable` storages, and adds no locking of its own.** It's safe to call from any thread, task or actor, and calls on storages of different types or scopes, such as a User Defaults fetch and a file write, never wait for each other. For your own storages, thread safety is your responsibility: one that's `Sendable`, such as an actor or a class behind a lock, works as it is, and one that isn't doesn't compile as a key.
+**`UnifiedStorage` takes only `Sendable` storages.** It's safe to call from any thread, task or actor, and calls on storages of different types or scopes, such as a User Defaults fetch and a file write, never wait for each other. Only `move(_:from:)` holds its two scopes: calls in them wait until it's done, and it waits for those already running. For your own storages, thread safety is your responsibility: one that's `Sendable`, such as an actor or a class behind a lock, works as it is, and one that isn't doesn't compile as a key.
+
+**Use one `UnifiedStorage` for your app.** An instance coordinates only its own calls: `move(_:from:)` holds its scopes against calls through the same instance, not through another. Several instances never break a value, since every storage they create is thread-safe, but a call through one can see another's move half done. So:
+* Create one `UnifiedStorage` and share it, for example as a static property or through dependency injection.
+* If you need more than one, such as one with observation and one without, give each its own scopes.
+* Nothing coordinates with your app extensions, other processes, or storages you use directly: move values before they use the key, for example at launch.
+
+Even through one instance, a sequence of calls, such as a fetch followed by a save, isn't atomic: another task can save in between.
 
 **`IsolatedDataStorage` makes the rest easy.** It's an actor around any synchronous storage, `Sendable` and an `AsyncDataStorage` itself, that runs the storage's operations one at a time:
 
