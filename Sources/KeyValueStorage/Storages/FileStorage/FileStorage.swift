@@ -54,7 +54,14 @@ public final class FileStorage: DataStorage, Sendable {
             return nil
         }
 
-        return try Self.execute { try backingStore.read(at: url) }
+        return try Self.execute { () throws -> Data? in
+            do {
+                return try backingStore.read(at: url)
+            } catch CocoaError.fileReadNoSuchFile {
+                // Removed by another call since the check: there's no value
+                return nil
+            }
+        }
     }
 
     public func save(_ value: Data, forKey key: Key) throws(Error) {

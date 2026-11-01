@@ -293,6 +293,41 @@ final class FileIntegrationTests: XCTestCase {
         XCTAssertNil(try storage.fetch(forKey: "key"))
     }
 
+    func testFetchesRacingDeletesOfTheirFileFindTheValueOrNone() throws {
+        // Given
+        let storage = try storage()
+        let value = Data([1])
+        let fetches = Fetches()
+        let failures = Failures()
+        let deadline = Date().addingTimeInterval(0.5)
+
+        // When: one thread fetches the file while another deletes and saves it again, for half a second; both have
+        // returned when `concurrentPerform` does
+        DispatchQueue.concurrentPerform(iterations: 2) { thread in
+            while Date() < deadline {
+                do {
+                    if thread == 0 {
+                        let fetched = try storage.fetch(forKey: "key")
+                        fetches.record(fetched)
+                        if let fetched, fetched != value {
+                            failures.append("fetched \(fetched)")
+                        }
+                    } else {
+                        try storage.delete(forKey: "key")
+                        try storage.save(value, forKey: "key")
+                    }
+                } catch {
+                    failures.append("\(error)")
+                }
+            }
+        }
+
+        // Then: the threads overlapped, since the fetches found the file and found none, and no fetch failed
+        XCTAssertGreaterThan(fetches.found, 0)
+        XCTAssertGreaterThan(fetches.missing, 0)
+        XCTAssertEqual(Set(failures.all), [])
+    }
+
     // MARK: Clashes
 
     func testScopesThatDifferOnlyInRetentionProtectionOrGroupKeepTheirValuesApart() throws {
@@ -596,6 +631,30 @@ final class FileIntegrationTests: XCTestCase {
         let error = error as NSError
         let posix = error.domain == NSPOSIXErrorDomain ? error : error.userInfo[NSUnderlyingErrorKey] as? NSError
         return posix.flatMap { $0.domain == NSPOSIXErrorDomain ? POSIXErrorCode(rawValue: Int32($0.code)) : nil }
+    }
+}
+
+/// Counts what fetches found, from any thread.
+private final class Fetches: @unchecked Sendable {
+    private let lock = NSLock()
+    private var counts = (found: 0, missing: 0)
+
+    var found: Int {
+        lock.withLock { counts.found }
+    }
+
+    var missing: Int {
+        lock.withLock { counts.missing }
+    }
+
+    func record(_ value: Data?) {
+        lock.withLock {
+            if value == nil {
+                counts.missing += 1
+            } else {
+                counts.found += 1
+            }
+        }
     }
 }
 

@@ -171,6 +171,15 @@ final class FileStorageTests: XCTestCase {
         XCTAssertEqual(backingStore.calls, [.itemType(root)])
     }
 
+    func testAFileRemovedByAnotherCallSinceTheCheckFetchesAsNoValue() throws {
+        // Given: the check finds the file, and another call removes it before this one reads it
+        backingStore.items = [root.path: .directory, path("key"): .file(data)]
+        backingStore.errors = [(.read(file("key")), CocoaError(.fileReadNoSuchFile))]
+
+        // When - Then
+        XCTAssertNil(try makeStorage().fetch(forKey: "key"))
+    }
+
     // MARK: Save
 
     func testSaveWritesAtomicallyWithTheScopesProtection() throws {
