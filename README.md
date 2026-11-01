@@ -171,7 +171,11 @@ You need this to use the keychain storage in a macOS app. The keychain storage u
 
 ### Privacy Manifest
 
-There's nothing to set up. `KeyValueStorage` includes a privacy manifest that declares its use of the User Defaults API with the reason `C56D.1`, which covers a library that reads and writes User Defaults only when your app asks it to. Declare your app's own use of the API in your app's privacy manifest.
+There's nothing to set up. `KeyValueStorage` includes a privacy manifest that declares the two APIs it uses that Apple asks a reason for:
+* User Defaults, with the reason `C56D.1`, which covers a library that reads and writes User Defaults only when your app asks it to.
+* File timestamps, with the reason `C617.1`: the file storage looks up the type of its own files, in your app's or App Group's container, with `lstat`, which Apple lists among the APIs that return file timestamps.
+
+Declare your app's own use of these APIs in your app's privacy manifest.
 
 ---
 ## Usage
