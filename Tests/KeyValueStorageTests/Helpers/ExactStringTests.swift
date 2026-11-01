@@ -61,6 +61,43 @@ final class ExactStringTests: XCTestCase {
         XCTAssertEqual(ExactString(bridged).hashValue, ExactString("Caf\u{E9} 🙂").hashValue)
     }
 
+    func testStringsHoldingTheirBytesTogetherCompareByCountThenBytes() {
+        // Given: Swift's own strings, which hold their bytes together
+        XCTAssertTrue(isContiguous("ab"))
+
+        // When - Then
+        XCTAssertEqual(ExactString(""), ExactString(""), "both empty")
+        XCTAssertNotEqual(ExactString(""), ExactString("a"), "lengths differ")
+        XCTAssertNotEqual(ExactString("ab"), ExactString("abc"), "one is the start of the other")
+        XCTAssertNotEqual(ExactString("ab"), ExactString("ac"), "same length, other bytes")
+        XCTAssertEqual(ExactString("ab"), ExactString(String(decoding: Array("ab".utf8), as: UTF8.self)), "same bytes, another buffer")
+    }
+
+    func testFoundationStringsCompareLikeSwiftOnes() {
+        // Given: Foundation strings, in place when ASCII and not otherwise
+        let ascii = foundationString("key")
+        let unicode = foundationString("Caf\u{E9} 🙂")
+        XCTAssertTrue(isContiguous(ascii))
+        XCTAssertFalse(isContiguous(unicode))
+
+        // When - Then: on either side of the comparison, equal and not
+        for (bridged, native) in [(ascii, "key"), (unicode, "Caf\u{E9} 🙂")] {
+            XCTAssertEqual(ExactString(bridged), ExactString(native), native)
+            XCTAssertEqual(ExactString(native), ExactString(bridged), native)
+            XCTAssertNotEqual(ExactString(bridged), ExactString(native + "!"), native)
+            XCTAssertNotEqual(ExactString(native + "!"), ExactString(bridged), native)
+        }
+
+        XCTAssertEqual(ExactString(unicode), ExactString(foundationString("Caf\u{E9} 🙂")), "neither in place")
+        XCTAssertNotEqual(ExactString(unicode), ExactString(foundationString("Cafe\u{301} 🙂")), "neither in place, canonically equivalent")
+    }
+
+    func testFoundationStringsHashLikeSwiftOnes() {
+        for string in ["key", "Caf\u{E9} 🙂", ""] {
+            XCTAssertEqual(ExactString(foundationString(string)).hashValue, ExactString(string).hashValue, string)
+        }
+    }
+
     func testLiteralsInterpolationAndDescription() {
         let literal: ExactString = "key"
         let interpolated: ExactString = "k\("e")y"
@@ -69,5 +106,16 @@ final class ExactStringTests: XCTestCase {
         XCTAssertEqual(literal.string, "key")
         XCTAssertEqual(literal.description, "key")
         XCTAssertEqual("\(literal)", "key")
+    }
+
+    // MARK: Helpers
+
+    /// A string Foundation made from the bytes, as keys listed by `UserDefaults` or the file system are, not a Swift one.
+    private func foundationString(_ string: String) -> String {
+        NSString(data: Data(string.utf8), encoding: NSUTF8StringEncoding)! as String
+    }
+
+    private func isContiguous(_ string: String) -> Bool {
+        string.utf8.withContiguousStorageIfAvailable { _ in true } ?? false
     }
 }

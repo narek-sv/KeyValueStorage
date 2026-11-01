@@ -72,8 +72,7 @@ the lock, the `as?` cast and awaiting the finished task add ~0.07 µs.
    stepping. Binding with `SQLITE_STATIC` and stepping inside `value.withUnsafeBytes` avoids a copy of multi-MB values.
    Keep `utf8CString` for the key: `withUTF8` can give a nil pointer for an empty string, which binds NULL.
    `sqlite3_clear_bindings` is redundant, since every call rebinds every parameter.
-3. **`ExactString.==` (low).** Compare `utf8.count` first, or `memcmp` through `withUTF8`, instead of `elementsEqual`.
-4. **Already good:** File (one `lstat` per item, one folder check in `clear`), Keychain (update first, add only when
+3. **Already good:** File (one `lstat` per item, one folder check in `clear`), Keychain (update first, add only when
    missing), SQLite (prepared statements, WAL, `synchronous = NORMAL`).
 
 Note: calling the async API from the main actor in a tight loop costs ~9 µs per call in executor hops; that's Swift's
