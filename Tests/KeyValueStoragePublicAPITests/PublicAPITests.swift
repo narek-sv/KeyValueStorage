@@ -274,7 +274,7 @@ final class PublicAPITests: XCTestCase {
             switch error {
             case .invalidKey(key):
                 break
-            case .invalidKey, .invalidNamespace, .pathOccupied, .directoryNotFound, .groupDirectoryNotFound, .protectedDataUnavailable, .other:
+            case .invalidKey, .invalidNamespace, .pathOccupied, .directoryNotFound, .groupDirectoryNotFound, .protectedDataUnavailable, .clearIncomplete, .other:
                 XCTFail("Unexpected \(error)")
             }
         }

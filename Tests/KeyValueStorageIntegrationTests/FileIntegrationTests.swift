@@ -442,11 +442,17 @@ final class FileIntegrationTests: XCTestCase {
             storageError { try storage.clear() }
         ]
 
-        // Then
-        for error in errors {
+        // Then: the value `clear()` couldn't remove is reported under its key
+        for error in errors.dropLast() {
             assertOther(error, posix: .EACCES)
         }
 
+        guard case let .clearIncomplete(failures)? = errors.last else {
+            return XCTFail("Expected .clearIncomplete, got \(String(describing: errors.last))")
+        }
+
+        XCTAssertEqual(Array(failures.keys), ["key"])
+        assertOther(failures["key"], posix: .EACCES)
         XCTAssertEqual(try storage.fetch(forKey: "key"), Data([1]))
         XCTAssertNil(try storage.fetch(forKey: "new"))
     }

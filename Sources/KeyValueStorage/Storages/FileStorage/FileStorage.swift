@@ -77,6 +77,8 @@ public final class FileStorage: DataStorage, Sendable {
         try removeValue(at: url(for: key))
     }
 
+    /// Tries to remove every value of the scope, even after one fails.
+    /// - Throws: `.clearIncomplete` with each value it couldn't remove; any other error before it removes anything.
     public func clear() throws(Error) {
         guard try itemType(at: root) == .typeDirectory else {
             return
@@ -84,11 +86,24 @@ public final class FileStorage: DataStorage, Sendable {
 
         // The folder can also hold SQLite's files and other code's; it's checked once, above
         let names = try Self.execute { try backingStore.itemNames(at: root) }
-        for name in names where isValueName(name) {
-            let url = root.appendingPathComponent(name, isDirectory: false)
-            if try isFile(at: url) {
-                try remove(at: url)
+        var failures = [Key: Error]()
+        for name in names {
+            guard let key = valueKey(forFileName: name) else {
+                continue
             }
+
+            do throws(Error) {
+                let url = root.appendingPathComponent(name, isDirectory: false)
+                if try isFile(at: url) {
+                    try remove(at: url)
+                }
+            } catch {
+                failures[key] = error
+            }
+        }
+
+        guard failures.isEmpty else {
+            throw .clearIncomplete(failures)
         }
     }
 
@@ -126,14 +141,15 @@ public final class FileStorage: DataStorage, Sendable {
         }
     }
 
-    /// Only names this storage writes, byte for byte: a locator's reverse mapping can accept more.
-    private func isValueName(_ name: String) -> Bool {
+    /// The key of a name this storage writes, byte for byte, or `nil`: a locator's reverse mapping can accept more.
+    private func valueKey(forFileName name: String) -> Key? {
         guard let key = locator.key(forFileName: name, in: scope),
-              let encoded = try? locator.fileName(forKey: key, in: scope) else {
-            return false
+              let encoded = try? locator.fileName(forKey: key, in: scope),
+              Key(encoded) == Key(name) else {
+            return nil
         }
 
-        return Key(encoded) == Key(name)
+        return key
     }
 
     private func url(for key: Key) throws(Error) -> URL {

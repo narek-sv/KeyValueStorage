@@ -68,6 +68,8 @@ open class ObservableStorage<Storage: AsyncDataStorage & Sendable>: @unchecked S
     }
 
     /// Every observed key of the scope gets `nil`.
+    /// - Note: Only when the storage's `clear()` succeeds: when it throws, no observer is told, even about values it removed
+    ///   before failing, such as those a file storage's `.clearIncomplete` doesn't list.
     open func clear() async throws(Error) {
         try await storage.clear()
         for observation in registry.observations(in: scopeID) {

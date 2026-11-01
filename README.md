@@ -479,7 +479,7 @@ for await theme in try await settings.stream(forKey: CodingStorageKey<FileStorag
 
 Changes are delivered on the thread that makes them, right after the write succeeds, so move to the main thread before updating the UI. Subscribers run inside the save, and other saves of the same key wait for them: keep them short, and move slow work off with `receive(on:)` or a stream. Streams resume on the executor of the task that iterates them. An observer sees only the values saved with its own value type.
 
-However, it's important to note that only the changes made through observable storages of the current process are published, from any instance of the same storage type and scope. Changes made by other processes (for example, App Extensions), on the user's other devices, by storages without observation, or written directly to `UserDefaults`, the keychain or files aren't. Two calls that save one key at the same moment may deliver their values out of order.
+However, it's important to note that only the changes made through observable storages of the current process are published, from any instance of the same storage type and scope. Changes made by other processes (for example, App Extensions), on the user's other devices, by storages without observation, or written directly to `UserDefaults`, the keychain or files aren't. Two calls that save one key at the same moment may deliver their values out of order. When a clear throws, no observer is told, even about the values it removed before failing, such as those a file storage's `.clearIncomplete` doesn't list.
 
 ---
 ## Error handling
@@ -506,6 +506,9 @@ Keys, namespaces and values over a storage's limits:
 Something that isn't a value where a value goes. It's never replaced or removed:
 * `FileStorage.Error.pathOccupied(url)` - for example a folder at a key's file, or a file where the scope's folder goes.
 * `.keyOccupied(key)` (`UserDefaultsStorage`, `UbiquitousStorage`) - a value that isn't `Data` is under the key's stored key. In `UserDefaults`, registered defaults count.
+
+Clearing a scope that only partly succeeds:
+* `FileStorage.Error.clearIncomplete(errors)` - `clear()` removes a scope's values one file at a time, and doesn't stop at the first failure: it tries every value, then throws each one it couldn't remove, by key, with its error. The other values are gone. The other storages clear a scope in one step, or can't fail.
 
 `FileStorage` and `SQLiteStorage` wrap any other failure in `.other(error)`, keeping the original error; a failed file lookup is a `FileItemError` with the system's code. `InMemoryStorage` never throws.
 

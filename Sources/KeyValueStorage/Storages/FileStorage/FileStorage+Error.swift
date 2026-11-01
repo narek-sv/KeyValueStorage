@@ -26,6 +26,8 @@ public extension FileStorage {
         case pathOccupied(URL)
         /// `EPERM`: the file is protected while the device is locked, or the sandbox denied access.
         case protectedDataUnavailable
+        /// `clear()` couldn't remove these values, each for its own reason; it removed every other value of the scope.
+        case clearIncomplete([Key: FileStorage.Error])
         /// Any other file system failure, with the original error.
         case other(any Swift.Error)
     }

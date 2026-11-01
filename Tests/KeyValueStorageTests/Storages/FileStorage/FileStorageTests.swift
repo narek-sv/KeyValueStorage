@@ -352,15 +352,55 @@ final class FileStorageTests: XCTestCase {
         }
     }
 
-    func testClearStopsAtTheFirstFailure() throws {
+    func testClearTriesEveryValueAndReportsEachOneItCouldntRemove() throws {
+        // Given: a value whose removal fails, and one whose lookup isn't permitted, among values that go
+        let error = POSIXError(.EACCES)
+        backingStore.items = [root.path: .directory, path("a"): .file(data), path("b"): .file(data), path("c"): .file(data), path("d"): .file(data)]
+        backingStore.errors = [(.remove(file("b")), error), (.itemType(file("c")), FileItemError.notPermitted)]
+
+        // When
+        var thrown: FileStorage.Error?
+        do {
+            try makeStorage().clear()
+        } catch {
+            thrown = error
+        }
+
+        // Then: every value was tried, and only those that failed are left, each with its own error
+        guard case let .clearIncomplete(failures)? = thrown else {
+            return XCTFail("Expected .clearIncomplete, got \(String(describing: thrown))")
+        }
+
+        XCTAssertEqual(Set(failures.keys), ["b", "c"])
+        XCTAssertEqual(failures["b"].map { String(reflecting: $0) }, String(reflecting: FileStorage.Error.other(error)))
+        XCTAssertEqual(failures["c"].map { String(reflecting: $0) }, String(reflecting: FileStorage.Error.protectedDataUnavailable))
+        XCTAssertEqual(backingStore.items, [root.path: .directory, path("b"): .file(data), path("c"): .file(data)])
+        let removed = backingStore.calls.compactMap { call -> URL? in if case let .remove(url) = call { url } else { nil } }
+        XCTAssertEqual(Set(removed), [file("a"), file("b"), file("d")])
+    }
+
+    func testClearReportsASingleFailureAsIncompleteToo() throws {
         // Given
         let error = POSIXError(.EACCES)
-        backingStore.items = [root.path: .directory, path("a"): .file(data), path("b"): .file(data), path("c"): .file(data)]
-        backingStore.errors = [(.remove(file("b")), error)]
+        backingStore.items = [root.path: .directory, path("a"): .file(data), path("b"): .file(data)]
+        backingStore.errors = [(.remove(file("a")), error)]
 
         // When - Then
+        assertThrows(FileStorage.Error.clearIncomplete(["a": .other(error)])) { try makeStorage().clear() }
+        XCTAssertEqual(backingStore.items, [root.path: .directory, path("a"): .file(data)])
+    }
+
+    func testClearThrowsAtOnceWhenItCantStart() throws {
+        // Given: the folder can't be listed, or looked up
+        let error = POSIXError(.EACCES)
+        backingStore.items = [root.path: .directory, path("a"): .file(data)]
+        backingStore.errors = [(.itemNames(root), error)]
+
+        // When - Then: nothing was removed, so the failure itself is thrown
         assertThrows(FileStorage.Error.other(error)) { try makeStorage().clear() }
-        XCTAssertEqual(backingStore.items, [root.path: .directory, path("b"): .file(data), path("c"): .file(data)])
+        backingStore.errors = [(.itemType(root), FileItemError.notPermitted)]
+        assertThrows(FileStorage.Error.protectedDataUnavailable) { try makeStorage().clear() }
+        XCTAssertEqual(backingStore.items, [root.path: .directory, path("a"): .file(data)])
     }
 
     // MARK: Set
@@ -402,8 +442,10 @@ final class FileStorageTests: XCTestCase {
                 let error: any Error = if case .itemType = call { lookup } else { fileSystem }
                 failing.errors = [(call, error)]
 
-                // When - Then
-                assertThrows(FileStorage.Error.other(error)) { try operation.run(makeStorage(failing)) }
+                // When - Then: a value `clear()` couldn't remove is reported under its key
+                let perValue = operation.name == "clear" && call != .itemType(root) && call != .itemNames(root)
+                let expected: FileStorage.Error = perValue ? .clearIncomplete(["key": .other(error)]) : .other(error)
+                assertThrows(expected) { try operation.run(makeStorage(failing)) }
             }
         }
     }
@@ -435,8 +477,10 @@ final class FileStorageTests: XCTestCase {
                 backingStore.items = [root.path: .directory, path("key"): .file(data)]
                 backingStore.errors = [(.itemType(url), FileItemError.notPermitted)]
 
-                // When - Then
-                assertThrows(FileStorage.Error.protectedDataUnavailable) { try operation.run(makeStorage(backingStore)) }
+                // When - Then: a value `clear()` couldn't remove is reported under its key
+                let expected: FileStorage.Error = operation.name == "clear" && url != root
+                    ? .clearIncomplete(["key": .protectedDataUnavailable]) : .protectedDataUnavailable
+                assertThrows(expected) { try operation.run(makeStorage(backingStore)) }
                 XCTAssertEqual(backingStore.items, [root.path: .directory, path("key"): .file(data)], "\(operation.name), \(url)")
             }
         }
