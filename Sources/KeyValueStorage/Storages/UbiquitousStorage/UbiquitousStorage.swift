@@ -9,7 +9,7 @@ import Foundation
 
 // MARK: - UbiquitousStorage
 
-/// Values in the iCloud key-value store, one per stored key, of up to 1 MiB each.
+/// Values in the iCloud key-value store, one per stored key, of up to 1 MB (1,000,000 bytes) each.
 /// - Note: Only `Data` at a stored key is a value. Anything else there fetches as `nil`, is never removed, and makes `save`
 ///   throw `.keyOccupied`.
 /// - Note: Thread-safe: an instance can be shared between threads and tasks, but a sequence of operations isn't atomic.
@@ -18,7 +18,8 @@ public final class UbiquitousStorage: DataStorage, Sendable {
 
     // MARK: Properties
 
-    private static let maximumValueSize = 1024 * 1024
+    /// Apple's "1 megabyte" as 10^6 bytes, the smaller reading: the store silently refuses a value over its limit
+    private static let maximumValueSize = 1_000_000
 
     private let backingStore: any UbiquitousBackingStore
     private let locator: any UbiquitousLocator

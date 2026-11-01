@@ -33,7 +33,7 @@ Here's how the built-in storages compare:
 | **Suitable for secrets** | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
 | **Shared with your other apps and extensions** | ❌ | ✅ App Group | ✅ App Group or Keychain Sharing group | ✅ App Group | ✅ App Group | ✅ Same store identifier |
 | **Syncs across the user's devices** | ❌ | ❌ | ✅ iCloud Keychain (`.iCloud` scope) | ❌ | ❌ | ✅ iCloud |
-| **Best value size** | Any | Small | Small | Large | Small to medium | Small, 1 MiB in all |
+| **Best value size** | Any | Small | Small | Large | Small to medium | Small, 1 MB in all |
 | **Speed** | Fastest | Very fast | Slowest | Slow for small values, fastest for large ones | Fast for small values | Very fast locally, syncs in the background |
 | **Across processes** | – | Last write wins per key | Last write wins per item | Atomic replace per file | Transaction per operation | Last write wins per key, also across devices |
 
@@ -73,7 +73,7 @@ Here's how the built-in storages compare:
 
 **iCloud Key-Value Store** - small preferences and state that follow the user to their other devices.
 * Synced through iCloud by the system, with a local copy that's read and written without waiting for the network.
-* The whole store holds at most 1 MiB and 1024 keys. A value over 1 MiB throws `valueTooLarge`, and a key that's too long throws `invalidKey`, but going over the store's total limits fails silently.
+* The whole store holds at most 1 MB of values and 1024 keys. A value over 1 MB (1,000,000 bytes) throws `valueTooLarge`, and a key that's too long throws `invalidKey`, but going over the store's total limits fails silently.
 * Values stay on the device while the user is signed out of iCloud, and sync once they sign in.
 * Not for sensitive data, and needs the iCloud capability (see [iCloud Key-Value Store](#icloud-key-value-store)): without it, the store silently keeps nothing.
 * Changes that arrive from the user's other devices aren't published to observers.
@@ -261,7 +261,7 @@ try await storage.save(/* accepts only MyType*/, forKey: key)
 * `User-Defaults` - This storage type persists the items within the app's lifetime. Values are stored under `<namespace>!/<key>`, and any string is a valid key: `%` and NUL are written as `%25` and `%00`, because the system never writes a key with NUL to disk, and `/` in a namespace as `%2F`.
 * `File-System` -  This storage saves every value as a separate file in the scope's folder, `Application Support/<app>/<namespace>!/<protection>` for `.own` scopes (`Caches` or `tmp` for the other retentions), or in the App Group container. The file is replaced atomically, so a crash never leaves a value half-written or missing. Any string is a valid key: its file name keeps `a`–`z`, `0`–`9`, `_` and `-`, writes a capital as `!` and its lowercase letter, and every other byte as `%` and two hex digits. So `Key` is saved as `!key` and never shares a file with `key`, even on a case-insensitive disk. A file name can be at most 255 bytes, so longer keys throw `FileStorage.Error.invalidKey`.
 * `Keychain` - This storage type keeps the items in secure storage and persists even after app re-installations. Supports `iCloud` synchronization.
-* `Ubiquitous` - This storage keeps the values in the iCloud key-value store, under `<namespace>!/<key>`, and syncs them across the user's devices. Any string is a valid key: `%` and NUL are written as `%25` and `%00`, and `/` in a namespace as `%2F`. A value can be at most 1 MiB, and a stored key at most 128 UTF-16 code units.
+* `Ubiquitous` - This storage keeps the values in the iCloud key-value store, under `<namespace>!/<key>`, and syncs them across the user's devices. Any string is a valid key: `%` and NUL are written as `%25` and `%00`, and `/` in a namespace as `%2F`. A value can be at most 1 MB (1,000,000 bytes), and a stored key at most 128 UTF-16 code units.
 * `SQLite` - This storage keeps all values of a scope in one SQLite database, the hidden `.KeyValueStorage.sqlite` in the same folder as the `File-System` storage of the scope. Any string is a valid key, and all storages of a scope, in your app and its extensions, share the same database at the same time. Each operation is atomic across processes, but a fetch followed by a save is not: another process can save in between. A save survives an app crash; a power loss or system crash right after it can lose the last saves, but never corrupts the database.
 
 You can also define your own storage, synchronous or asynchronous, and it works with `UnifiedStorage` and the coding storages out of the box:
@@ -478,7 +478,7 @@ Setup mistakes:
 Keys, namespaces and values over a storage's limits:
 * `.invalidKey(key)` - `FileStorage`: its encoded file name is over 255 bytes; `UbiquitousStorage`: its stored key, with the namespace, is over 128 UTF-16 code units.
 * `.invalidNamespace(namespace)` (`FileStorage`, `SQLiteStorage`) - its encoded folder name is over 255 bytes.
-* `UbiquitousStorage.Error.valueTooLarge(key:size:)` - the value is over 1 MiB.
+* `UbiquitousStorage.Error.valueTooLarge(key:size:)` - the value is over 1 MB (1,000,000 bytes).
 
 Something that isn't a value where a value goes. It's never replaced or removed:
 * `FileStorage.Error.pathOccupied(url)` - for example a folder at a key's file, or a file where the scope's folder goes.

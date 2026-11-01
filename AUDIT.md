@@ -17,7 +17,6 @@ unusually thorough. What stands between the branch and a release:
 1. Upgrading from 3.0 orphans every stored value, and nothing documents it (§4a).
 2. Changing a scope's protection in an app update hides every existing value (§4b).
 3. `IsolatedDataStorage.withStorage` is atomic only within one instance, but the README calls it an atomic step (§4c).
-4. The Ubiquitous key limit may be looser than the store's, which would crash (§3.1, verify).
 
 ---
 
@@ -98,12 +97,13 @@ Note: calling the async API from the main actor in a tight loop costs ~9 µs per
 
 ## 3. Bugs
 
-### 3.1 Ubiquitous key limit may crash (medium, verify)
+### 3.1 Ubiquitous key limit on older systems (low, verify)
 
-`DefaultUbiquitousLocator` allows stored keys of up to 128 UTF-16 code units. Apple's key-value store documentation has
-given the limit as 64 bytes of UTF-8. The locator's own docs say a longer key raises an Objective-C exception. If the
-stricter limit is real, keys of 65–128 bytes (47+ characters of key with the default namespace) crash. Until a device
-settles it, enforce both: at most 64 UTF-8 bytes satisfies either limit.
+`DefaultUbiquitousLocator` allows stored keys of up to 128 UTF-16 code units, the limit Apple's
+`NSUbiquitousKeyValueStore` reference documents, and the store raises an exception (a crash) for longer keys. Older
+third-party write-ups give 64 bytes of UTF-8, likely from Apple's earlier iCloud design guide. Nothing shows a supported
+system enforcing it, but if the oldest ones (iOS 13, macOS 10.15, watchOS 9) did, keys between the two limits would
+crash there. Verify on the oldest supported systems (`REFACTOR_PLAN §2`); only if one crashes, check both limits.
 
 ---
 
@@ -175,7 +175,6 @@ container. Document on `SQLiteStorage.Scope.appGroup`; confirm on a device wheth
   also reads.
 - `AsyncCodingStorage`: "wrap a synchronous storage in `IsolatedDataStorage` to share it" — the built-in synchronous
   storages are already `Sendable`; it means non-`Sendable` ones.
-- README Ubiquitous: states 128 UTF-16 code units as fact (§3.1).
 - Release leftovers: Installation `from: "3.0.0"`; the coverage badge says ≥98% while the plan says 100%; the README
   "Tests" section says nothing concrete.
 
@@ -227,7 +226,7 @@ each other's observation events.
   descriptors accumulate for the instance's lifetime.
 - **Creation ignores cancellation (low).** Awaiting the creation task ignores the caller's cancellation; a custom async
   storage whose `init` hangs blocks its scope forever.
-- **Crashes:** none found beyond §3.1. Lock re-entry (the registry is never re-entered from an observation's release),
+- **Crashes:** none found; the Ubiquitous key limit still needs a check on the oldest systems (§3.1). Lock re-entry (the registry is never re-entered from an observation's release),
   statement lifetimes and every error path check out.
 
 ---

@@ -13,7 +13,7 @@ public extension UbiquitousStorage {
     enum Error: Swift.Error, Sendable {
         /// Its stored key, with the namespace, is over 128 UTF-16 code units.
         case invalidKey(Key)
-        /// The value is over 1 MiB, the store's limit per value.
+        /// The value is over 1 MB (1,000,000 bytes), the store's limit per value.
         case valueTooLarge(key: Key, size: Int)
         /// A value that isn't `Data` is under this key's stored key; it's never replaced or removed.
         case keyOccupied(Key)

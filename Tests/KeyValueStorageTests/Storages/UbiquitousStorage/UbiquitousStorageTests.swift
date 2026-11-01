@@ -89,7 +89,7 @@ final class UbiquitousStorageTests: XCTestCase {
     func testValuesOverOneMegabyteStopBeforeTheStore() throws {
         // Given
         let storage = makeStorage()
-        let limit = Data(count: 1024 * 1024)
+        let limit = Data(count: 1_000_000)
 
         // When - Then
         try storage.save(limit, forKey: "key")
