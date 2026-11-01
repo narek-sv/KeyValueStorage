@@ -53,6 +53,18 @@ final class StringUTF8Tests: XCTestCase {
         assertBytes("Caf\u{E9}".portableName, "!caf%c3%a9")
     }
 
+    func testLongNamesEncodeEveryByte() {
+        let cases = [
+            (String(repeating: "a", count: 10_000), String(repeating: "a", count: 10_000)),
+            (String(repeating: "aB", count: 5_000), String(repeating: "a!b", count: 5_000)),
+            (String(repeating: "/.", count: 5_000), String(repeating: "%2f%2e", count: 5_000)),
+            (String(repeating: "a🙂", count: 2_500), String(repeating: "a%f0%9f%99%82", count: 2_500))
+        ]
+        for (name, expected) in cases {
+            assertBytes(name.portableName, expected)
+        }
+    }
+
     func testTheEmptyNameIsAPercentSignAndDiffersFromAPercentSign() {
         assertBytes("".portableName, "%")
         assertBytes("%".portableName, "%25")
@@ -120,6 +132,19 @@ final class StringUTF8Tests: XCTestCase {
         assertBytes(":".percentEscaping(reserved), "%3A")
         assertBytes("a%b/c:d".percentEscaping(reserved), "a%25b%2Fc%3Ad")
         assertBytes("com.test.App!_- ".percentEscaping(reserved), "com.test.App!_- ")
+    }
+
+    func testLongNamesEscapeEveryReservedByte() {
+        // Escapes grow the result past the key's length
+        let reserved: Set = [UInt8(ascii: "%"), UInt8(ascii: "/")]
+        let cases = [
+            (String(repeating: "a", count: 10_000), String(repeating: "a", count: 10_000)),
+            (String(repeating: "/%", count: 5_000), String(repeating: "%2F%25", count: 5_000)),
+            (String(repeating: "a/🙂", count: 2_500), String(repeating: "a%2F🙂", count: 2_500))
+        ]
+        for (name, expected) in cases {
+            assertBytes(name.percentEscaping(reserved), expected)
+        }
     }
 
     func testEveryByteCanBeReserved() {

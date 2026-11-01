@@ -23,14 +23,18 @@ extension String {
             return "%"
         }
 
+        // No reserved capacity: a byte can grow into three, so the key's length would be outgrown into a larger buffer
         var encoded = [UInt8]()
         for byte in utf8 {
             if Self.keptBytes.contains(byte) {
                 encoded.append(byte)
             } else if Self.capitals.contains(byte) {
-                encoded += [UInt8(ascii: "!"), byte - Self.capitals.lowerBound + Self.lowercaseLetters.lowerBound]
+                encoded.append(UInt8(ascii: "!"))
+                encoded.append(byte - Self.capitals.lowerBound + Self.lowercaseLetters.lowerBound)
             } else {
-                encoded += Self.percentEncoded(byte, digits: Self.lowercaseHexDigits)
+                encoded.append(UInt8(ascii: "%"))
+                encoded.append(Self.lowercaseHexDigits[Int(byte >> 4)])
+                encoded.append(Self.lowercaseHexDigits[Int(byte & 0x0F)])
             }
         }
 
@@ -70,9 +74,13 @@ extension String {
         assert(reserved.allSatisfy { $0 < 0x80 }, "Only ASCII bytes can be escaped")
         // Bytes, because Foundation's `replacingOccurrences` skips a `/` that carries a combining mark
         var escaped = [UInt8]()
+        // The result is at least as long as the key, so the buffer grows only for escapes
+        escaped.reserveCapacity(utf8.count)
         for byte in utf8 {
             if reserved.contains(byte) {
-                escaped += Self.percentEncoded(byte, digits: Self.uppercaseHexDigits)
+                escaped.append(UInt8(ascii: "%"))
+                escaped.append(Self.uppercaseHexDigits[Int(byte >> 4)])
+                escaped.append(Self.uppercaseHexDigits[Int(byte & 0x0F)])
             } else {
                 escaped.append(byte)
             }
@@ -115,9 +123,5 @@ extension String {
         }
 
         return String(decoding: utf8.dropFirst(prefix.utf8.count), as: UTF8.self)
-    }
-
-    private static func percentEncoded(_ byte: UInt8, digits: [UInt8]) -> [UInt8] {
-        [UInt8(ascii: "%"), digits[Int(byte >> 4)], digits[Int(byte & 0x0F)]]
     }
 }
