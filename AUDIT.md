@@ -70,11 +70,7 @@ cached, and adds no allocations to any storage.
    probably generic code that isn't specialized across the module boundary, and the async calls between the layers.
 2. **One lock per instance (low).** Every call takes the instance's lock twice, whatever its scope, so 8 tasks through
    one `UnifiedStorage` finish no faster than one task (0.93 µs vs 0.90 µs per call over a storage that does nothing).
-3. **SQLite copies every blob (low).** `bind` uses `SQLITE_TRANSIENT`, so SQLite copies the whole value before
-   stepping. Binding with `SQLITE_STATIC` and stepping inside `value.withUnsafeBytes` avoids a copy of multi-MB values.
-   Keep `utf8CString` for the key: `withUTF8` can give a nil pointer for an empty string, which binds NULL.
-   `sqlite3_clear_bindings` is redundant, since every call rebinds every parameter.
-4. **Already good:** File (one `lstat` per item, one folder check in `clear`), Keychain (update first, add only when
+3. **Already good:** File (one `lstat` per item, one folder check in `clear`), Keychain (update first, add only when
    missing), SQLite (prepared statements, WAL, `synchronous = NORMAL`).
 
 Note: calling the async API from the main actor in a tight loop costs ~9 µs per call in executor hops; that's Swift's
