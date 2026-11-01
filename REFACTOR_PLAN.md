@@ -39,6 +39,9 @@ Keychain's `errSecInteractionNotAllowed` is mapped to `.protectedDataUnavailable
 - **Keychain `.iCloud(.appGroup(id:))` with an App Group id**, not a Keychain Sharing group: whether synced items in an App Group access group sync to the user's other devices.
 - **The same key written on two devices before they sync**, for Keychain's and Ubiquitous's `.iCloud` scopes: which value wins. Last writer is likely but not measured; the result becomes a doc line on each `.iCloud` case.
 - **Ubiquitous:** a signed host with the iCloud key-value store entitlement and an Apple Account, ideally with a second device to see values sync. Check the key-length limit on the oldest supported systems too (128 UTF-16 code units per Apple's docs, 64 UTF-8 bytes per older blog posts; a key over the real limit raises an exception), the default adapter's integration tests, the quota, signed-out behavior, what an unentitled build does (keeps nothing, `synchronize()` returns `false`), and that the store, like UserDefaults, drops keys with NUL (assumed; the locator escapes it).
+- **UserDefaults before the first unlock after a restart:** fetches return `nil` (documented); whether saves made then last, or are replaced by the file's values once it's readable.
+- **UserDefaults size:** whether `set` drops a value once its suite reaches 4 MB on iOS, and tvOS's limit; if it does, a `valueTooLarge` check like Ubiquitous's.
+- **App Group SQLite and suspension:** whether an idle connection, whose WAL index keeps a shared lock on its `-shm` file, gets a suspended app terminated (`0xdead10cc`); the scope warns about locks held while reading and writing.
 - Blocker: KeychainHost is ad-hoc signed, and its entitlements hardcode a placeholder team (`ABCDE12345`). Running it on a device needs a signing setup that leaves the committed project alone, such as a local, git-ignored xcconfig with the team and bundle ID, and entitlements built from `$(AppIdentifierPrefix)`.
 
 ## 3. Release

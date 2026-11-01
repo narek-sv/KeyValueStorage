@@ -101,10 +101,10 @@ final class KeychainIntegrationTests: XCTestCase {
 
     func testTheScopesProtectionIsTheItemsAccessibility() throws {
         let scopes: [(KeychainStorage.Scope, CFString)] = [
-            (.own(protection: .untilFirstUnlock, namespace: namespace()), kSecAttrAccessibleAfterFirstUnlock),
-            (.own(protection: .whileLockedThisDeviceOnly, namespace: namespace()), kSecAttrAccessibleWhenUnlockedThisDeviceOnly),
+            (.own(protection: .afterFirstUnlock, namespace: namespace()), kSecAttrAccessibleAfterFirstUnlock),
+            (.own(protection: .whenUnlockedThisDeviceOnly, namespace: namespace()), kSecAttrAccessibleWhenUnlockedThisDeviceOnly),
             (.own(namespace: namespace()), kSecAttrAccessibleWhenUnlocked),
-            (.iCloud(.own, protection: .untilFirstUnlock, namespace: namespace()), kSecAttrAccessibleAfterFirstUnlock)
+            (.iCloud(.own, protection: .afterFirstUnlock, namespace: namespace()), kSecAttrAccessibleAfterFirstUnlock)
         ]
 
         for (scope, accessibility) in scopes {
@@ -120,7 +120,7 @@ final class KeychainIntegrationTests: XCTestCase {
         // Given: an item saved while the key's protection was the default
         let storage = UnifiedStorage()
         let old = KeychainStorage.Scope.own(namespace: namespace())
-        let key = KeychainKey<String>(key: "token", scope: .own(protection: .untilFirstUnlock, namespace: namespace()))
+        let key = KeychainKey<String>(key: "token", scope: .own(protection: .afterFirstUnlock, namespace: namespace()))
         try await storage.save("secret", forKey: KeychainKey<String>(key: "token", scope: old))
 
         // When
@@ -136,8 +136,8 @@ final class KeychainIntegrationTests: XCTestCase {
 
     func testScopesThatDifferOnlyInProtectionNeverShareItems() throws {
         // Given
-        let firstUnlock = storage(.own(protection: .untilFirstUnlock, namespace: namespace()))
-        let unlocked = storage(.own(protection: .whileLocked, namespace: namespace()))
+        let firstUnlock = storage(.own(protection: .afterFirstUnlock, namespace: namespace()))
+        let unlocked = storage(.own(protection: .whenUnlocked, namespace: namespace()))
 
         // When
         try firstUnlock.save(Data([1]), forKey: "key")

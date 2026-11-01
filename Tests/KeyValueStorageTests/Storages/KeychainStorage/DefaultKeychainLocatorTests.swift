@@ -43,11 +43,11 @@ final class DefaultKeychainLocatorTests: XCTestCase {
 
     func testEveryProtectionHasItsOwnService() {
         let protections: [(KeychainStorage.Protection, String)] = [
-            (.untilFirstUnlock, "u"),
-            (.untilFirstUnlockThisDeviceOnly, "ud"),
-            (.whileLocked, "w"),
-            (.whileLockedThisDeviceOnly, "wd"),
-            (.whileLockedOrWithoutPasscode, "p")
+            (.afterFirstUnlock, "u"),
+            (.afterFirstUnlockThisDeviceOnly, "ud"),
+            (.whenUnlocked, "w"),
+            (.whenUnlockedThisDeviceOnly, "wd"),
+            (.whenPasscodeSetThisDeviceOnly, "p")
         ]
 
         for (protection, name) in protections {
@@ -55,15 +55,15 @@ final class DefaultKeychainLocatorTests: XCTestCase {
             XCTAssertEqual(locator.service(for: .appGroup(id: "g", protection: protection, namespace: "ns")), "g/ns/\(name)")
         }
 
-        XCTAssertEqual(locator.service(for: .iCloud(.own, protection: .untilFirstUnlock, namespace: "ns")), "com.test.App:ns:u")
-        XCTAssertEqual(locator.service(for: .iCloud(.appGroup(id: "g"), protection: .untilFirstUnlock, namespace: "ns")), "g/ns/u")
+        XCTAssertEqual(locator.service(for: .iCloud(.own, protection: .afterFirstUnlock, namespace: "ns")), "com.test.App:ns:u")
+        XCTAssertEqual(locator.service(for: .iCloud(.appGroup(id: "g"), protection: .afterFirstUnlock, namespace: "ns")), "g/ns/u")
     }
 
     func testNoTwoLocalScopesShareAService() {
         // `.own` queries reach every access group, so its services must differ from every group's;
         // `.iCloud` shares its owner's services, for synced items
         let namespaces: [KeychainStorage.Namespace] = ["", "auth", "a/b", "a:b", "%", "%2F", "%3A", "g/auth", "g%2Fauth", "auth:w", "auth/w"]
-        let protections: [KeychainStorage.Protection] = [.untilFirstUnlock, .untilFirstUnlockThisDeviceOnly, .whileLocked, .whileLockedThisDeviceOnly, .whileLockedOrWithoutPasscode]
+        let protections: [KeychainStorage.Protection] = [.afterFirstUnlock, .afterFirstUnlockThisDeviceOnly, .whenUnlocked, .whenUnlockedThisDeviceOnly, .whenPasscodeSetThisDeviceOnly]
         var scopes = [KeychainStorage.Scope]()
         for namespace in namespaces {
             for protection in protections {

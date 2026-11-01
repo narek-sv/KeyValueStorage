@@ -29,20 +29,24 @@ public extension SQLiteStorage {
         /// Usable at any time, even before the first unlock after a restart (`none`).
         case none
         /// Usable once the user has unlocked the device after a restart, then also while locked (`completeUntilFirstUserAuthentication`).
-        case untilFirstUnlock
+        case afterFirstUnlock
         /// Usable only while the device is unlocked, even by an open database (`complete`).
-        case whileLocked
+        case whenUnlocked
         /// While locked, usable only by a storage created before locking, which keeps the database open (`completeUnlessOpen`).
-        case whileLockedUnlessOpen
+        case whenUnlockedOrOpen
     }
 
     enum Scope: DataStorageScope {
         /// The running app's or extension's own.
         /// - Warning: It belongs to the bundle ID: builds that share one share values, and unit tests hosted in the app use the
-        ///   app's, so a test's `clear()` empties the app's data on that device. Give tests a namespace of their own.
+        ///   app's, so a test's `clear()` empties the app's data on that device. On macOS, `swift test` runs every package's
+        ///   tests as `com.apple.dt.xctest.tool`, so they share one too. Give tests a namespace of their own.
         /// - Warning: On macOS without App Sandbox, the user's other apps can read it.
         case own(_ retention: Retention = .persistent, protection: Protection = .inherited, namespace: Namespace)
         /// Shared by the apps and extensions in the App Group.
+        /// - Warning: iOS terminates an app that's suspended while it holds a lock on a file in a shared container
+        ///   (`0xdead10cc`), and SQLite locks its database while it reads and writes: finish working with the scope before
+        ///   the app is suspended, for example within a background task.
         /// - Note: An empty id throws.
         /// - Note: On macOS and in the Simulator, every id gets a folder, even one the app isn't entitled to. On macOS, ids that
         ///   differ only in case share one.
@@ -59,11 +63,11 @@ public extension SQLiteStorage {
 extension SQLiteStorage.Protection {
     var fileProtection: FileProtectionType? {
         switch self {
-        case .inherited:                return nil
-        case .none:                     return FileProtectionType.none
-        case .untilFirstUnlock:         return .completeUntilFirstUserAuthentication
-        case .whileLocked:              return .complete
-        case .whileLockedUnlessOpen:    return .completeUnlessOpen
+        case .inherited:             return nil
+        case .none:                  return FileProtectionType.none
+        case .afterFirstUnlock:      return .completeUntilFirstUserAuthentication
+        case .whenUnlocked:          return .complete
+        case .whenUnlockedOrOpen:    return .completeUnlessOpen
         }
     }
 }

@@ -10,6 +10,9 @@ import Foundation
 // MARK: - FileStorage
 
 /// Values in files, one per key; every save replaces the file atomically.
+/// - Note: A save survives an app crash, but files aren't flushed to the disk on every save, so a power loss or system
+///   crash right after one can lose it. A save the app is killed in leaves a hidden temporary file in the scope's folder,
+///   which `clear()` never removes.
 /// - Note: Only a regular file at a key's path is a value. Anything else there, or anything but a folder where the scope's
 ///   folder goes, is never read or removed, and `save` throws `.pathOccupied`. Links are never followed.
 /// - Warning: A folder that another process puts at a key's path between `delete`'s check and its removal is removed.

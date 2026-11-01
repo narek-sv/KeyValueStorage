@@ -12,8 +12,8 @@ Severity: **high** (data loss or release blocker), **medium** (wrong behavior us
 
 The core is solid. Scope isolation holds for all six storages with the default locators, errors are typed end to end,
 the naming encodings are injective and safe on case- and normalization-insensitive volumes, and the test suite is
-unusually thorough. No finding blocks a release on its own. What's left: checks that need a device (§3.1, §4a–§4c),
-docs (§4c, §5), and design and performance improvements (§1, §2).
+unusually thorough. No finding blocks a release on its own. What's left: checks that need a device (§3.1 and
+`REFACTOR_PLAN §2`), release leftovers in the docs (§5), and design and performance improvements (§1, §2, §7).
 
 ---
 
@@ -35,12 +35,7 @@ docs (§4c, §5), and design and performance improvements (§1, §2).
 
 ### Weak spots
 
-1. **Protection names read backwards (medium, API).** `.whileLocked` means "usable only while *unlocked*";
-   `.whileLockedUnlessOpen` and `.whileLockedOrWithoutPasscode` are hard to parse. The case names describe when the
-   protection applies, while the doc comments describe when the value is usable. Apple's vocabulary (`whenUnlocked`,
-   `afterFirstUnlock`, `completeUnlessOpen`) would be read correctly by most developers. The most visible
-   intuitiveness problem in the public API.
-2. **Duplicated code that must stay in sync (low).**
+1. **Duplicated code that must stay in sync (low).**
    - `DefaultFileLocator` and `DefaultSQLiteLocator` each implement the folder rules (base folders, app folder,
      namespace and protection folder names, group checks). SQLite relies on landing in File's folder; one test guards
      it, but the rule is written twice.
@@ -49,7 +44,7 @@ docs (§4c, §5), and design and performance improvements (§1, §2).
    - `CodingStorage` and `AsyncCodingStorage` are copies.
    One shared folder rule and one shared stored-key codec would enforce "a rule decided for one storage applies to all
    six" in code rather than by review.
-3. **Observation is narrow (low, design).** Only changes made in this process, through the same storage type and scope,
+2. **Observation is narrow (low, design).** Only changes made in this process, through the same storage type and scope,
    with the same value type, are seen. Ubiquitous's `didChangeExternallyNotification` and UserDefaults'
    `didChangeNotification` could feed it.
 
@@ -100,31 +95,7 @@ crash there. Verify on the oldest supported systems (`REFACTOR_PLAN §2`); only 
 
 ## 4. Business-logic gaps and data-loss risks
 
-### 4a. UserDefaults before first unlock (medium, verify)
-
-During prewarming or before the first unlock after a reboot, the preferences file is unreadable and UserDefaults returns
-`nil` for every key. File and Keychain throw `.protectedDataUnavailable` in the same situation; UserDefaults can't tell.
-Apps will take it for a first launch. Writes in that window may not persist, or may replace the real values once the
-file is readable. At least a `- Warning:` on the storage.
-
-### 4b. Large UserDefaults values (low–medium, verify)
-
-CFPreferences logs values of 4 MiB or more as invalid on iOS, and tvOS's limit is much lower. `set` reports nothing,
-so a value can be dropped silently. `UbiquitousStorage` checks value size; `UserDefaultsStorage` doesn't. Document, and
-consider a `valueTooLarge` check like Ubiquitous's.
-
-### 4c. App Group SQLite and suspension (medium, docs, verify)
-
-`REFACTOR_PLAN §4` says "the scope docs say so" about `0xdead10cc`, but no scope doc mentions it. An open WAL connection
-keeps a shared lock on the `-shm` file, and the system terminates an app suspended while holding a lock in a shared
-container. Document on `SQLiteStorage.Scope.appGroup`; confirm on a device whether an idle connection triggers it.
-
-### 4d. Minor
-
-- FileStorage's durability on power loss isn't stated (SQLite's is): `Data.write(.atomic)` doesn't `fsync`.
-- Interrupted atomic writes leave hidden temp files (`.dat.nosync…`) that `clear()` never removes: disk space, not values.
-- Unit tests run by `swift test` on macOS share `.own` scopes with every other package's tests, through
-  `com.apple.dt.xctest.tool`.
+None open: the gaps found are documented, and what only a device can settle is listed in `REFACTOR_PLAN §2`.
 
 ---
 
@@ -132,13 +103,6 @@ container. Document on `SQLiteStorage.Scope.appGroup`; confirm on a device wheth
 
 ### Docs and comments
 
-- `REFACTOR_PLAN §4` claims the App Group scope docs warn about suspension; they don't (§4c).
-- README Thread Safety note: "so that waiting calls suspend instead" — callers suspend, but the actor's thread still
-  blocks for the whole call.
-- `UserDefaultsStorage.Scope`: lists launch arguments and registered defaults, not the global domain, which every suite
-  also reads.
-- `AsyncCodingStorage`: "wrap a synchronous storage in `IsolatedDataStorage` to share it" — the built-in synchronous
-  storages are already `Sendable`; it means non-`Sendable` ones.
 - Release leftovers: Installation `from: "3.0.0"`; the coverage badge says ≥98% while the plan says 100%; the README
   "Tests" section says nothing concrete.
 

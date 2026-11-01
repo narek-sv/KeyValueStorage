@@ -29,17 +29,18 @@ public extension FileStorage {
         /// Usable at any time, even before the first unlock after a restart (`none`).
         case none
         /// Usable once the user has unlocked the device after a restart, then also while locked (`completeUntilFirstUserAuthentication`).
-        case untilFirstUnlock
+        case afterFirstUnlock
         /// Usable only while the device is unlocked (`complete`).
-        case whileLocked
+        case whenUnlocked
         /// Saves work while locked; reads only while unlocked (`completeUnlessOpen`).
-        case whileLockedUnlessOpen
+        case whenUnlockedOrOpen
     }
 
     enum Scope: DataStorageScope {
         /// The running app's or extension's own.
         /// - Warning: It belongs to the bundle ID: builds that share one share values, and unit tests hosted in the app use the
-        ///   app's, so a test's `clear()` empties the app's data on that device. Give tests a namespace of their own.
+        ///   app's, so a test's `clear()` empties the app's data on that device. On macOS, `swift test` runs every package's
+        ///   tests as `com.apple.dt.xctest.tool`, so they share one too. Give tests a namespace of their own.
         /// - Warning: On macOS without App Sandbox, the user's other apps can read it.
         case own(_ retention: Retention = .persistent, protection: Protection = .inherited, namespace: Namespace)
         /// Shared by the apps and extensions in the App Group.
@@ -60,11 +61,11 @@ extension FileStorage.Protection {
     @available(macOS 11, *)
     var fileProtection: Data.WritingOptions? {
         switch self {
-        case .inherited:                return nil
-        case .none:                     return .noFileProtection
-        case .untilFirstUnlock:         return .completeFileProtectionUntilFirstUserAuthentication
-        case .whileLocked:              return .completeFileProtection
-        case .whileLockedUnlessOpen:    return .completeFileProtectionUnlessOpen
+        case .inherited:             return nil
+        case .none:                  return .noFileProtection
+        case .afterFirstUnlock:      return .completeFileProtectionUntilFirstUserAuthentication
+        case .whenUnlocked:          return .completeFileProtection
+        case .whenUnlockedOrOpen:    return .completeFileProtectionUnlessOpen
         }
     }
 }

@@ -37,7 +37,7 @@ final class FileStorageTests: XCTestCase {
     func testInitResolvesTheFolderWithoutFileSystemCalls() throws {
         let folders: [(FileStorage.Scope, String)] = [
             (.own(.temporary, namespace: "name"), "/temporary/com%2etest%2e!app/name!/i"),
-            (.appGroup(id: "group.test", protection: .whileLocked, namespace: "name"), "/group/name!/w")
+            (.appGroup(id: "group.test", protection: .whenUnlocked, namespace: "name"), "/group/name!/w")
         ]
 
         for (scope, folder) in folders {
@@ -178,9 +178,9 @@ final class FileStorageTests: XCTestCase {
         let options: [(FileStorage.Protection, Data.WritingOptions)] = [
             (.inherited, .atomic),
             (.none, [.atomic, .noFileProtection]),
-            (.untilFirstUnlock, [.atomic, .completeFileProtectionUntilFirstUserAuthentication]),
-            (.whileLocked, [.atomic, .completeFileProtection]),
-            (.whileLockedUnlessOpen, [.atomic, .completeFileProtectionUnlessOpen])
+            (.afterFirstUnlock, [.atomic, .completeFileProtectionUntilFirstUserAuthentication]),
+            (.whenUnlocked, [.atomic, .completeFileProtection]),
+            (.whenUnlockedOrOpen, [.atomic, .completeFileProtectionUnlessOpen])
         ]
 
         // When

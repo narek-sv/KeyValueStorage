@@ -71,7 +71,7 @@ final class PublicAPITests: XCTestCase {
     
     func testKeychainIsConfigurable() {
         // Given: synced items of a Keychain Sharing group, usable while locked
-        let scope = KeychainStorage.Scope.iCloud(.appGroup(id: "TEAMID.group.shared"), protection: .untilFirstUnlock, namespace: "auth")
+        let scope = KeychainStorage.Scope.iCloud(.appGroup(id: "TEAMID.group.shared"), protection: .afterFirstUnlock, namespace: "auth")
 
         // When
         let storage = KeychainStorage(scope: scope)

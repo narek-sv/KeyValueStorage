@@ -121,11 +121,11 @@ open class DefaultSQLiteLocator: SQLiteLocator, @unchecked Sendable {
     // One letter, as in `DefaultFileLocator`: every byte here counts toward the system's 1024-byte limit on a whole path
     private static func protectionFolderName(for protection: SQLiteStorage.Protection) -> String {
         switch protection {
-        case .inherited:                return "i"
-        case .none:                     return "n"
-        case .untilFirstUnlock:         return "u"
-        case .whileLocked:              return "w"
-        case .whileLockedUnlessOpen:    return "o"
+        case .inherited:             return "i"
+        case .none:                  return "n"
+        case .afterFirstUnlock:      return "u"
+        case .whenUnlocked:          return "w"
+        case .whenUnlockedOrOpen:    return "o"
         }
     }
 }

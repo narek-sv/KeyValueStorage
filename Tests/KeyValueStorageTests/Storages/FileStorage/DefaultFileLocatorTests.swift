@@ -28,7 +28,7 @@ final class DefaultFileLocatorTests: XCTestCase {
 
     func testEachProtectionIsAFolderOfItsOwn() throws {
         let folders: [(FileStorage.Protection, String)] = [
-            (.inherited, "i"), (.none, "n"), (.untilFirstUnlock, "u"), (.whileLocked, "w"), (.whileLockedUnlessOpen, "o")
+            (.inherited, "i"), (.none, "n"), (.afterFirstUnlock, "u"), (.whenUnlocked, "w"), (.whenUnlockedOrOpen, "o")
         ]
 
         for (protection, folder) in folders {
@@ -79,7 +79,7 @@ final class DefaultFileLocatorTests: XCTestCase {
     func testEveryScopeHasAFolderOfItsOwn() throws {
         let namespaces: [FileStorage.Namespace] = ["", "a", "A", "settings", "Settings", "a b", "a%20b", "\u{E9}", "e\u{301}"]
         let scopes = namespaces.flatMap { namespace -> [FileStorage.Scope] in
-            [.own(namespace: namespace), .own(.cache, namespace: namespace), .own(protection: .whileLocked, namespace: namespace),
+            [.own(namespace: namespace), .own(.cache, namespace: namespace), .own(protection: .whenUnlocked, namespace: namespace),
              .appGroup(id: "group.test", namespace: namespace)]
         }
 

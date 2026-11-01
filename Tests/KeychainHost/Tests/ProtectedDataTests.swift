@@ -25,7 +25,7 @@ final class ProtectedDataTests: XCTestCase {
         try? FileManager.default.removeItem(at: folder)
         defer { try? FileManager.default.removeItem(at: folder) }
 
-        let protections: [SQLiteStorage.Protection] = [.whileLocked, .whileLockedUnlessOpen, .untilFirstUnlock, .none]
+        let protections: [SQLiteStorage.Protection] = [.whenUnlocked, .whenUnlockedOrOpen, .afterFirstUnlock, .none]
         func database(_ protection: SQLiteStorage.Protection) throws -> SQLiteStorage {
             try SQLiteStorage(scope: .own(protection: protection, namespace: "ProtectedDataTests"))
         }
@@ -36,7 +36,7 @@ final class ProtectedDataTests: XCTestCase {
             return (protection, storage)
         }
 
-        let file = try FileStorage(scope: .own(protection: .whileLocked, namespace: "ProtectedDataTests"))
+        let file = try FileStorage(scope: .own(protection: .whenUnlocked, namespace: "ProtectedDataTests"))
         try file.save(Data([1]), forKey: "key")
 
         // Keep running while locked, also without a debugger
@@ -60,8 +60,8 @@ final class ProtectedDataTests: XCTestCase {
             report.result("SQLite \(protection), new connection, fetch") { try database(protection).fetch(forKey: "key") }
         }
 
-        report.result("File .whileLocked, fetch") { try file.fetch(forKey: "key") }
-        report.result("File .whileLocked, save") { try file.save(Data([2]), forKey: "key") }
+        report.result("File .whenUnlocked, fetch") { try file.fetch(forKey: "key") }
+        report.result("File .whenUnlocked, save") { try file.save(Data([2]), forKey: "key") }
 
         // When
         report.log("UNLOCK THE DEVICE NOW")
@@ -73,7 +73,7 @@ final class ProtectedDataTests: XCTestCase {
             report.result("SQLite \(protection), after unlocking, fetch") { try storage.fetch(forKey: "key") }
         }
 
-        report.result("File .whileLocked, after unlocking, fetch") { try file.fetch(forKey: "key") }
+        report.result("File .whenUnlocked, after unlocking, fetch") { try file.fetch(forKey: "key") }
         report.log("Done. The report is also in the app's container: \(report.file.path)")
         #endif
     }

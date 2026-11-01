@@ -26,7 +26,7 @@ final class DefaultSQLiteLocatorTests: XCTestCase {
     }
 
     func testEachProtectionIsADatabaseOfItsOwn() throws {
-        let folders: [(SQLiteStorage.Protection, String)] = [(.inherited, "i"), (.none, "n"), (.untilFirstUnlock, "u"), (.whileLocked, "w"), (.whileLockedUnlessOpen, "o")]
+        let folders: [(SQLiteStorage.Protection, String)] = [(.inherited, "i"), (.none, "n"), (.afterFirstUnlock, "u"), (.whenUnlocked, "w"), (.whenUnlockedOrOpen, "o")]
         for (protection, folder) in folders {
             XCTAssertEqual(try databasePath(.own(protection: protection, namespace: "name")), "/support/com%2etest%2e!app/name!/\(folder)/.KeyValueStorage.sqlite")
             XCTAssertEqual(try databasePath(.appGroup(id: "group.test", protection: protection, namespace: "name")), "/group/name!/\(folder)/.KeyValueStorage.sqlite")
@@ -71,7 +71,7 @@ final class DefaultSQLiteLocatorTests: XCTestCase {
         let fileLocator = FixedDirectoriesFileLocator()
         let names = (0..<128).map { String(UnicodeScalar(UInt8($0))) } + ["", "KeyValueStorage", "a/b", "\u{E9}", "e\u{301}", "🙂"]
         let protections: [(SQLiteStorage.Protection, FileStorage.Protection)] = [
-            (.inherited, .inherited), (.none, .none), (.untilFirstUnlock, .untilFirstUnlock), (.whileLocked, .whileLocked), (.whileLockedUnlessOpen, .whileLockedUnlessOpen)
+            (.inherited, .inherited), (.none, .none), (.afterFirstUnlock, .afterFirstUnlock), (.whenUnlocked, .whenUnlocked), (.whenUnlockedOrOpen, .whenUnlockedOrOpen)
         ]
         let retentions: [(SQLiteStorage.Retention, FileStorage.Retention)] = [(.persistent, .persistent), (.cache, .cache), (.temporary, .temporary)]
 

@@ -13,6 +13,11 @@ import Foundation
 /// - Note: Only `Data` at a stored key is a value. Anything else there fetches as `nil`, is never removed, and makes `save`
 ///   throw `.keyOccupied`.
 /// - Note: Thread-safe: an instance can be shared between threads and tasks, but a sequence of operations isn't atomic.
+/// - Warning: Until the user first unlocks the device after a restart, such as when the system launches the app in the
+///   background, `UserDefaults` can't read its files: fetches return `nil` as if nothing were stored, and nothing reports
+///   it. Don't take a missing value for a first launch then.
+/// - Note: Keep values small: the whole suite is loaded into memory, the system logs an error for a suite of 4 MB or more
+///   on iOS, and tvOS allows much less.
 public final class UserDefaultsStorage: DataStorage, Sendable {
 
     // MARK: Properties

@@ -52,7 +52,7 @@ final class UnifiedIntegrationTests: XCTestCase {
     func testAMoveCarriesTheValueToANewProtectionOrNamespace() async throws {
         // Given: values saved before their keys' scopes changed
         let storage = UnifiedStorage(factory: factory)
-        let file = FileKey<String>(key: "avatar", scope: .own(protection: .untilFirstUnlock, namespace: "ns"))
+        let file = FileKey<String>(key: "avatar", scope: .own(protection: .afterFirstUnlock, namespace: "ns"))
         let sqlite = SQLiteKey<String>(key: "record", scope: .own(namespace: "moved"))
         let defaults = UserDefaultsKey<String>(key: "flag", scope: .own(namespace: "moved"))
         try await storage.save("file", forKey: FileKey<String>(key: "avatar", scope: .own(namespace: "ns")))

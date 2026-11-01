@@ -136,11 +136,11 @@ open class DefaultFileLocator: FileLocator, @unchecked Sendable {
     // One letter: every byte here counts toward the system's 1024-byte limit on a whole path
     private static func protectionFolderName(for protection: FileStorage.Protection) -> String {
         switch protection {
-        case .inherited:                return "i"
-        case .none:                     return "n"
-        case .untilFirstUnlock:         return "u"
-        case .whileLocked:              return "w"
-        case .whileLockedUnlessOpen:    return "o"
+        case .inherited:             return "i"
+        case .none:                  return "n"
+        case .afterFirstUnlock:      return "u"
+        case .whenUnlocked:          return "w"
+        case .whenUnlockedOrOpen:    return "o"
         }
     }
 

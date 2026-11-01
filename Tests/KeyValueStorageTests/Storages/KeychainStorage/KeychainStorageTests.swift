@@ -38,7 +38,7 @@ final class KeychainStorageTests: XCTestCase {
 
     func testSaveUpdatesTheKeysItemAndAddsItOnlyIfThereIsNone() throws {
         // Given
-        let storage = makeStorage(.iCloud(.own, protection: .untilFirstUnlock, namespace: "name"))
+        let storage = makeStorage(.iCloud(.own, protection: .afterFirstUnlock, namespace: "name"))
 
         // When
         try storage.save(data, forKey: "key")
@@ -73,13 +73,13 @@ final class KeychainStorageTests: XCTestCase {
 
     func testTheScopesProtectionSetsTheItemsAccessibilityAndSync() throws {
         let scopes: [(KeychainStorage.Scope, KeychainQuery.Accessibility, KeychainQuery.Synchronizable)] = [
-            (.own(protection: .untilFirstUnlock, namespace: "name"), .afterFirstUnlock, .no),
-            (.own(protection: .untilFirstUnlockThisDeviceOnly, namespace: "name"), .afterFirstUnlockThisDeviceOnly, .no),
-            (.own(protection: .whileLocked, namespace: "name"), .whenUnlocked, .no),
-            (.own(protection: .whileLockedThisDeviceOnly, namespace: "name"), .whenUnlockedThisDeviceOnly, .no),
-            (.appGroup(id: "group", protection: .whileLockedOrWithoutPasscode, namespace: "name"), .whenPasscodeSetThisDeviceOnly, .no),
-            (.iCloud(.own, protection: .untilFirstUnlock, namespace: "name"), .afterFirstUnlock, .yes),
-            (.iCloud(.appGroup(id: "group"), protection: .whileLocked, namespace: "name"), .whenUnlocked, .yes)
+            (.own(protection: .afterFirstUnlock, namespace: "name"), .afterFirstUnlock, .no),
+            (.own(protection: .afterFirstUnlockThisDeviceOnly, namespace: "name"), .afterFirstUnlockThisDeviceOnly, .no),
+            (.own(protection: .whenUnlocked, namespace: "name"), .whenUnlocked, .no),
+            (.own(protection: .whenUnlockedThisDeviceOnly, namespace: "name"), .whenUnlockedThisDeviceOnly, .no),
+            (.appGroup(id: "group", protection: .whenPasscodeSetThisDeviceOnly, namespace: "name"), .whenPasscodeSetThisDeviceOnly, .no),
+            (.iCloud(.own, protection: .afterFirstUnlock, namespace: "name"), .afterFirstUnlock, .yes),
+            (.iCloud(.appGroup(id: "group"), protection: .whenUnlocked, namespace: "name"), .whenUnlocked, .yes)
         ]
 
         for (scope, accessibility, synchronizable) in scopes {
@@ -301,7 +301,7 @@ final class KeychainStorageTests: XCTestCase {
         let scopes: [KeychainStorage.Scope] = [
             .own(namespace: "auth"),
             .own(namespace: "other"),
-            .own(protection: .untilFirstUnlock, namespace: "auth"),
+            .own(protection: .afterFirstUnlock, namespace: "auth"),
             .appGroup(id: "group.com.app", namespace: "auth"),
             .appGroup(id: backingStore.defaultGroup, namespace: "auth"),
             .iCloud(.own, namespace: "auth"),

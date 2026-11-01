@@ -44,7 +44,8 @@ Here's how the built-in storages compare:
 **User Defaults** - settings, flags and other small values.
 * Very fast reads from an in-memory cache, while writes reach the disk asynchronously.
 * Shared with extensions through an App Group suite.
-* Not for sensitive data: the values are stored unencrypted. Keep it small, since the whole scope is loaded into memory.
+* Not for sensitive data: the values are stored unencrypted. Keep it small, since the whole suite is loaded into memory: the system logs an error for a suite of 4 MB or more on iOS, and tvOS allows much less.
+* Until the user first unlocks the device after a restart, such as in a background launch, every fetch returns `nil`, with no error.
 * Clearing removes only the values saved through `KeyValueStorage` in the scope's namespace.
 
 **Keychain** - tokens, passwords and other secrets.
@@ -141,7 +142,7 @@ You need this only to share keychain items through a keychain access group inste
 
 You need this to make keychain items available on all the user's devices. Use the `.iCloud` scope, with `.own` or an `.appGroup(id:)` owner. There's no capability to add, but:
 * Items sync only for users who turned on iCloud Keychain on their devices.
-* `.iCloud` takes a `SyncedProtection`, `.untilFirstUnlock` or `.whileLocked`: the levels that stay on one device can't sync.
+* `.iCloud` takes a `SyncedProtection`, `.afterFirstUnlock` or `.whenUnlocked`: the levels that stay on one device can't sync.
 * `.iCloud` items are separate from the `.own` and `.appGroup` items of the same namespace.
 * Deleting a synced item, or clearing the scope, removes it from all the user's devices.
 
@@ -249,9 +250,9 @@ Clearing removes only the values the library saved in that scope. Other code's v
 A scope is where values live, so a key whose scope changes, such as its protection or namespace in an app update, finds none of the values saved before. Move each key's value into its new scope, for example at launch:
 
 ```swift
-// An app update that reads the token while the device is locked changes its protection from the default `.whileLocked`
-let token = KeychainKey<String>(key: "token", scope: .own(protection: .untilFirstUnlock, namespace: "auth"))
-try await storage.move(token, from: .own(protection: .whileLocked, namespace: "auth"))
+// An app update that reads the token while the device is locked changes its protection from the default `.whenUnlocked`
+let token = KeychainKey<String>(key: "token", scope: .own(protection: .afterFirstUnlock, namespace: "auth"))
+try await storage.move(token, from: .own(protection: .whenUnlocked, namespace: "auth"))
 ```
 
 `move` saves the value in the key's scope, unless a value is there already, and only then removes it from the old scope, so the value is never lost; a failed or interrupted move is finished by calling it again. Calls through the same `UnifiedStorage` in either scope wait until the move is done. Other `UnifiedStorage` instances, storages used directly and other processes don't wait, so move values before they use the key.
@@ -275,7 +276,7 @@ try await storage.save(/* accepts only MyType*/, forKey: key)
 `UnifiedStorage` has 6 built-in storage types:
 * `In-memory` - This storage type persists the items only within an app session.
 * `User-Defaults` - This storage type persists the items within the app's lifetime. Values are stored under `<namespace>!/<key>`, and any string is a valid key: `%` and NUL are written as `%25` and `%00`, because the system never writes a key with NUL to disk, and `/` in a namespace as `%2F`.
-* `File-System` -  This storage saves every value as a separate file in the scope's folder, `Application Support/<app>/<namespace>!/<protection>` for `.own` scopes (`Caches` or `tmp` for the other retentions), or in the App Group container. The file is replaced atomically, so a crash never leaves a value half-written or missing. Any string is a valid key: its file name keeps `a`–`z`, `0`–`9`, `_` and `-`, writes a capital as `!` and its lowercase letter, and every other byte as `%` and two hex digits. So `Key` is saved as `!key` and never shares a file with `key`, even on a case-insensitive disk. A file name can be at most 255 bytes, so longer keys throw `FileStorage.Error.invalidKey`.
+* `File-System` -  This storage saves every value as a separate file in the scope's folder, `Application Support/<app>/<namespace>!/<protection>` for `.own` scopes (`Caches` or `tmp` for the other retentions), or in the App Group container. The file is replaced atomically, so a crash never leaves a value half-written or missing. A save survives an app crash; a power loss or system crash right after it can lose it, since files aren't flushed to the disk on every save. Any string is a valid key: its file name keeps `a`–`z`, `0`–`9`, `_` and `-`, writes a capital as `!` and its lowercase letter, and every other byte as `%` and two hex digits. So `Key` is saved as `!key` and never shares a file with `key`, even on a case-insensitive disk. A file name can be at most 255 bytes, so longer keys throw `FileStorage.Error.invalidKey`.
 * `Keychain` - This storage type keeps the items in secure storage and persists even after app re-installations. Supports `iCloud` synchronization.
 * `Ubiquitous` - This storage keeps the values in the iCloud key-value store, under `<namespace>!/<key>`, and syncs them across the user's devices. Any string is a valid key: `%` and NUL are written as `%25` and `%00`, and `/` in a namespace as `%2F`. A value can be at most 1 MB (1,000,000 bytes), and a stored key at most 128 UTF-16 code units.
 * `SQLite` - This storage keeps all values of a scope in one SQLite database, the hidden `.KeyValueStorage.sqlite` in the same folder as the `File-System` storage of the scope. Any string is a valid key, and all storages of a scope, in your app and its extensions, share the same database at the same time. Each operation is atomic across processes, but a fetch followed by a save is not: another process can save in between. A save survives an app crash; a power loss or system crash right after it can lose the last saves, but never corrupts the database.
@@ -344,7 +345,7 @@ extension UnifiedStorageKey {
     }
     
     static var key3: KeychainKey<Double> {
-        .init(key: "key3", scope: .iCloud(.appGroup(id: "ABCDE12345.com.company.shared"), protection: .untilFirstUnlock, namespace: "auth"))
+        .init(key: "key3", scope: .iCloud(.appGroup(id: "ABCDE12345.com.company.shared"), protection: .afterFirstUnlock, namespace: "auth"))
     }
     
     static var key4: FileKey<UUID> {
@@ -359,21 +360,21 @@ then Xcode will suggest all the keys specified in the extension when you put a d
 ---
 ## Keychain
 
-The scope's `protection` sets when its items can be read. By default `.whileLocked` is used: the items can be read only while the device is unlocked, one of the most restrictive options with good data protection.
+The scope's `protection` sets when its items can be read. By default `.whenUnlocked` is used: the items can be read only while the device is unlocked, one of the most restrictive options with good data protection.
 
-Use `.untilFirstUnlock` if your app needs the items while in the background. Note that it is less secure than `.whileLocked`. Changing an existing key's protection moves it to a new place, so move its items with `move(_:from:)` (see [Moving values between scopes](#moving-values-between-scopes)), or users lose them, such as a signed-in session.
+Use `.afterFirstUnlock` if your app needs the items while in the background. Note that it is less secure than `.whenUnlocked`. Changing an existing key's protection moves it to a new place, so move its items with `move(_:from:)` (see [Moving values between scopes](#moving-values-between-scopes)), or users lose them, such as a signed-in session.
 
 Here are all the protection levels:
-* `untilFirstUnlock` (`kSecAttrAccessibleAfterFirstUnlock`)
-* `untilFirstUnlockThisDeviceOnly` (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`)
-* `whileLocked` (`kSecAttrAccessibleWhenUnlocked`)
-* `whileLockedThisDeviceOnly` (`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`)
-* `whileLockedOrWithoutPasscode` (`kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly`): saving fails without a passcode, and removing the passcode deletes the items.
+* `afterFirstUnlock` (`kSecAttrAccessibleAfterFirstUnlock`)
+* `afterFirstUnlockThisDeviceOnly` (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`)
+* `whenUnlocked` (`kSecAttrAccessibleWhenUnlocked`)
+* `whenUnlockedThisDeviceOnly` (`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`)
+* `whenPasscodeSetThisDeviceOnly` (`kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly`): saving fails without a passcode, and removing the passcode deletes the items.
 
 The protection is part of the scope, so scopes that differ only in protection keep separate items.
 
 ```swift
-let key = KeychainKey<String>(key: "token", scope: .own(protection: .untilFirstUnlock, namespace: "auth"))
+let key = KeychainKey<String>(key: "token", scope: .own(protection: .afterFirstUnlock, namespace: "auth"))
 ```
 
 To share items with your other apps and extensions, use an App Group they all belong to, or a Keychain Sharing group with your team ID prefix. Set up the capability first, see [Setup](#setup):
@@ -528,7 +529,7 @@ Even through one instance, a sequence of calls, such as a fetch followed by a sa
 typealias NotesKey<Value: CodingValue> = UnifiedStorageKey<IsolatedDataStorage<NotesStorage>, Value>
 ```
 
-***NOTE***! Calls on one `SQLiteStorage` wait for each other behind its lock, blocking their threads meanwhile. An app that drives one SQLite scope from many tasks at once can wrap it in `IsolatedDataStorage`, so that waiting calls suspend instead.
+***NOTE***! Calls on one `SQLiteStorage` wait for each other behind its lock, blocking their threads meanwhile. An app that drives one SQLite scope from many tasks at once can wrap it in `IsolatedDataStorage`, so that waiting callers suspend instead of blocking their threads; the call that runs still blocks one.
 
 ---
 ## Tests

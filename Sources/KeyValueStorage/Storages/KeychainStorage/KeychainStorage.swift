@@ -138,16 +138,16 @@ public final class KeychainStorage: DataStorage, Sendable {
         switch scope {
         case let .own(protection, _), let .appGroup(_, protection, _):
             switch protection {
-            case .untilFirstUnlock:                 return .afterFirstUnlock
-            case .untilFirstUnlockThisDeviceOnly:   return .afterFirstUnlockThisDeviceOnly
-            case .whileLocked:                      return .whenUnlocked
-            case .whileLockedThisDeviceOnly:        return .whenUnlockedThisDeviceOnly
-            case .whileLockedOrWithoutPasscode:     return .whenPasscodeSetThisDeviceOnly
+            case .afterFirstUnlock:                 return .afterFirstUnlock
+            case .afterFirstUnlockThisDeviceOnly:   return .afterFirstUnlockThisDeviceOnly
+            case .whenUnlocked:                     return .whenUnlocked
+            case .whenUnlockedThisDeviceOnly:       return .whenUnlockedThisDeviceOnly
+            case .whenPasscodeSetThisDeviceOnly:    return .whenPasscodeSetThisDeviceOnly
             }
         case let .iCloud(_, protection, _):
             switch protection {
-            case .untilFirstUnlock:                 return .afterFirstUnlock
-            case .whileLocked:                      return .whenUnlocked
+            case .afterFirstUnlock:                 return .afterFirstUnlock
+            case .whenUnlocked:                     return .whenUnlocked
             }
         }
     }

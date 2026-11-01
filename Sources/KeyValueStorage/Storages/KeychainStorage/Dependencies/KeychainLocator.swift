@@ -89,19 +89,19 @@ open class DefaultKeychainLocator: KeychainLocator, @unchecked Sendable {
 
     private static func name(for protection: KeychainStorage.Protection) -> String {
         switch protection {
-        case .untilFirstUnlock:                 return "u"
-        case .untilFirstUnlockThisDeviceOnly:   return "ud"
-        case .whileLocked:                      return "w"
-        case .whileLockedThisDeviceOnly:        return "wd"
-        case .whileLockedOrWithoutPasscode:     return "p"
+        case .afterFirstUnlock:                 return "u"
+        case .afterFirstUnlockThisDeviceOnly:   return "ud"
+        case .whenUnlocked:                     return "w"
+        case .whenUnlockedThisDeviceOnly:       return "wd"
+        case .whenPasscodeSetThisDeviceOnly:    return "p"
         }
     }
 
     // Local queries never match synced items, so the two share letters
     private static func name(for protection: KeychainStorage.SyncedProtection) -> String {
         switch protection {
-        case .untilFirstUnlock: return "u"
-        case .whileLocked:      return "w"
+        case .afterFirstUnlock: return "u"
+        case .whenUnlocked:     return "w"
         }
     }
 }

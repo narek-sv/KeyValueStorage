@@ -68,9 +68,9 @@ final class SQLiteIntegrationTests: XCTestCase {
         // `.none` opens, but can't be checked: macOS reports the default class for it
         _ = try storage(.own(protection: .none, namespace: "test"))
         let protections: [(SQLiteStorage.Protection, FileProtectionType)] = [
-            (.whileLocked, .complete),
-            (.whileLockedUnlessOpen, .completeUnlessOpen),
-            (.untilFirstUnlock, .completeUntilFirstUserAuthentication)
+            (.whenUnlocked, .complete),
+            (.whenUnlockedOrOpen, .completeUnlessOpen),
+            (.afterFirstUnlock, .completeUntilFirstUserAuthentication)
         ]
 
         for (protection, expected) in protections {

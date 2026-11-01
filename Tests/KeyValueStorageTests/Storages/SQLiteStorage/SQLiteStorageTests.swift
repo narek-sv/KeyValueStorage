@@ -62,9 +62,9 @@ final class SQLiteStorageTests: XCTestCase {
         let protections: [(SQLiteStorage.Protection, FileProtectionType?)] = [
             (.inherited, nil),
             (.none, FileProtectionType.none),
-            (.untilFirstUnlock, .completeUntilFirstUserAuthentication),
-            (.whileLocked, .complete),
-            (.whileLockedUnlessOpen, .completeUnlessOpen)
+            (.afterFirstUnlock, .completeUntilFirstUserAuthentication),
+            (.whenUnlocked, .complete),
+            (.whenUnlockedOrOpen, .completeUnlessOpen)
         ]
 
         for (protection, expected) in protections {
