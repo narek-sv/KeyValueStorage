@@ -28,8 +28,8 @@ public final class UnifiedStorage: @unchecked Sendable {
     private let factory: any UnifiedStorageFactory
     /// Guards the slots and the waiting holds; held only to look up or change them, never across an `await`.
     private let lock = Lock()
-    /// Each storage type and scope's slot, made on first use and kept.
-    private var slots = [AnyHashable: Slot]()
+    /// Each storage type's `SlotTable`, made on first use and kept: typed tables hash scopes without boxing them.
+    private var tables = [ObjectIdentifier: AnyObject]()
     /// Moves and updates waiting to hold their scopes, in the order they came.
     private var waitingHolds = [WaitingHold]()
 
@@ -170,12 +170,12 @@ public final class UnifiedStorage: @unchecked Sendable {
         _ scope: Storage.Scope,
         _ body: (Entry<Storage>) async throws(CodingStorageError<Storage>) -> T
     ) async throws(CodingStorageError<Storage>) -> T {
-        let slot = await enterCall(UnderlyingStorageKey<Storage>(scope: scope))
+        let (slot, creation) = await enterCall(scope, of: Storage.self)
         defer {
             leaveCall(slot)
         }
 
-        return try await body(entry(in: slot, for: scope))
+        return try await body(entry(in: slot, from: creation))
     }
 
     /// Runs `body` with the scopes' storages, all created first, once no call runs in any of them; calls in them wait meanwhile.
@@ -184,7 +184,7 @@ public final class UnifiedStorage: @unchecked Sendable {
         _ body: ([Entry<Storage>]) async throws(CodingStorageError<Storage>) -> T
     ) async throws(CodingStorageError<Storage>) -> T {
         let slots = lock.withLock {
-            scopes.map { slot(for: UnderlyingStorageKey<Storage>(scope: $0)) }
+            scopes.map { slot(for: $0, of: Storage.self) }
         }
 
         await enterHold(slots)
@@ -194,36 +194,50 @@ public final class UnifiedStorage: @unchecked Sendable {
 
         var entries = [Entry<Storage>]()
         for (slot, scope) in zip(slots, scopes) {
-            entries.append(try await entry(in: slot, for: scope))
+            let creation = lock.withLock { self.creation(in: slot, for: scope) }
+            entries.append(try await entry(in: slot, from: creation))
         }
 
         return try await body(entries)
     }
 
-    /// Under the lock: the scope's slot, made on first use.
-    private func slot(for key: AnyHashable) -> Slot {
-        if let slot = slots[key] {
+    /// Under the lock: the scope's slot, made on first use, in its storage type's table.
+    private func slot<Storage: UnifiedStorable>(for scope: Storage.Scope, of _: Storage.Type) -> StorageSlot<Storage> {
+        let table: SlotTable<Storage>
+        if let found = tables[ObjectIdentifier(Storage.self)] {
+            // Unchecked: each storage type's table is filed under its own identifier
+            table = unsafeDowncast(found, to: SlotTable<Storage>.self)
+        } else {
+            table = SlotTable()
+            tables[ObjectIdentifier(Storage.self)] = table
+        }
+
+        if let slot = table.slots[scope] {
             return slot
         }
 
-        let slot = Slot()
-        slots[key] = slot
+        let slot = StorageSlot<Storage>()
+        table.slots[scope] = slot
         return slot
     }
 
-    private func enterCall(_ key: AnyHashable) async -> Slot {
-        let (slot, entered) = lock.withLock { () -> (Slot, Bool) in
-            let found = self.slot(for: key)
+    /// Lets the call into the scope, and gives it the storage's creation from the same lookup.
+    private func enterCall<Storage: UnifiedStorable>(
+        _ scope: Storage.Scope,
+        of _: Storage.Type
+    ) async -> (StorageSlot<Storage>, CreationTask<Storage>) {
+        let (slot, creation) = lock.withLock { () -> (StorageSlot<Storage>, CreationTask<Storage>?) in
+            let found = self.slot(for: scope, of: Storage.self)
             guard found.admitsCalls else {
-                return (found, false)
+                return (found, nil)
             }
 
             found.calls += 1
-            return (found, true)
+            return (found, self.creation(in: found, for: scope))
         }
 
-        guard !entered else {
-            return slot
+        if let creation {
+            return (slot, creation)
         }
 
         // Admitted at once if the scope was freed since the check above, so a hold that ends meanwhile can't miss this call
@@ -236,7 +250,7 @@ public final class UnifiedStorage: @unchecked Sendable {
             resume(calls)
         }
 
-        return slot
+        return (slot, lock.withLock { self.creation(in: slot, for: scope) })
     }
 
     private func leaveCall(_ slot: Slot) {
@@ -313,35 +327,38 @@ public final class UnifiedStorage: @unchecked Sendable {
 
     // MARK: Storages
 
-    /// The slot's storage, created on first use; concurrent first calls share one creation. Failures aren't kept, so a
-    /// later call can retry.
-    private func entry<Storage: UnifiedStorable>(in slot: Slot, for scope: Storage.Scope) async throws(CodingStorageError<Storage>) -> Entry<Storage> {
-        let factory = factory
-        let task = lock.withLock { () -> CreationTask<Storage> in
-            if let task = slot.creation as? CreationTask<Storage> {
-                return task
-            }
-
-            let task = CreationTask<Storage> {
-                do throws(Storage.Error) {
-                    let dataStorage: Storage = try await factory.dataStorage(for: scope)
-                    let coding = await factory.codingStorage(for: dataStorage)
-                    return .success(Entry(coding: coding, observable: await factory.observableStorage(for: coding)))
-                } catch {
-                    return .failure(error)
-                }
-            }
-
-            slot.creation = task
-            return task
+    /// Under the lock: the slot's storage creation, started on first use; concurrent first calls share it.
+    private func creation<Storage: UnifiedStorable>(in slot: StorageSlot<Storage>, for scope: Storage.Scope) -> CreationTask<Storage> {
+        if let creation = slot.creation {
+            return creation
         }
 
-        switch await task.value {
+        let factory = factory
+        let creation = CreationTask<Storage> {
+            do throws(Storage.Error) {
+                let dataStorage: Storage = try await factory.dataStorage(for: scope)
+                let coding = await factory.codingStorage(for: dataStorage)
+                return .success(Entry(coding: coding, observable: await factory.observableStorage(for: coding)))
+            } catch {
+                return .failure(error)
+            }
+        }
+
+        slot.creation = creation
+        return creation
+    }
+
+    /// The created storage; a failure isn't kept, so a later call can retry.
+    private func entry<Storage: UnifiedStorable>(
+        in slot: StorageSlot<Storage>,
+        from creation: CreationTask<Storage>
+    ) async throws(CodingStorageError<Storage>) -> Entry<Storage> {
+        switch await creation.value {
         case let .success(entry):
             return entry
         case let .failure(error):
             lock.withLock {
-                if slot.creation as? CreationTask<Storage> == task {
+                if slot.creation == creation {
                     slot.creation = nil
                 }
             }
@@ -357,10 +374,8 @@ public final class UnifiedStorage: @unchecked Sendable {
 // MARK: - UnifiedStorage + Slot
 
 extension UnifiedStorage {
-    /// A storage type and scope: its storage's creation, and the calls, moves and updates that use it. Guarded by the lock.
-    private final class Slot: @unchecked Sendable {
-        /// The storage's creation task; `nil` before the first call, and after a failed creation.
-        var creation: (any Sendable)?
+    /// A storage type and scope: the calls, moves and updates that use it. Guarded by the lock.
+    private class Slot: @unchecked Sendable {
         /// Calls running in the scope.
         var calls = 0
         /// Whether a move or an update holds the scope.
@@ -377,6 +392,17 @@ extension UnifiedStorage {
         var admitsHold: Bool {
             !isHeld && calls == 0
         }
+    }
+
+    /// A `Slot` with its storage type's creation, so finding it needs no cast.
+    private final class StorageSlot<Storage: UnifiedStorable>: Slot, @unchecked Sendable {
+        /// `nil` before the first call, and after a failed creation.
+        var creation: CreationTask<Storage>?
+    }
+
+    /// A storage type's slots, by scope.
+    private final class SlotTable<Storage: UnifiedStorable> {
+        var slots = [Storage.Scope: StorageSlot<Storage>]()
     }
 
     /// A move or an update waiting until no call runs in its scopes and nothing else holds them.
@@ -424,25 +450,6 @@ extension UnifiedStorage {
             } else {
                 try await coding.clear()
             }
-        }
-    }
-}
-
-// MARK: - UnifiedStorage + UnderlyingStorageKey
-
-extension UnifiedStorage {
-    /// Keys of other storage types are other types, so `==` compares only the scope; the hash also mixes in the storage type,
-    /// because the cache holds every storage type's keys as `AnyHashable`.
-    private struct UnderlyingStorageKey<Storage: UnifiedStorable>: Hashable, Sendable {
-        let scope: Storage.Scope
-
-        static func == (lhs: Self, rhs: Self) -> Bool {
-            lhs.scope == rhs.scope
-        }
-
-        func hash(into hasher: inout Hasher) {
-            hasher.combine(scope)
-            hasher.combine(ObjectIdentifier(Storage.self))
         }
     }
 }

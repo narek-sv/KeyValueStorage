@@ -52,27 +52,29 @@ unusually thorough. No finding blocks a release on its own. What's left: checks 
 
 ## 2. Performance
 
-Measured per call, in-memory storage, release build:
+Measured per call on an M3 Max, release build, median of 7 runs:
 
-| Path | Time |
-| --- | --- |
-| `InMemoryStorage.fetch` (sync) | 0.12 µs |
-| `AsyncCodingStorage.fetch` (String) | 0.28 µs |
-| `UnifiedStorage.fetch` (String) | 1.50 µs |
-| `UnifiedStorage.save` (Int, JSON) | 1.86 µs |
-| `UnifiedStorage(observable: true).save` (Int) | 2.20 µs |
+| Path | Time | Allocations |
+| --- | --- | --- |
+| `InMemoryStorage.fetch` (sync) | 0.10 µs | 0 |
+| `AsyncCodingStorage.fetch` (String) | 0.24 µs | 0 |
+| `UnifiedStorage.fetch` (String) | 1.05 µs | 0 |
+| `UnifiedStorage.save` (Int, JSON) | 1.44 µs | 2 |
+| `UnifiedStorage(observable: true).save` (Int) | 1.72 µs | 2 |
 
-Breakdown of the facade's lookup: boxing `UnderlyingStorageKey` into `AnyHashable` and looking it up costs ~0.38 µs;
-the lock, the `as?` cast and awaiting the finished task add ~0.07 µs.
+The facade's cache is typed per storage type, so its lookup no longer boxes scopes, stays flat however many scopes are
+cached, and adds no allocations to any storage.
 
-1. **Facade cache key (low–medium).** ~1.2 µs per call over the coding storage, ~5×, about 0.2 µs of it the scope lock `move` and `update` need. A typed two-level cache,
-   `[ObjectIdentifier: TypedCache<Storage>]` with `[Storage.Scope: CreationTask]` inside, removes the `AnyHashable`
-   boxing. Matters only for InMemory and UserDefaults; the other storages' I/O dwarfs it.
-2. **SQLite copies every blob (low).** `bind` uses `SQLITE_TRANSIENT`, so SQLite copies the whole value before
+1. **The rest of the facade (low).** Over a storage that does nothing, a call costs ~0.9 µs through `UnifiedStorage` and
+   86 ns through the coding storage. The lock, the lookup and awaiting the created storage explain ~0.15 µs; the rest is
+   probably generic code that isn't specialized across the module boundary, and the async calls between the layers.
+2. **One lock per instance (low).** Every call takes the instance's lock twice, whatever its scope, so 8 tasks through
+   one `UnifiedStorage` finish no faster than one task (0.93 µs vs 0.90 µs per call over a storage that does nothing).
+3. **SQLite copies every blob (low).** `bind` uses `SQLITE_TRANSIENT`, so SQLite copies the whole value before
    stepping. Binding with `SQLITE_STATIC` and stepping inside `value.withUnsafeBytes` avoids a copy of multi-MB values.
    Keep `utf8CString` for the key: `withUTF8` can give a nil pointer for an empty string, which binds NULL.
    `sqlite3_clear_bindings` is redundant, since every call rebinds every parameter.
-3. **Already good:** File (one `lstat` per item, one folder check in `clear`), Keychain (update first, add only when
+4. **Already good:** File (one `lstat` per item, one folder check in `clear`), Keychain (update first, add only when
    missing), SQLite (prepared statements, WAL, `synchronous = NORMAL`).
 
 Note: calling the async API from the main actor in a tight loop costs ~9 µs per call in executor hops; that's Swift's
