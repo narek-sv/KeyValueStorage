@@ -416,7 +416,7 @@ struct AppStorageFactory: UnifiedStorageFactory {
 
 `ObservableStorage` is an `open` class, so a subclass can change how it saves, deletes or publishes, and call `super` for the rest.
 
-Publishers and streams start with the currently stored value, or `nil` if there's none, followed by every change. Pass `includingCurrentValue: false` to get only the changes.
+Publishers and streams start with the stored value, or `nil` if there's none, followed by every change. Each call to `publisher(forKey:)` or `stream(forKey:)` reads the value itself, so it's current even if it was changed in a way observers don't see; a change published after the read wins over it. Pass `includingCurrentValue: false` to get only the changes.
 
 Combine style publishers:
 ```swift

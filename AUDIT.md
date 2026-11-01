@@ -15,10 +15,9 @@ the naming encodings are injective and safe on case- and normalization-insensiti
 unusually thorough. What stands between the branch and a release:
 
 1. Upgrading from 3.0 orphans every stored value, and nothing documents it (§4a).
-2. Observation can hand a new subscriber a stale "current value" (§3.1, confirmed).
-3. Changing a scope's protection in an app update hides every existing value (§4b).
-4. `IsolatedDataStorage.withStorage` is atomic only within one instance, but the README calls it an atomic step (§4c).
-5. The Ubiquitous key limit may be looser than the store's, which would crash (§3.3, verify).
+2. Changing a scope's protection in an app update hides every existing value (§4b).
+3. `IsolatedDataStorage.withStorage` is atomic only within one instance, but the README calls it an atomic step (§4c).
+4. The Ubiquitous key limit may be looser than the store's, which would crash (§3.2, verify).
 
 ---
 
@@ -99,29 +98,13 @@ Note: calling the async API from the main actor in a tight loop costs ~9 µs per
 
 ## 3. Bugs
 
-### 3.1 Stale "current value" for new subscribers (medium, confirmed)
-
-`ObservableStorage.publisher(forKey:includingCurrentValue: true)` reads the stored value only while the key's
-observation is `.unknown`. While any other publisher or subscription keeps the observation alive, a new subscriber gets
-the cached state instead of a read.
-
-Probe: save `v1` through an observable storage, subscribe, save `v2` through a plain `CodingStorage` of the same scope,
-subscribe again. Stored: `v2`; the new subscriber's current value: `v1`.
-
-Writes that bypass the observation stay hidden from every new subscriber: other processes, plain coding storages,
-non-observable `UnifiedStorage` instances, deletes through a key of another value type. And when two concurrent saves of
-one key deliver out of order (documented), the cache keeps the older value until the next change, so every later
-subscriber starts from a value that isn't stored.
-
-Fix: read for every new publisher, keep the read per publisher, and let an observed change since the read win.
-
-### 3.2 Keychain save race (low)
+### 3.1 Keychain save race (low)
 
 `save`: update → `.notFound`; add → `.duplicate` (another save added it); update again → `.notFound` (a concurrent delete
 removed it). `save` throws `.keychain(status: errSecItemNotFound)` instead of succeeding. Needs three concurrent calls on
 one key; a retry loop (bounded) or treating the last `.notFound` as "add again" fixes it.
 
-### 3.3 Ubiquitous key limit may crash (medium, verify)
+### 3.2 Ubiquitous key limit may crash (medium, verify)
 
 `DefaultUbiquitousLocator` allows stored keys of up to 128 UTF-16 code units. Apple's key-value store documentation has
 given the limit as 64 bytes of UTF-8. The locator's own docs say a longer key raises an Objective-C exception. If the
@@ -194,23 +177,18 @@ container. Document on `SQLiteStorage.Scope.appGroup`; confirm on a device wheth
 - README `withStorage`: needs "only against calls through this instance" (§4c).
 - README Thread Safety note: "so that waiting calls suspend instead" — callers suspend, but the actor's thread still
   blocks for the whole call.
-- README and `ObservableStorage`: "start with the currently stored value" is the cached value while an observation is
-  alive (§3.1; fixed by the fix).
-- `ObservableStorage`: "Two calls that save one key at once may deliver their values out of order" understates it:
-  the cached state stays wrong too (§3.1).
 - `UserDefaultsStorage.Scope`: lists launch arguments and registered defaults, not the global domain, which every suite
   also reads.
 - `AsyncCodingStorage`: "wrap a synchronous storage in `IsolatedDataStorage` to share it" — the built-in synchronous
   storages are already `Sendable`; it means non-`Sendable` ones.
-- README Ubiquitous: states 128 UTF-16 code units as fact (§3.3).
+- README Ubiquitous: states 128 UTF-16 code units as fact (§3.2).
 - Release leftovers: Installation `from: "3.0.0"`; the coverage badge says ≥98% while the plan says 100%; the README
   "Tests" section says nothing concrete.
 
 ### Test gaps
 
-- Observation: a late subscriber after a write that bypassed the observation (§3.1); out-of-order saves; `AsyncStream`
-  buffering under a slow consumer.
-- Keychain: the three-way save race (§3.2).
+- Observation: `AsyncStream` buffering under a slow consumer.
+- Keychain: the three-way save race (§3.1).
 - `UnifiedStorage`: caller cancellation during creation.
 - iOS: a 255-byte file name through a real atomic write (checked on macOS: works).
 
@@ -256,7 +234,7 @@ each other's observation events.
   descriptors accumulate for the instance's lifetime.
 - **Creation ignores cancellation (low).** Awaiting the creation task ignores the caller's cancellation; a custom async
   storage whose `init` hangs blocks its scope forever.
-- **Crashes:** none found beyond §3.3. Lock re-entry (the registry is never re-entered from an observation's release),
+- **Crashes:** none found beyond §3.2. Lock re-entry (the registry is never re-entered from an observation's release),
   statement lifetimes and every error path check out.
 
 ---
@@ -271,4 +249,4 @@ No data races found:
 - Creation is deduplicated without a race, and failures aren't cached.
 - The observation's version check lets a change win over a concurrent read.
 
-The remaining races are logical: observation ordering (§3.1), per-instance atomicity (§4c), the Keychain save race (§3.2).
+The remaining races are logical: observation delivery order (documented), per-instance atomicity (§4c), the Keychain save race (§3.1).

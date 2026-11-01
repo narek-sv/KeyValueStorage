@@ -117,28 +117,40 @@ final class ObservableStorageTests: XCTestCase {
         subscription.cancel()
     }
 
-    func testAValueAnotherReadSeededFirstWinsOverAnOlderRead() async throws {
-        // Given: two instances of one storage type and scope, one of them slow to read
-        let scope = MockScope(name: "seeded-\(UUID().uuidString)")
-        let slow = SlowReadStorage(scope: scope)
-        let fast = SlowReadStorage(scope: scope, pausesReads: false)
-        await slow.store(try JSONDataCoder().encode(1), forKey: "key")
-        await fast.store(try JSONDataCoder().encode(2), forKey: "key")
-        let slowStorage = ObservableStorage(AsyncCodingStorage(storage: slow, coder: JSONDataCoder()))
-        let fastStorage = ObservableStorage(AsyncCodingStorage(storage: fast, coder: JSONDataCoder()))
-        let key = CodingStorageKey<SlowReadStorage, Int>(key: "key")
-        let slowValues = Recorded<Int?>()
+    func testAPublisherReadsAValueChangedUnobservedWhileTheKeyIsObserved() async throws {
+        // Given: an observed key, changed through a storage without observation
+        let namespace = ExactString("unobserved-\(UUID().uuidString)")
+        let storage = makeStorage(namespace)
+        let first = Recorded<Int?>()
+        let second = Recorded<Int?>()
+        try await storage.save(1, forKey: key)
+        let firstSubscription = try await storage.publisher(forKey: key).sink { first.append($0) }
+        try CodingStorage(storage: InMemoryStorage(scope: .own(namespace: namespace)), coder: JSONDataCoder()).save(2, forKey: key)
 
-        // When: the fast read seeds the observation while the slow one is still reading
-        let slowPublisher = Task { try await slowStorage.publisher(forKey: key) }
-        await slow.waitUntilReading()
-        let fastPublisher = try await fastStorage.publisher(forKey: key)
-        await slow.finishReading()
-        let subscription = try await slowPublisher.value.sink { slowValues.append($0) }
+        // When
+        let secondSubscription = try await storage.publisher(forKey: key).sink { second.append($0) }
 
-        // Then: the slow read doesn't replace the value seeded first
-        XCTAssertEqual(slowValues.all, [2])
-        withExtendedLifetime(fastPublisher) { }
+        // Then: the new publisher starts with the stored value, and its read reaches no other subscriber
+        XCTAssertEqual(second.all, [2])
+        XCTAssertEqual(first.all, [1])
+        firstSubscription.cancel()
+        secondSubscription.cancel()
+    }
+
+    func testAPublisherReadsAValueDeletedThroughAnotherValueType() async throws {
+        // Given: an observed key's published value, deleted through a key of another value type, which its observers don't see
+        let storage = makeStorage()
+        let values = Recorded<Int?>()
+        let observer = try await storage.publisher(forKey: key, includingCurrentValue: false).sink { _ in }
+        try await storage.save(1, forKey: key)
+        try await storage.delete(forKey: Key<String>(key: "key"))
+
+        // When
+        let subscription = try await storage.publisher(forKey: key).sink { values.append($0) }
+
+        // Then
+        XCTAssertEqual(values.all, [nil])
+        observer.cancel()
         subscription.cancel()
     }
 
@@ -183,6 +195,7 @@ final class ObservableStorageTests: XCTestCase {
             }
         }
 
+        XCTAssertEqual(observationCount(in: namespace), 0, "a failed read releases its observation")
         _ = try await storage.publisher(forKey: key, includingCurrentValue: false)
     }
 
@@ -190,65 +203,73 @@ final class ObservableStorageTests: XCTestCase {
 
     func testAnUnusedObservationIsReleased() async throws {
         // Given
-        let coder = CountingCoder()
-        let storage = makeStorage(coder: coder)
+        let namespace = ExactString("released-\(UUID().uuidString)")
+        let storage = makeStorage(namespace)
         try await storage.save(1, forKey: key)
 
         // When
-        var subscription = try await storage.publisher(forKey: key).sink { _ in }
-        _ = try await storage.publisher(forKey: key)
+        let subscription = try await storage.publisher(forKey: key).sink { _ in }
+        var publisher = Optional(try await storage.publisher(forKey: key))
 
         // Then
-        XCTAssertEqual(coder.decodeCalls, 1, "the second publisher shares the observation, so it doesn't read again")
+        XCTAssertEqual(observationCount(in: namespace), 1, "publishers of one key share its observation")
 
         // When
         subscription.cancel()
-        subscription = try await storage.publisher(forKey: key).sink { _ in }
 
         // Then
-        XCTAssertEqual(coder.decodeCalls, 2, "the released observation is made again, so the value is read again")
-        subscription.cancel()
+        XCTAssertEqual(observationCount(in: namespace), 1, "the remaining publisher keeps it")
+
+        // When
+        publisher = nil
+
+        // Then
+        XCTAssertEqual(observationCount(in: namespace), 0)
+        XCTAssertNil(publisher)
     }
 
     func testReleasingOneKeyKeepsTheScopesOtherObservations() async throws {
         // Given: two observed keys of one scope
-        let coder = CountingCoder()
-        let storage = makeStorage(coder: coder)
+        let namespace = ExactString("kept-\(UUID().uuidString)")
+        let storage = makeStorage(namespace)
         let other = Key<Int>(key: "other")
         let values = Recorded<Int?>()
-        try await storage.save(1, forKey: key)
-        try await storage.save(2, forKey: other)
         var released = try await storage.publisher(forKey: key).sink { _ in }
         let kept = try await storage.publisher(forKey: other, includingCurrentValue: false).sink { values.append($0) }
 
-        // When: one is released, then observed again
+        // When: one is released
         released.cancel()
         try await storage.save(3, forKey: other)
+
+        // Then: the other is still observed and delivered
+        XCTAssertEqual(observationCount(in: namespace), 1)
+        XCTAssertEqual(values.all, [3])
+
+        // When: the released one is observed again
         released = try await storage.publisher(forKey: key).sink { _ in }
         try await storage.clear()
 
-        // Then: the other is still delivered, and the released one is read again
+        // Then
+        XCTAssertEqual(observationCount(in: namespace), 2)
         XCTAssertEqual(values.all, [3, nil])
-        XCTAssertEqual(coder.decodeCalls, 2)
         released.cancel()
         kept.cancel()
     }
 
     func testAReleasedStreamReleasesItsObservation() async throws {
         // Given
-        let coder = CountingCoder()
-        let storage = makeStorage(coder: coder)
-        try await storage.save(1, forKey: key)
+        let namespace = ExactString("stream-\(UUID().uuidString)")
+        let storage = makeStorage(namespace)
 
         // When
         do {
             let stream = try await storage.stream(forKey: key)
+            XCTAssertEqual(observationCount(in: namespace), 1)
             _ = stream
         }
-        _ = try await storage.publisher(forKey: key)
 
         // Then
-        XCTAssertEqual(coder.decodeCalls, 2)
+        XCTAssertEqual(observationCount(in: namespace), 0)
     }
 
     // MARK: Delivery
@@ -428,37 +449,32 @@ final class ObservableStorageTests: XCTestCase {
                              coder: any DataCoder = JSONDataCoder()) -> ObservableStorage<InMemoryStorage> {
         ObservableStorage(AsyncCodingStorage(storage: InMemoryStorage(scope: .own(namespace: namespace)), coder: coder))
     }
+
+    /// The observed keys of the in-memory scope with the namespace.
+    private func observationCount(in namespace: ExactString) -> Int {
+        let scope = ObservationRegistry.ScopeID(storageType: ObjectIdentifier(InMemoryStorage.self), scope: AnyHashable(InMemoryStorage.Scope.own(namespace: namespace)))
+        return ObservationRegistry.shared.observations(in: scope).count
+    }
 }
 
 // MARK: - SlowReadStorage
 
-/// Takes the stored value, then waits until the test lets the read return, like a slow read that a save overtakes;
-/// with `pausesReads` off, a plain storage of the same type.
+/// Takes the stored value, then waits until the test lets the read return, like a slow read that a save overtakes.
 private actor SlowReadStorage: AsyncDataStorage {
     typealias Key = String
     typealias Error = Never
 
     nonisolated let scope: MockScope
-    private let pausesReads: Bool
     private var values = [String: Data]()
     private var pausedRead: CheckedContinuation<Void, Never>?
     private var readStarted: CheckedContinuation<Void, Never>?
 
     init(scope: MockScope) {
-        self.init(scope: scope, pausesReads: true)
-    }
-
-    init(scope: MockScope, pausesReads: Bool) {
         self.scope = scope
-        self.pausesReads = pausesReads
     }
 
     func fetch(forKey key: String) async -> Data? {
         let value = values[key]
-        guard pausesReads else {
-            return value
-        }
-
         readStarted?.resume()
         readStarted = nil
         await withCheckedContinuation { pausedRead = $0 }
@@ -493,27 +509,6 @@ private actor SlowReadStorage: AsyncDataStorage {
     func finishReading() {
         pausedRead?.resume()
         pausedRead = nil
-    }
-}
-
-// MARK: - CountingCoder
-
-/// JSON, counting its decodes.
-private final class CountingCoder: DataCoder, @unchecked Sendable {
-    private let lock = NSLock()
-    private var decodes = 0
-
-    var decodeCalls: Int {
-        lock.withLock { decodes }
-    }
-
-    func encode<Value: CodingValue>(_ value: Value) throws -> Data {
-        try JSONDataCoder().encode(value)
-    }
-
-    func decode<Value: CodingValue>(_ data: Data) throws -> Value {
-        lock.withLock { decodes += 1 }
-        return try JSONDataCoder().decode(data)
     }
 }
 

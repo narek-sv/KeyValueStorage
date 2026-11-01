@@ -26,7 +26,7 @@ This file lists only what's left of the 4.0 refactor. The finished design, its d
 
 ## 1. Uncovered by design
 
-No test can reach these: `Lock`'s `NSLock` fallback (before macOS 13 / iOS 16), `FileStorage`'s `.atomic`-only writing options (before macOS 11), `OwnIdentity.identifier` without a bundle ID, `assert` failure arms, the `.unknown` arm of an observation's state, SQLite's out-of-memory and empty-blob-pointer paths, and `SQLiteStorage.init()`, which would open a database in the real Application Support. The Keychain and Ubiquitous default adapters run in KeychainHost and on a device.
+No test can reach these: `Lock`'s `NSLock` fallback (before macOS 13 / iOS 16), `FileStorage`'s `.atomic`-only writing options (before macOS 11), `OwnIdentity.identifier` without a bundle ID, `assert` failure arms, SQLite's out-of-memory and empty-blob-pointer paths, and `SQLiteStorage.init()`, which would open a database in the real Application Support. The Keychain and Ubiquitous default adapters run in KeychainHost and on a device.
 
 ## 2. Real-device tests (deferred: need a real iPhone)
 

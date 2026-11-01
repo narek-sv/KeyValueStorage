@@ -87,7 +87,8 @@ public final class UnifiedStorage: @unchecked Sendable {
     // MARK: Observation
     
     /// Changes are delivered on the thread that makes them; see `ObservableStorage`.
-    /// - Parameter includingCurrentValue: Whether the publisher first emits the currently stored value, or `nil` if there's none.
+    /// - Parameter includingCurrentValue: Whether the publisher first emits the stored value, or `nil` if there's none: the
+    ///   value this call reads, or a change published since.
     /// - Returns: `nil` if the factory doesn't make the key's storage observable.
     public func publisher<Storage: UnifiedStorable, Value: CodingValue>(forKey key: Key<Storage, Value>, includingCurrentValue: Bool = true)
     async throws(CodingStorageError<Storage>) -> ValuePublisher<Value?>? {
@@ -96,7 +97,8 @@ public final class UnifiedStorage: @unchecked Sendable {
     }
     
     /// The stream resumes on the executor of the task that iterates it; see `ObservableStorage`.
-    /// - Parameter includingCurrentValue: Whether the stream starts with the currently stored value, or `nil` if there's none.
+    /// - Parameter includingCurrentValue: Whether the stream starts with the stored value, or `nil` if there's none: the
+    ///   value this call reads, or a change published since.
     /// - Returns: `nil` if the factory doesn't make the key's storage observable.
     public func stream<Storage: UnifiedStorable, Value: CodingValue>(forKey key: Key<Storage, Value>, includingCurrentValue: Bool = true)
     async throws(CodingStorageError<Storage>) -> AsyncStream<Value?>? {

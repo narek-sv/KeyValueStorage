@@ -75,8 +75,8 @@ open class ObservableStorage<Storage: AsyncDataStorage & Sendable>: @unchecked S
 
     // MARK: Observation
 
-    /// - Parameter includingCurrentValue: Whether the publisher first emits the currently stored value, or `nil` if there's none.
-    ///   Reading it can throw, for example when the stored data can't be decoded.
+    /// - Parameter includingCurrentValue: Whether the publisher first emits the stored value, or `nil` if there's none: the
+    ///   value this call reads, or a change published since. Reading it can throw, for example when the stored data can't be decoded.
     open func publisher<Value: CodingValue>(forKey key: CodingStorageKey<Storage, Value>,
                                             includingCurrentValue: Bool = true) async throws(Error) -> ValuePublisher<Value?> {
         let scopeID = scopeID
@@ -85,28 +85,35 @@ open class ObservableStorage<Storage: AsyncDataStorage & Sendable>: @unchecked S
             registry.release(observation, forKey: key, in: scopeID)
         }
 
-        // Registered before reading, so a value saved meanwhile wins over the one read here
-        if includingCurrentValue, let version = observation.versionIfUnknown() {
-            let value = try await fetch(forKey: key)
-            observation.seed(value, ifUnchangedSince: version)
+        // The subject replays the latest change on subscription, so dropping it leaves only later changes, never `nil`
+        guard includingCurrentValue else {
+            return ValuePublisher(observation.subject
+                .dropFirst()
+                .map { change in
+                    withExtendedLifetime(token) { change?.value as? Value }
+                }
+                .eraseToAnyPublisher())
         }
 
-        // The subject replays its state on subscription, so dropping it leaves only later changes
-        let states = includingCurrentValue
-            ? observation.subject.eraseToAnyPublisher()
-            : observation.subject.dropFirst().eraseToAnyPublisher()
-
-        return ValuePublisher(states
-            .compactMap { state in
+        // Every publisher reads for itself: changes no observation sees can make an earlier publisher's value outdated.
+        // The version comes first, so a change published while reading, or before subscribing, wins over the value read
+        let version = observation.version
+        let value = try await fetch(forKey: key)
+        return ValuePublisher(observation.subject
+            .map { change in
                 withExtendedLifetime(token) {
-                    state.value(as: Value.self, includingSeeded: includingCurrentValue)
+                    guard let change, change.version > version else {
+                        return value
+                    }
+
+                    return change.value as? Value
                 }
             }
             .eraseToAnyPublisher())
     }
 
-    /// - Parameter includingCurrentValue: Whether the stream starts with the currently stored value, or `nil` if there's none.
-    ///   Reading it can throw, for example when the stored data can't be decoded.
+    /// - Parameter includingCurrentValue: Whether the stream starts with the stored value, or `nil` if there's none: the
+    ///   value this call reads, or a change published since. Reading it can throw, for example when the stored data can't be decoded.
     open func stream<Value: CodingValue>(forKey key: CodingStorageKey<Storage, Value>,
                                          includingCurrentValue: Bool = true) async throws(Error) -> AsyncStream<Value?> {
         let publisher = try await publisher(forKey: key, includingCurrentValue: includingCurrentValue)
@@ -156,7 +163,7 @@ private final class ObservationToken: Sendable {
 // MARK: - ObservationRegistry
 
 /// Every observed key of the process, shared by all `ObservableStorage` instances.
-private final class ObservationRegistry: @unchecked Sendable {
+final class ObservationRegistry: @unchecked Sendable {
     static let shared = ObservationRegistry()
 
     /// A storage type and one of its scopes: storages of different types never share observations.
@@ -206,63 +213,35 @@ private final class ObservationRegistry: @unchecked Sendable {
 
 // MARK: - Observation
 
-/// The observed state of one key.
-/// - Note: Its state changes and deliveries hold its own recursive lock, so subscribers never see two at once, and one that
+/// The published changes of one key; it holds no value read from the storage, which other writers can outdate.
+/// - Note: Changes and their deliveries hold its own recursive lock, so subscribers never see two at once, and one that
 ///   saves the same key from its callback continues on the same thread.
-private final class Observation: @unchecked Sendable {
-    let subject = CurrentValueSubject<State, Never>(.unknown)
+final class Observation: @unchecked Sendable {
+    /// The latest change, `nil` before the first.
+    let subject = CurrentValueSubject<Change?, Never>(nil)
     /// Guarded by the registry's lock.
     var references = 0
 
     private let lock = NSRecursiveLock()
-    private var version = 0
+    private var latestVersion = 0
 
-    func versionIfUnknown() -> Int? {
-        lock.withLock { () -> Int? in
-            if case .unknown = subject.value {
-                return version
-            }
-
-            return nil
-        }
-    }
-
-    func seed(_ value: Any?, ifUnchangedSince version: Int) {
-        lock.withLock {
-            guard self.version == version, case .unknown = subject.value else {
-                return
-            }
-
-            subject.send(.seeded(value))
-        }
+    /// The latest change's version: later changes have greater ones.
+    var version: Int {
+        lock.withLock { latestVersion }
     }
 
     func change(to value: Any?) {
         lock.withLock {
-            version += 1
-            subject.send(.changed(value))
+            latestVersion += 1
+            subject.send(Change(value: value, version: latestVersion))
         }
     }
 
-    // MARK: State
+    // MARK: Change
 
-    enum State {
-        /// Nothing has been read or changed yet
-        case unknown
-        /// Read from the storage for a subscriber that wants the current value
-        case seeded(Any?)
-        /// Saved, deleted or cleared through an observable storage
-        case changed(Any?)
-
-        func value<Value>(as type: Value.Type, includingSeeded: Bool) -> Value?? {
-            switch self {
-            case .unknown:
-                return nil
-            case let .seeded(value):
-                return includingSeeded ? .some(value as? Value) : nil
-            case let .changed(value):
-                return .some(value as? Value)
-            }
-        }
+    /// Saved, deleted or cleared through an observable storage.
+    struct Change {
+        let value: Any?
+        let version: Int
     }
 }
