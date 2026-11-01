@@ -14,9 +14,8 @@ The core is solid. Scope isolation holds for all six storages with the default l
 the naming encodings are injective and safe on case- and normalization-insensitive volumes, and the test suite is
 unusually thorough. What stands between the branch and a release:
 
-1. Upgrading from 3.0 orphans every stored value, and nothing documents it (§4a).
-2. Changing a scope's protection in an app update hides every existing value (§4b).
-3. `IsolatedDataStorage.withStorage` is atomic only within one instance, but the README calls it an atomic step (§4c).
+1. Changing a scope's protection in an app update hides every existing value (§4a).
+2. `IsolatedDataStorage.withStorage` is atomic only within one instance, but the README calls it an atomic step (§4b).
 
 ---
 
@@ -60,7 +59,7 @@ unusually thorough. What stands between the branch and a release:
    with the same value type, are seen. Ubiquitous's `didChangeExternallyNotification` and UserDefaults'
    `didChangeNotification` could feed it.
 5. **Protection is part of a scope's identity.** Defensible, since it rules out two scopes rewriting each other's
-   accessibility, but it causes §4b.
+   accessibility, but it causes §4a.
 
 ---
 
@@ -109,52 +108,38 @@ crash there. Verify on the oldest supported systems (`REFACTOR_PLAN §2`); only 
 
 ## 4. Business-logic gaps and data-loss risks
 
-### 4a. Upgrading from 3.x orphans every value (high, release blocker)
-
-`v3.0.0` is tagged. 4.0 moves every location:
-
-| Storage | 3.0 | 4.0 |
-| --- | --- | --- |
-| Keychain | service `KeyValueStorage` (or `KeyValueStorage.<group>`) | `<app>:<namespace>:<protection>`, `<group>/<namespace>/<protection>` |
-| Files | `Application Support/<bundle id>/KeyValueStorage/Files`, keys like `%4Bey` | `<base>/<app>/<namespace>!/<protection>`, keys like `!key` |
-| UserDefaults | the key as is | `<namespace>!/<key>` in a library suite |
-
-After an update, every fetch returns `nil`: users are logged out, settings reset, caches lost. There's no 4.0 CHANGELOG
-entry, the README covers only "Migrating from 2.x", and `REFACTOR_PLAN §3` doesn't list a 3.x guide. Needs a migration
-section (read with a custom locator or the 3.x paths, save, delete), and possibly a helper.
-
-### 4b. Changing a scope's protection hides its values (high, docs)
+### 4a. Changing a scope's protection hides its values (high, docs)
 
 Protection is part of the place, so an update that changes `.own(protection: .whileLocked)` to `.untilFirstUnlock`
 finds nothing. The README recommends exactly that change ("Use `.untilFirstUnlock` if your app needs the items while in
 the background"). The rule is documented; the consequence and a migration recipe are not. Same for any namespace change.
 
-### 4c. `withStorage` is atomic only per instance (medium, docs)
+### 4b. `withStorage` is atomic only per instance (medium, docs)
 
 README: "Several operations as one atomic step, on any storage." It excludes only calls through the same
 `IsolatedDataStorage` instance: not `UnifiedStorage`'s own storage of the scope, other instances, or other processes.
 Read-modify-write written from the README example loses updates. See §1.2.
 
-### 4d. UserDefaults before first unlock (medium, verify)
+### 4c. UserDefaults before first unlock (medium, verify)
 
 During prewarming or before the first unlock after a reboot, the preferences file is unreadable and UserDefaults returns
 `nil` for every key. File and Keychain throw `.protectedDataUnavailable` in the same situation; UserDefaults can't tell.
 Apps will take it for a first launch. Writes in that window may not persist, or may replace the real values once the
 file is readable. At least a `- Warning:` on the storage.
 
-### 4e. Large UserDefaults values (low–medium, verify)
+### 4d. Large UserDefaults values (low–medium, verify)
 
 CFPreferences logs values of 4 MiB or more as invalid on iOS, and tvOS's limit is much lower. `set` reports nothing,
 so a value can be dropped silently. `UbiquitousStorage` checks value size; `UserDefaultsStorage` doesn't. Document, and
 consider a `valueTooLarge` check like Ubiquitous's.
 
-### 4f. App Group SQLite and suspension (medium, docs, verify)
+### 4e. App Group SQLite and suspension (medium, docs, verify)
 
 `REFACTOR_PLAN §4` says "the scope docs say so" about `0xdead10cc`, but no scope doc mentions it. An open WAL connection
 keeps a shared lock on the `-shm` file, and the system terminates an app suspended while holding a lock in a shared
 container. Document on `SQLiteStorage.Scope.appGroup`; confirm on a device whether an idle connection triggers it.
 
-### 4g. Minor
+### 4f. Minor
 
 - FileStorage's durability on power loss isn't stated (SQLite's is): `Data.write(.atomic)` doesn't `fsync`.
 - Interrupted atomic writes leave hidden temp files (`.dat.nosync…`) that `clear()` never removes: disk space, not values.
@@ -167,8 +152,8 @@ container. Document on `SQLiteStorage.Scope.appGroup`; confirm on a device wheth
 
 ### Docs and comments
 
-- `REFACTOR_PLAN §4` claims the App Group scope docs warn about suspension; they don't (§4f).
-- README `withStorage`: needs "only against calls through this instance" (§4c).
+- `REFACTOR_PLAN §4` claims the App Group scope docs warn about suspension; they don't (§4e).
+- README `withStorage`: needs "only against calls through this instance" (§4b).
 - README Thread Safety note: "so that waiting calls suspend instead" — callers suspend, but the actor's thread still
   blocks for the whole call.
 - `UserDefaultsStorage.Scope`: lists launch arguments and registered defaults, not the global domain, which every suite
@@ -241,4 +226,4 @@ No data races found:
 - Creation is deduplicated without a race, and failures aren't cached.
 - The observation's version check lets a change win over a concurrent read.
 
-The remaining races are logical: observation delivery order (documented) and per-instance atomicity (§4c).
+The remaining races are logical: observation delivery order (documented) and per-instance atomicity (§4b).

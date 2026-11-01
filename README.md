@@ -546,6 +546,20 @@ import KeyValueStorage
 ```
 
 ---
+## Upgrading from 3.x
+
+***NOTE***! Version 4 isn't backward compatible with 3.x, neither in its API nor in where it stores values. 4.x doesn't read the values that 3.x saved and doesn't migrate them, so an app that updates finds every storage empty: for example, its users are signed out and their settings are reset. The old values stay where 3.x saved them:
+
+| Storage | Where 3.x saved values |
+| --- | --- |
+| Keychain | Service `KeyValueStorage`, or `KeyValueStorage.<access group>` for a domain |
+| File System | `Application Support/<bundle identifier>/KeyValueStorage/Files`, or `<group container>/KeyValueStorage/Files` for a domain |
+| SQLite | `KeyValueStorage.sqlite` in `Application Support/<bundle identifier>/KeyValueStorage/SQLite`, or `<group container>/KeyValueStorage/SQLite` for a domain |
+| User Defaults | `UserDefaults.standard`, or the domain's suite, under the key itself |
+
+To keep them, read each value from its 3.x location before using 4.x for it, save it with 4.x, and remove the old one.
+
+---
 ## Migrating from 2.x
 
 Version 3 stores keychain items, files and some values differently, and doesn't migrate the values saved by 2.x. See the [Changelog](CHANGELOG.md) for the breaking changes and how to move your values.
