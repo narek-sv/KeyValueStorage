@@ -95,6 +95,9 @@ final class DefaultSQLiteDatabase: SQLiteDatabase, @unchecked Sendable {
         do throws(SQLiteError) {
             sqlite3_busy_timeout(database, 1000)
             try Self.check(sqlite3_exec(database, "PRAGMA journal_mode = WAL", nil, nil, nil), database)
+            // Apple's default, set so it doesn't depend on the build: a commit survives an app crash but not a power loss
+            // before the next sync, and the database never corrupts. `FULL` makes small writes 3–5 times slower.
+            try Self.check(sqlite3_exec(database, "PRAGMA synchronous = NORMAL", nil, nil, nil), database)
             try Self.check(sqlite3_exec(database, """
                 CREATE TABLE IF NOT EXISTS KeyValueStorage (key TEXT PRIMARY KEY NOT NULL, value BLOB NOT NULL) WITHOUT ROWID
                 """, nil, nil, nil), database)
