@@ -24,7 +24,7 @@ public extension FileStorage {
         case invalidKey(Key)
         /// Something that isn't a value is at the key's file, or isn't a folder where the scope's folder goes; it's never replaced or removed.
         case pathOccupied(URL)
-        /// `EPERM`: the file is protected while the device is locked, or the sandbox denied access.
+        /// `EPERM`: the file is protected while the device is locked, or the sandbox denied access, which unlocking doesn't fix.
         case protectedDataUnavailable
         /// `clear()` couldn't remove these values, each for its own reason; it removed every other value of the scope.
         case clearIncomplete([Key: FileStorage.Error])

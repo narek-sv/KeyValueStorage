@@ -1,12 +1,12 @@
 # KeyValueStorage
 
 ![Build & Test](https://github.com/narek-sv/KeyValueStorage/actions/workflows/swift.yml/badge.svg)
-[![Coverage](https://img.shields.io/badge/coverage->=98%25-brightgreen)](https://github.com/narek-sv/KeyValueStorage/actions/workflows/swift.yml)
+[![Coverage](https://img.shields.io/badge/coverage-96%25-brightgreen)](https://github.com/narek-sv/KeyValueStorage/actions/workflows/swift.yml)
 [![Swift Package Manager compatible](https://img.shields.io/badge/Swift%20Package%20Manager-compatible-success.svg)](https://github.com/apple/swift-package-manager)
 
 ---
 
-Enhance your development with the state-of-the-art key-value storage framework, meticulously designed for speed, safety, and simplicity. Leveraging Swift's advanced error handling and concurrency features, the framework ensures thread-safe interactions, bolstered by a robust, modular, and protocol-oriented architecture. Unique to the solution, types of values are encoded within the keys, enabling compile-time type inference and eliminating the need for unnecessary casting. It is designed with App Groups in mind, facilitating seamless data sharing between your apps and extensions. Experience a testable, easily integrated storage solution that redefines efficiency and ease of use.
+A typed key-value storage for Apple platforms, with one API over the storages the system comes with: User Defaults, the Keychain, files, SQLite, the iCloud key-value store and memory. Each key names its storage, its value type and its scope, the place where its value lives, so values are type-checked at compile time, each scope keeps its values apart, and an App Group scope shares them with your extensions and other apps. The built-in storages are thread-safe and throw typed errors, code that uses a synchronous storage directly never needs `await`, and you can add your own storages and encodings.
 
 **No dependencies.** `KeyValueStorage` works on its own: it uses only frameworks that come with the system, Foundation, Security, Combine and SQLite, so adding it brings no other packages into your project.
 
@@ -20,6 +20,8 @@ Enhance your development with the state-of-the-art key-value storage framework, 
 | 13.0+ | 10.15+ | 6.0+ | 13.0+ | 1.0+ | 6.0+ (Xcode 16+) |
 
 `UbiquitousStorage` needs watchOS 9.0+, like `NSUbiquitousKeyValueStore`.
+
+On tvOS, Apple limits an app's persistent local storage to 500 KB of User Defaults, and everything else must be purgeable: use `.cache` scopes for files and SQLite there, whose values the system can delete when storage runs low while the app isn't running.
 
 ## Choosing a Storage
 
@@ -44,8 +46,9 @@ Here's how the built-in storages compare:
 **User Defaults** - settings, flags and other small values.
 * Very fast reads from an in-memory cache, while writes reach the disk asynchronously.
 * Shared with extensions through an App Group suite.
-* Not for sensitive data: the values are stored unencrypted. Keep it small, since the whole suite is loaded into memory: the system logs an error for a suite of 4 MB or more on iOS, and tvOS allows much less.
+* Not for sensitive data: the values are stored unencrypted. Keep it small, since the whole suite is loaded into memory: the system logs an error for a suite of 4 MB or more on iOS, and tvOS allows 500 KB in all.
 * Until the user first unlocks the device after a restart, such as in a background launch, every fetch returns `nil`, with no error.
+* Values are `Data` under keys of the library's own, `<namespace>!/<key>`, and the `.own` scopes use a suite of the library's own, so `@AppStorage`, Settings bundles and `UserDefaults.standard` don't see them. Any string is a valid key: `%` and NUL are written as `%25` and `%00`, because the system never writes a key with NUL to disk, and `/` in a namespace as `%2F`.
 * Clearing removes only the values saved through `KeyValueStorage` in the scope's namespace.
 
 **Keychain** - tokens, passwords and other secrets.
@@ -57,16 +60,16 @@ Here's how the built-in storages compare:
 **File System** - large values, such as images, videos or cached responses.
 * The fastest storage for large values: every value is written once, directly into its own file.
 * Deleting a value frees its disk space right away.
-* A value can be as large as the free disk space allows.
-* Every value is a separate file, so reading one value never loads the others into memory, and a damaged file affects only its own value.
-* Files are replaced atomically, so a crash never leaves a value half-written.
+* Every value is a separate file, so reading one value never loads the others into memory, and a damaged file affects only its own value. A value itself is saved and fetched whole, in memory, so keep each one to what the app can hold in memory at once.
+* Keep what you can download again, such as cached responses, in a `.cache` scope: the default `.persistent` scope is in Application Support, which the device's backups include.
+* Files are replaced atomically, so a crash never leaves a value half-written. A save survives an app crash; a power loss or system crash right after it can lose it, since files aren't flushed to the disk on every save.
 * Slow for small values, since every save writes and renames a file.
-* Any string is a valid key, up to a 255-byte file name, and keys that differ only in case are separate values on every platform.
+* Any string is a valid key, up to a 255-byte file name, and keys that differ only in case are separate values on every platform. The name keeps `a`–`z`, `0`–`9`, `_` and `-`, writes a capital as `!` and its lowercase letter, so `Key` is saved as `!key`, and every other byte as `%` and two hex digits. Such bytes take three, so a key in Cyrillic fits about 42 characters and one in Chinese 28: hash longer keys, such as URLs with long query strings.
 
 **SQLite** - many small and medium values, especially when an app and its extensions write the same data.
-* All values of a scope live in one database, which is much faster than separate files for small values. For large values, separate files are faster.
+* All values of a scope live in one database, which your app and its extensions can use at the same time. It's much faster than separate files for small values; for large values, separate files are faster.
 * Any string is a valid key.
-* Every operation is a transaction across all processes, the strongest guarantee of all storages.
+* Every operation is a transaction across all processes, the strongest guarantee of all storages. A save survives an app crash; a power loss or system crash right after it can lose the last saves, but never corrupts the database.
 * A fetch followed by a save isn't atomic across processes, and a write fails if another process keeps the database busy for over a second.
 * Large values are written twice, first to the database's log and then into the database, so they briefly need about twice their size on disk.
 * Deleted values free space inside the database for reuse, but the database file itself doesn't shrink.
@@ -74,7 +77,8 @@ Here's how the built-in storages compare:
 
 **iCloud Key-Value Store** - small preferences and state that follow the user to their other devices.
 * Synced through iCloud by the system, with a local copy that's read and written without waiting for the network.
-* The whole store holds at most 1 MB of values and 1024 keys. A value over 1 MB (1,000,000 bytes) throws `valueTooLarge`, and a key that's too long throws `invalidKey`, but going over the store's total limits fails silently.
+* The whole store holds at most 1 MB of values and 1024 keys. A value over 1 MB (1,000,000 bytes) throws `valueTooLarge`, and a stored key over 128 UTF-16 code units, namespace included, throws `invalidKey`, but going over the store's total limits fails silently.
+* Values are stored under `<namespace>!/<key>`. Any string is a valid key: `%` and NUL are written as `%25` and `%00`, and `/` in a namespace as `%2F`.
 * Values stay on the device while the user is signed out of iCloud, and sync once they sign in.
 * Not for sensitive data, and needs the iCloud capability (see [iCloud Key-Value Store](#icloud-key-value-store)): without it, the store silently keeps nothing.
 * Changes that arrive from the user's other devices aren't published to observers.
@@ -83,7 +87,7 @@ Here's how the built-in storages compare:
 Quick guide:
 * Secrets → `KeychainKey`
 * Settings and flags → `UserDefaultsKey`
-* Large values, such as images or videos → `FileKey`
+* Large values, such as images or videos → `FileKey`, in a `.cache` scope if you can download them again
 * Many small and medium values, such as records → `SQLiteKey`
 * Data written by both the app and its extensions → `SQLiteKey`
 * Temporary state and tests → `InMemoryKey`
@@ -217,6 +221,11 @@ As you can see, the key holds all the necessary information about the value:
 * The value type - `String`
 * The scope (*optional*) - who sees the value and where it lives; `.default` when omitted
 
+A key's name is an `ExactString`, compared by its exact bytes. A string literal is one already; wrap a `String` value in `.init`:
+
+```swift
+let token = KeychainKey<String>(key: .init(accountID))
+```
 
 Now all that is left is to instantiate the storage and use it:
 
@@ -239,8 +248,8 @@ try await storage.set("Bob", forKey: key) // save
 try await storage.set(nil, forKey: key) // delete
 
 // Reads the value and saves what the closure makes of it as one step, or deletes it for nil
-let count = UserDefaultsKey<Int>(key: "launches")
-try await storage.update(forKey: count) { ($0 ?? 0) + 1 }
+let launches = SQLiteKey<Int>(key: "launches")
+try await storage.update(forKey: launches) { ($0 ?? 0) + 1 }
 
 // Removes every value of the storage's scope, `.default` when omitted,
 // including the values saved in previous launches
@@ -248,6 +257,8 @@ try await storage.clear(storage: KeychainStorage.self, forScope: .own(namespace:
 ```
 
 Clearing removes only the values the library saved in that scope. Other code's values in the same suite, folder or store are never touched.
+
+`update` starts from `nil` when the storage reads no value, and User Defaults reads none before the device's first unlock after a restart, such as in a background launch: don't update User Defaults values then, or the result can replace the value it couldn't read.
 
 ### Moving values between scopes
 
@@ -260,6 +271,8 @@ try await storage.move(token, from: .own(protection: .whenUnlocked, namespace: "
 ```
 
 `move` saves the value in the key's scope, unless a value is there already, and only then removes it from the old scope, so the value is never lost; a failed or interrupted move is finished by calling it again. Calls through the same `UnifiedStorage` in either scope wait until the move is done. Other `UnifiedStorage` instances, storages used directly and other processes don't wait, so move values before they use the key.
+
+A move needs two places: between scopes that resolve to one, such as File or SQLite App Group ids that differ only in case on macOS, it takes the value for one already in the target, and deletes it.
 
 ---
 ## Type Inference
@@ -277,15 +290,7 @@ try await storage.save(/* accepts only MyType*/, forKey: key)
 ---
 ## Custom Storages
 
-`UnifiedStorage` has 6 built-in storage types:
-* `In-memory` - This storage type persists the items only within an app session.
-* `User-Defaults` - This storage type persists the items within the app's lifetime. Values are stored under `<namespace>!/<key>`, and any string is a valid key: `%` and NUL are written as `%25` and `%00`, because the system never writes a key with NUL to disk, and `/` in a namespace as `%2F`.
-* `File-System` -  This storage saves every value as a separate file in the scope's folder, `Application Support/<app>/<namespace>!/<protection>` for `.own` scopes (`Caches` or `tmp` for the other retentions), or in the App Group container. The file is replaced atomically, so a crash never leaves a value half-written or missing. A save survives an app crash; a power loss or system crash right after it can lose it, since files aren't flushed to the disk on every save. Any string is a valid key: its file name keeps `a`–`z`, `0`–`9`, `_` and `-`, writes a capital as `!` and its lowercase letter, and every other byte as `%` and two hex digits. So `Key` is saved as `!key` and never shares a file with `key`, even on a case-insensitive disk. A file name can be at most 255 bytes, so longer keys throw `FileStorage.Error.invalidKey`.
-* `Keychain` - This storage type keeps the items in secure storage and persists even after app re-installations. Supports `iCloud` synchronization.
-* `Ubiquitous` - This storage keeps the values in the iCloud key-value store, under `<namespace>!/<key>`, and syncs them across the user's devices. Any string is a valid key: `%` and NUL are written as `%25` and `%00`, and `/` in a namespace as `%2F`. A value can be at most 1 MB (1,000,000 bytes), and a stored key at most 128 UTF-16 code units.
-* `SQLite` - This storage keeps all values of a scope in one SQLite database, the hidden `.KeyValueStorage.sqlite` in the same folder as the `File-System` storage of the scope. Any string is a valid key, and all storages of a scope, in your app and its extensions, share the same database at the same time. Each operation is atomic across processes, but a fetch followed by a save is not: another process can save in between. A save survives an app crash; a power loss or system crash right after it can lose the last saves, but never corrupts the database.
-
-You can also define your own storage, synchronous or asynchronous, and it works with `UnifiedStorage` and the coding storages out of the box:
+You can define your own storage, synchronous or asynchronous, and it works with `UnifiedStorage` and the coding storages out of the box:
 * A storage whose operations never suspend conforms to `DataStorage`. Code that uses it directly never needs `await`, and neither does `CodingStorage` on top of it.
 * A storage whose operations suspend, such as one backed by a server, conforms to `AsyncDataStorage` and is used through `AsyncCodingStorage` or `UnifiedStorage`. Every `DataStorage` is an `AsyncDataStorage` too.
 
@@ -332,6 +337,51 @@ try coding.save(UUID(), forKey: CodingStorageKey<NewStorage, UUID>(key: "id"))
 ```
 
 ***NOTE***! In `async` generic code, calls on a `DataStorage` resolve to the `async` requirements and need `await`; synchronous generic code calls the synchronous ones. Outside `UnifiedStorage`, your storage's thread safety is up to you.
+
+### Custom Locators
+
+Each built-in storage takes its names from a locator: the folder and file names, the suite and its keys, the keychain service and account, or the database's file. To change some of them, such as to keep a test's files in a folder of its own, subclass the default locator and pass it to the storage. For `UnifiedStorage`, a factory creates that storage type with your locator, and every other one as usual:
+
+```swift
+/// Keeps every file scope in a folder of your choice, such as a test's own
+final class FolderFileLocator: DefaultFileLocator, @unchecked Sendable {
+    private let folder: URL
+
+    init(folder: URL) {
+        self.folder = folder
+    }
+
+    // A folder for each system directory, so scopes that differ only in retention stay apart
+    override func systemDirectory(_ directory: FileManager.SearchPathDirectory) -> URL? {
+        folder.appendingPathComponent(String(directory.rawValue), isDirectory: true)
+    }
+
+    override var temporaryDirectory: URL {
+        folder.appendingPathComponent("tmp", isDirectory: true)
+    }
+}
+
+struct TestStorageFactory: UnifiedStorageFactory {
+    let folder: URL
+
+    func dataStorage<Storage: UnifiedStorable>(for scope: Storage.Scope) async throws(Storage.Error) -> Storage {
+        // The type itself: `IsolatedDataStorage<FileStorage>` has the same scopes
+        guard Storage.self == FileStorage.self, let scope = scope as? FileStorage.Scope else {
+            return try await Storage(scope: scope)
+        }
+
+        do {
+            return try FileStorage(scope: scope, backingStore: DefaultFileBackingStoreWrapper(), locator: FolderFileLocator(folder: folder)) as! Storage
+        } catch {
+            throw error as! Storage.Error // `FileStorage.Error`, since `Storage` is `FileStorage`
+        }
+    }
+}
+
+let storage = UnifiedStorage(factory: TestStorageFactory(folder: testFolder))
+```
+
+A locator must give every scope and key names of their own, and decode exactly the names it encodes, or values get shared, or `clear()` leaves them behind; each locator protocol lists its rules. A subclass of a default locator or backing store restates `@unchecked Sendable`, and its own state must be thread-safe too.
 
 ---
 ## Xcode autocompletion 
@@ -391,7 +441,7 @@ let key = KeychainKey<String>(key: "token", scope: .appGroup(id: "group.com.comp
 let otherKey = KeychainKey<String>(key: "token", scope: .appGroup(id: "ABCDE12345.com.company.shared", namespace: "auth"))
 ```
 
-To sync items through iCloud Keychain, use the `.iCloud` scope, see [iCloud Keychain](#icloud-keychain). To read items that other code saved under its own service, use a custom `KeychainLocator`.
+To sync items through iCloud Keychain, use the `.iCloud` scope, see [iCloud Keychain](#icloud-keychain). To read items that other code saved under its own service, use a custom `KeychainLocator` (see [Custom Locators](#custom-locators)).
 
 ---
 ## Coding
@@ -481,7 +531,9 @@ for await theme in try await settings.stream(forKey: CodingStorageKey<FileStorag
 }
 ```
 
-Changes are delivered on the thread that makes them, right after the write succeeds, so move to the main thread before updating the UI. Subscribers run inside the save, and other saves of the same key wait for them: keep them short, and move slow work off with `receive(on:)` or a stream. Streams resume on the executor of the task that iterates them. An observer sees only the values saved with its own value type.
+Changes are delivered on the thread that makes them, right after the write succeeds, so move to the main thread before updating the UI. Subscribers run inside the save, and other saves of the same key wait for them: keep them short, and move slow work off with `receive(on:)` or a stream. Streams resume on the executor of the task that iterates them. An observer sees only the values saved with its own value type. While a key is observed, its latest change stays in memory, and each publisher keeps the value it read, so mind large values.
+
+***NOTE***! In the Swift 6 language mode, a closure written in `@MainActor` code, such as in a view model, or anywhere in a target whose default actor isolation is `MainActor`, crashes the app when it's called off the main thread, as a `sink` is for every save made outside the main actor. Put `receive(on: DispatchQueue.main)` before such a `sink`, as above, or iterate a stream from the main actor.
 
 However, it's important to note that only the changes made through observable storages of the current process are published, from any instance of the same storage type and scope. Changes made by other processes (for example, App Extensions), on the user's other devices, by storages without observation, or written directly to `UserDefaults`, the keychain or files aren't. Two calls that save one key at the same moment may deliver their values out of order. When a clear throws, no observer is told, even about the values it removed before failing, such as those a file storage's `.clearIncomplete` doesn't list.
 
@@ -493,7 +545,7 @@ However, it's important to note that only the changes made through observable st
 * `.coding(error)` - the coder couldn't encode or decode the value, for example a `DecodingError` after the type of an existing key changed.
 
 Even with a correct setup, some errors can't be avoided and are worth handling:
-* `.protectedDataUnavailable` (`FileStorage`, `KeychainStorage`) - the value is protected while the device is locked; try again once it's unlocked. `FileStorage` also throws it when the sandbox denies access.
+* `.protectedDataUnavailable` (`FileStorage`, `KeychainStorage`) - the value is protected while the device is locked; try again once it's unlocked. `FileStorage` also throws it when the sandbox denies access, which unlocking doesn't fix, so don't retry it forever.
 * `KeychainStorage.Error.keychain(status:)` - any other Security framework status, such as `errSecMissingEntitlement` when the scope's access group isn't in the app's entitlements.
 * `SQLiteStorage.Error.sqlite(code:message:)` - the database is damaged, or another process kept it busy for longer than a second. A database protected while the device is locked fails here too, with SQLite's own code.
 
@@ -532,6 +584,7 @@ Task.detached { try storage.save(data, forKey: "avatar") }   // fine: FileStorag
 * Create one `UnifiedStorage` and share it, for example as a static property or through dependency injection.
 * If you need more than one, such as one with observation and one without, give each its own scopes.
 * Nothing coordinates with your app extensions, other processes, or storages you use directly: move values before they use the key, for example at launch, and don't count on `update` against their writes.
+* Don't call a `UnifiedStorage` from inside its own storages, coders, factory or `ObservableStorage` subclasses: such a call can wait for a move or an update that waits for the call it's made in, and never return.
 
 Even through one instance, a sequence of calls, such as a fetch followed by a save, isn't atomic: another task can save in between. Use `update(forKey:_:)` to read and write a value as one step.
 
@@ -547,8 +600,18 @@ typealias NotesKey<Value: CodingValue> = UnifiedStorageKey<IsolatedDataStorage<N
 ---
 ## Tests
 
-The whole framework is thoroughly validated with high-quality unit tests. 
-Additionally, it serves as an excellent demonstration of how to use the framework as intended.
+* **Unit tests** check every storage, layer and `UnifiedStorage` against mocks that record their calls, including every path of every compound condition and both sides of every limit.
+* **Integration tests** run the default adapters against the real systems: files, SQLite and User Defaults with `swift test`, and the keychain in `Tests/KeychainHost`, a host app with the keychain entitlements, on the iOS Simulator.
+* **Public API tests** call the API as an app does, without `@testable`, from the main actor, other actors and nonisolated code.
+* CI builds and tests with every Swift version from 6.0 to 6.3 on macOS, tests on the iOS Simulator, and builds for tvOS, watchOS and visionOS.
+
+`swift test` covers 96% of the lines on macOS. The rest is the keychain and iCloud key-value store adapters, which need entitlements, fallbacks for older systems, and paths no test can reach, such as SQLite running out of memory.
+
+```sh
+swift test
+xcodebuild test -scheme KeyValueStorage -destination "platform=iOS Simulator,name=<an installed iPhone>"
+xcodebuild test -project Tests/KeychainHost/KeychainHost.xcodeproj -scheme KeychainHost -destination "platform=iOS Simulator,name=<an installed iPhone>"
+```
 
 ---
 ## Installation
@@ -559,7 +622,7 @@ Once you have your Swift package set up, adding KeyValueStorage as a dependency 
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/narek-sv/KeyValueStorage.git", .upToNextMajor(from: "3.0.0"))
+    .package(url: "https://github.com/narek-sv/KeyValueStorage.git", .upToNextMajor(from: "4.0.0"))
 ]
 ```
 

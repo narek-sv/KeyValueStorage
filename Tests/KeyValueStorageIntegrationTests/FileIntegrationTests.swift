@@ -540,7 +540,6 @@ final class FileIntegrationTests: XCTestCase {
         try locator.directory(for: scope)
     }
 
-    /// The default scope's folder, made ahead of the storage.
     /// A folder in the test's base whose path is `length` bytes, in names of at most 200.
     private func deepFolder(length: Int) throws -> URL {
         var folder = base!

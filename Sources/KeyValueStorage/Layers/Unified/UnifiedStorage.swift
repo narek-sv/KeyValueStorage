@@ -17,6 +17,8 @@
 ///   with a scope per account, such as a namespace per user, each SQLite scope keeps its database open until then.
 /// - Cancelling a call doesn't cancel its storage's creation, which concurrent calls share.
 /// - When its factory makes a storage observable, the changes made through it are published; see `ObservableStorage`.
+/// - Warning: Don't call it from inside its own storages, coders, factory or `ObservableStorage` subclasses: such a call can
+///   wait for a `move` or an `update` that waits for the call it's made in, and never return.
 public final class UnifiedStorage: @unchecked Sendable {
 
     // MARK: Type Aliases
@@ -87,6 +89,9 @@ public final class UnifiedStorage: @unchecked Sendable {
     ///   finished by calling it again.
     /// - Warning: Other `UnifiedStorage` instances, storages used directly and other processes, such as app extensions,
     ///   don't wait: move values before they use the key, for example at launch.
+    /// - Warning: Scopes that resolve to one place, such as File or SQLite App Group ids that differ only in case on macOS, or
+    ///   two scopes a custom locator maps to one place, aren't two copies: the move takes the value for one already in the
+    ///   target, and deletes it.
     public func move<Storage: UnifiedStorable, Value: CodingValue>(_ key: Key<Storage, Value>, from scope: Storage.Scope) async throws(CodingStorageError<Storage>) {
         guard scope != key.scope else {
             return
@@ -115,6 +120,8 @@ public final class UnifiedStorage: @unchecked Sendable {
     /// - Returns: The value `transform` made, now stored.
     /// - Warning: Other `UnifiedStorage` instances, storages used directly and other processes, such as app extensions,
     ///   don't wait, so their saves can come between the read and the write.
+    /// - Warning: `transform` gets `nil` whenever the storage reads none, as User Defaults does before the first unlock after
+    ///   a restart: don't update its values then, or the result can replace the value it couldn't read.
     @discardableResult
     public func update<Storage: UnifiedStorable, Value: CodingValue>(
         forKey key: Key<Storage, Value>,
@@ -139,6 +146,8 @@ public final class UnifiedStorage: @unchecked Sendable {
     /// - Parameter includingCurrentValue: Whether the publisher first emits the stored value, or `nil` if there's none: the
     ///   value this call reads, or a change published since.
     /// - Returns: `nil` if the factory doesn't make the key's storage observable.
+    /// - Warning: In the Swift 6 language mode, a `sink` written in `@MainActor` code crashes when a save made off the main
+    ///   actor calls it: put `receive(on: DispatchQueue.main)` before it.
     public func publisher<Storage: UnifiedStorable, Value: CodingValue>(forKey key: Key<Storage, Value>, includingCurrentValue: Bool = true)
     async throws(CodingStorageError<Storage>) -> ValuePublisher<Value?>? {
         try await withScope(key.scope) { (entry: Entry<Storage>) throws(CodingStorageError<Storage>) in

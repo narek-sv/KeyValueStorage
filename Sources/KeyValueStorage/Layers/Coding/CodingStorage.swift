@@ -50,6 +50,7 @@ public enum CodingStorageError<Storage: AsyncDataStorage>: Swift.Error, Sendable
 
 /// Encodes values and passes them to a synchronous data storage, so code that uses it never needs `await`.
 /// - Note: As thread-safe as its storage: `Sendable` when its storage is.
+/// - Warning: Subclasses inherit `Sendable`: their own state must be thread-safe too.
 open class CodingStorage<Storage: DataStorage> {
     public typealias Error = CodingStorageError<Storage>
 

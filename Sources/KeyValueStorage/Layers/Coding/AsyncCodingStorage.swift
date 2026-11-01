@@ -12,6 +12,7 @@ import Foundation
 /// Encodes values and passes them to any data storage, synchronous or not.
 /// It holds only immutable state, so it doesn't need an actor: encoding runs in parallel on the callers' tasks.
 /// - Note: `Sendable` only when its storage is: wrap a synchronous storage that isn't in `IsolatedDataStorage` to share it.
+/// - Warning: Subclasses inherit `Sendable`: their own state must be thread-safe too.
 open class AsyncCodingStorage<Storage: AsyncDataStorage> {
     public typealias Error = CodingStorageError<Storage>
 

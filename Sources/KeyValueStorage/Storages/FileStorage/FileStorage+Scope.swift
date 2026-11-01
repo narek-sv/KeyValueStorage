@@ -11,11 +11,13 @@ import Foundation
 
 public extension FileStorage {
     enum Retention: Hashable, Sendable {
-        /// Kept until deleted.
+        /// Kept until deleted, in Application Support, which the device's backups include: keep what you can download again
+        /// in `.cache`.
+        /// - Warning: On tvOS, an app's files must be purgeable: use `.cache` there.
         case persistent
-        /// The system can delete it when storage runs low.
+        /// The system can delete it when storage runs low; it isn't backed up.
         case cache
-        /// The system can delete it while the app isn't running.
+        /// The system can delete it while the app isn't running; it isn't backed up.
         case temporary
     }
 

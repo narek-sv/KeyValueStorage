@@ -17,7 +17,7 @@ import Foundation
 ///   background, `UserDefaults` can't read its files: fetches return `nil` as if nothing were stored, and nothing reports
 ///   it. Don't take a missing value for a first launch then.
 /// - Note: Keep values small: the whole suite is loaded into memory, the system logs an error for a suite of 4 MB or more
-///   on iOS, and tvOS allows much less.
+///   on iOS, and tvOS allows 500 KB in all.
 public final class UserDefaultsStorage: DataStorage, Sendable {
 
     // MARK: Properties

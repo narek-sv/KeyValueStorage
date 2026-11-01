@@ -22,6 +22,10 @@ import Foundation
 /// - Two calls that save one key at once may deliver their values out of order.
 /// - Subscribers run inside the save, and other saves of the key wait for them: keep them short, and move slow work off with
 ///   `receive(on:)` or a stream. A subscriber that waits for another save of the same key never returns.
+/// - While a key is observed, its latest change stays in memory, and each publisher keeps the value it read.
+/// - Warning: In the Swift 6 language mode, a closure written in `@MainActor` code, as all code is in a target whose default
+///   actor isolation is `MainActor`, crashes when it's called off the main thread: put `receive(on: DispatchQueue.main)`
+///   before such a `sink`, or iterate a stream from the main actor.
 /// - Warning: Subclasses inherit `Sendable`: their own state must be thread-safe too.
 open class ObservableStorage<Storage: AsyncDataStorage & Sendable>: @unchecked Sendable {
     public typealias Error = CodingStorageError<Storage>
