@@ -31,13 +31,18 @@ final class FileBackingStoreMock: FileBackingStore, @unchecked Sendable {
     var errors = [(call: Call, error: any Error)]()
     private(set) var calls = [Call]()
 
-    func itemType(at url: URL) throws -> FileAttributeType? {
-        try record(.itemType(url))
+    /// Throws only a `FileItemError` given in `errors`, as the real one throws nothing else.
+    func itemType(at url: URL) throws(FileItemError) -> FileAttributeType {
+        calls.append(.itemType(url))
+        if let error = errors.first(where: { $0.call == .itemType(url) })?.error as? FileItemError {
+            throw error
+        }
+
         switch items[url.path] {
         case .file?:        return .typeRegular
         case .directory?:   return .typeDirectory
         case .link?:        return .typeSymbolicLink
-        case nil:           throw CocoaError(.fileReadNoSuchFile)
+        case nil:           throw .notFound
         }
     }
 

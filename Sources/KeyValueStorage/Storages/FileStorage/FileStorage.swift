@@ -139,12 +139,12 @@ public final class FileStorage: DataStorage, Sendable {
 
     /// `nil` only if nothing is there, so an unreadable path never passes for an empty one.
     private func itemType(at url: URL) throws(Error) -> FileAttributeType? {
-        try Self.execute {
-            do {
-                return try backingStore.itemType(at: url)
-            } catch CocoaError.fileReadNoSuchFile {
-                return nil
-            }
+        do throws(FileItemError) {
+            return try backingStore.itemType(at: url)
+        } catch .notFound {
+            return nil
+        } catch {
+            throw Error(error)
         }
     }
 

@@ -38,29 +38,48 @@ final class FileIntegrationTests: XCTestCase {
         XCTAssertEqual(try adapter.itemType(at: folder), .typeDirectory)
         XCTAssertEqual(try adapter.itemType(at: makeLink("linkToFile", to: file)), .typeSymbolicLink)
         XCTAssertEqual(try adapter.itemType(at: makeLink("linkToFolder", to: folder)), .typeSymbolicLink)
-        XCTAssertEqual(Set(try adapter.itemNames(at: base)), ["file", "folder", "linkToFile", "linkToFolder"])
+        XCTAssertEqual(try adapter.itemType(at: makeLink("dangling", to: base.appendingPathComponent("missing"))), .typeSymbolicLink)
+        XCTAssertEqual(Set(try adapter.itemNames(at: base)), ["file", "folder", "linkToFile", "linkToFolder", "dangling"])
     }
 
-    /// `FileStorage` takes `fileReadNoSuchFile` from `itemType` for "nothing is there", and every other error for an error.
-    func testOnlyAMissingItemIsNoSuchFile() throws {
+    func testOtherItemTypesAreReported() throws {
+        // Given
+        let adapter = DefaultFileBackingStoreWrapper()
+        let fifo = base.appendingPathComponent("fifo")
+        XCTAssertEqual(mkfifo(fifo.path, 0o644), 0)
+
+        // When - Then: no value, and never a regular file
+        XCTAssertEqual(try adapter.itemType(at: fifo), .typeUnknown)
+        #if os(macOS)
+        XCTAssertEqual(try adapter.itemType(at: URL(fileURLWithPath: "/dev/null")), .typeCharacterSpecial)
+        #endif
+    }
+
+    /// `FileStorage` takes `.notFound` for "nothing is there", and every other failure for an error.
+    func testOnlyAMissingItemIsNotFound() throws {
         // Given
         let adapter = DefaultFileBackingStoreWrapper()
         let underFile = try makeFile("file").appendingPathComponent("key")
+        let tooLong = base.appendingPathComponent(Array(repeating: String(repeating: "d", count: 200), count: 6).joined(separator: "/"))
 
         // When - Then
         XCTAssertThrowsError(try adapter.itemType(at: base.appendingPathComponent("missing"))) { error in
-            XCTAssertEqual((error as? CocoaError)?.code, .fileReadNoSuchFile)
+            XCTAssertEqual(error as? FileItemError, .notFound)
         }
 
         XCTAssertThrowsError(try adapter.itemType(at: underFile)) { error in
-            XCTAssertNotEqual((error as? CocoaError)?.code, .fileReadNoSuchFile)
+            XCTAssertEqual(error as? FileItemError, .other(ENOTDIR))
+        }
+
+        XCTAssertThrowsError(try adapter.itemType(at: tooLong)) { error in
+            XCTAssertEqual(error as? FileItemError, .other(ENAMETOOLONG))
         }
 
         try XCTSkipIf(getuid() == 0, "File permissions are not enforced for root")
         let locked = try makeFolder("locked")
         try setPermissions(0o000, of: locked)
         XCTAssertThrowsError(try adapter.itemType(at: locked.appendingPathComponent("inner"))) { error in
-            XCTAssertNotEqual((error as? CocoaError)?.code, .fileReadNoSuchFile)
+            XCTAssertEqual(error as? FileItemError, .other(EACCES))
         }
     }
 
@@ -231,12 +250,7 @@ final class FileIntegrationTests: XCTestCase {
 
         // The system can't even look the path up, so there's no telling whether a value is there
         for body in [{ _ = try storage.fetch(forKey: tooLong) }, { try storage.delete(forKey: tooLong) }] {
-            guard case let .other(error)? = storageError(body) else {
-                return XCTFail("Expected .other")
-            }
-
-            XCTAssertEqual((error as NSError).domain, NSCocoaErrorDomain)
-            XCTAssertEqual((error as NSError).code, CocoaError.fileReadInvalidFileName.rawValue)
+            assertOther(storageError(body), posix: .ENAMETOOLONG)
         }
     }
 
@@ -552,6 +566,10 @@ final class FileIntegrationTests: XCTestCase {
     }
 
     private func posixCode(of error: any Error) -> POSIXErrorCode? {
+        if case let .other(code)? = error as? FileItemError {
+            return POSIXErrorCode(rawValue: code)
+        }
+
         let error = error as NSError
         let posix = error.domain == NSPOSIXErrorDomain ? error : error.userInfo[NSUnderlyingErrorKey] as? NSError
         return posix.flatMap { $0.domain == NSPOSIXErrorDomain ? POSIXErrorCode(rawValue: Int32($0.code)) : nil }

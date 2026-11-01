@@ -59,6 +59,12 @@ final class SQLiteIntegrationTests: XCTestCase {
     }
 
     func testEachProtectionIsADatabaseOfItsOwnInItsClass() throws {
+        // While the screen is locked, macOS refuses `.complete` files: SQLite's open fails with `SQLITE_CANTOPEN`
+        let probe = base.appendingPathComponent("probe")
+        let completeIsAvailable = (try? Data([1]).write(to: probe, options: .completeFileProtection)) != nil
+        try? fileManager.removeItem(at: probe)
+        try XCTSkipUnless(completeIsAvailable, "Protected data is unavailable: the screen is locked")
+
         // `.none` opens, but can't be checked: macOS reports the default class for it
         _ = try storage(.own(protection: .none, namespace: "test"))
         let protections: [(SQLiteStorage.Protection, FileProtectionType)] = [

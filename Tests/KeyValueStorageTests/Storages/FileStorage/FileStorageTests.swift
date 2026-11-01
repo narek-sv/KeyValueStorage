@@ -379,7 +379,8 @@ final class FileStorageTests: XCTestCase {
     // MARK: Errors
 
     func testEveryFileSystemErrorIsReportedNeverTakenForNoValue() throws {
-        let error = fileSystemError(.fileReadNoPermission, .EACCES)
+        let fileSystem = fileSystemError(.fileReadNoPermission, .EACCES)
+        let lookup = FileItemError.other(EACCES)
         let value: Items = [root.path: .directory, path("key"): .file(data)]
         let operations: [(name: String, items: Items, run: (FileStorage) throws -> Void)] = [
             ("fetch", value, { _ = try $0.fetch(forKey: "key") }),
@@ -398,6 +399,7 @@ final class FileStorageTests: XCTestCase {
                 // Given
                 let failing = FileBackingStoreMock()
                 failing.items = operation.items
+                let error: any Error = if case .itemType = call { lookup } else { fileSystem }
                 failing.errors = [(call, error)]
 
                 // When - Then
@@ -416,6 +418,40 @@ final class FileStorageTests: XCTestCase {
         // When - Then
         assertThrows(FileStorage.Error.protectedDataUnavailable) { try storage.fetch(forKey: "key") }
         assertThrows(FileStorage.Error.protectedDataUnavailable) { try storage.save(data, forKey: "key") }
+    }
+
+    func testALookupThatIsntPermittedIsProtectedDataInEveryOperation() throws {
+        let operations: [(name: String, run: (FileStorage) throws -> Void)] = [
+            ("fetch", { _ = try $0.fetch(forKey: "key") }),
+            ("save", { [data] in try $0.save(data, forKey: "key") }),
+            ("delete", { try $0.delete(forKey: "key") }),
+            ("clear", { try $0.clear() })
+        ]
+
+        for operation in operations {
+            for url in [root, file("key")] {
+                // Given: the folder's lookup fails, or the file's
+                let backingStore = FileBackingStoreMock()
+                backingStore.items = [root.path: .directory, path("key"): .file(data)]
+                backingStore.errors = [(.itemType(url), FileItemError.notPermitted)]
+
+                // When - Then
+                assertThrows(FileStorage.Error.protectedDataUnavailable) { try operation.run(makeStorage(backingStore)) }
+                XCTAssertEqual(backingStore.items, [root.path: .directory, path("key"): .file(data)], "\(operation.name), \(url)")
+            }
+        }
+    }
+
+    func testEveryOtherLookupFailureKeepsItsCode() throws {
+        for code in [EACCES, ENOTDIR, ENAMETOOLONG, ELOOP, EIO, EINVAL] {
+            // Given
+            let backingStore = FileBackingStoreMock()
+            backingStore.items = [root.path: .directory, path("key"): .file(data)]
+            backingStore.errors = [(.itemType(file("key")), FileItemError(code: code))]
+
+            // When - Then
+            assertThrows(FileStorage.Error.other(FileItemError.other(code))) { try makeStorage(backingStore).fetch(forKey: "key") }
+        }
     }
 
     func testOnlyEPERMUnderAPermissionErrorMeansProtectedData() throws {

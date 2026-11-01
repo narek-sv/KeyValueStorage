@@ -34,6 +34,14 @@ public extension FileStorage {
 // MARK: - Internal
 
 extension FileStorage.Error {
+    /// The error for a failed item lookup.
+    init(_ error: FileItemError) {
+        switch error {
+        case .notPermitted: self = .protectedDataUnavailable
+        default:            self = .other(error)
+        }
+    }
+
     /// The error for a failed file system call.
     init(_ error: any Swift.Error) {
         let nsError = error as NSError
