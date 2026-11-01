@@ -12,9 +12,8 @@ Severity: **high** (data loss or release blocker), **medium** (wrong behavior us
 
 The core is solid. Scope isolation holds for all six storages with the default locators, errors are typed end to end,
 the naming encodings are injective and safe on case- and normalization-insensitive volumes, and the test suite is
-unusually thorough. What stands between the branch and a release:
-
-1. `IsolatedDataStorage.withStorage` is atomic only within one instance, but the README calls it an atomic step (§4a).
+unusually thorough. No finding blocks a release on its own. What's left: checks that need a device (§3.1, §4a–§4c),
+docs (§4c, §5), and design and performance improvements (§1, §2).
 
 ---
 
@@ -41,11 +40,7 @@ unusually thorough. What stands between the branch and a release:
    protection applies, while the doc comments describe when the value is usable. Apple's vocabulary (`whenUnlocked`,
    `afterFirstUnlock`, `completeUnlessOpen`) would be read correctly by most developers. The most visible
    intuitiveness problem in the public API.
-2. **No atomic read-modify-write in the facade (medium).** `UnifiedStorage` creates its storages through the factory and
-   never exposes them, so an `IsolatedDataStorage.withStorage` block can't exclude writes made through `UnifiedStorage`
-   to the same scope. Counters, appends and toggles lose updates. Suggested: `UnifiedStorage.update(forKey:_:)`, or
-   access to the scope's storage.
-3. **Duplicated code that must stay in sync (low).**
+2. **Duplicated code that must stay in sync (low).**
    - `DefaultFileLocator` and `DefaultSQLiteLocator` each implement the folder rules (base folders, app folder,
      namespace and protection folder names, group checks). SQLite relies on landing in File's folder; one test guards
      it, but the rule is written twice.
@@ -54,7 +49,7 @@ unusually thorough. What stands between the branch and a release:
    - `CodingStorage` and `AsyncCodingStorage` are copies.
    One shared folder rule and one shared stored-key codec would enforce "a rule decided for one storage applies to all
    six" in code rather than by review.
-4. **Observation is narrow (low, design).** Only changes made in this process, through the same storage type and scope,
+3. **Observation is narrow (low, design).** Only changes made in this process, through the same storage type and scope,
    with the same value type, are seen. Ubiquitous's `didChangeExternallyNotification` and UserDefaults'
    `didChangeNotification` could feed it.
 
@@ -75,7 +70,7 @@ Measured per call, in-memory storage, release build:
 Breakdown of the facade's lookup: boxing `UnderlyingStorageKey` into `AnyHashable` and looking it up costs ~0.38 µs;
 the lock, the `as?` cast and awaiting the finished task add ~0.07 µs.
 
-1. **Facade cache key (low–medium).** ~1.2 µs per call over the coding storage, ~5×, about 0.2 µs of it the scope lock `move` needs. A typed two-level cache,
+1. **Facade cache key (low–medium).** ~1.2 µs per call over the coding storage, ~5×, about 0.2 µs of it the scope lock `move` and `update` need. A typed two-level cache,
    `[ObjectIdentifier: TypedCache<Storage>]` with `[Storage.Scope: CreationTask]` inside, removes the `AnyHashable`
    boxing. Matters only for InMemory and UserDefaults; the other storages' I/O dwarfs it.
 2. **SQLite copies every blob (low).** `bind` uses `SQLITE_TRANSIENT`, so SQLite copies the whole value before
@@ -105,32 +100,26 @@ crash there. Verify on the oldest supported systems (`REFACTOR_PLAN §2`); only 
 
 ## 4. Business-logic gaps and data-loss risks
 
-### 4a. `withStorage` is atomic only per instance (medium, docs)
-
-README: "Several operations as one atomic step, on any storage." It excludes only calls through the same
-`IsolatedDataStorage` instance: not `UnifiedStorage`'s own storage of the scope, other instances, or other processes.
-Read-modify-write written from the README example loses updates. See §1.2.
-
-### 4b. UserDefaults before first unlock (medium, verify)
+### 4a. UserDefaults before first unlock (medium, verify)
 
 During prewarming or before the first unlock after a reboot, the preferences file is unreadable and UserDefaults returns
 `nil` for every key. File and Keychain throw `.protectedDataUnavailable` in the same situation; UserDefaults can't tell.
 Apps will take it for a first launch. Writes in that window may not persist, or may replace the real values once the
 file is readable. At least a `- Warning:` on the storage.
 
-### 4c. Large UserDefaults values (low–medium, verify)
+### 4b. Large UserDefaults values (low–medium, verify)
 
 CFPreferences logs values of 4 MiB or more as invalid on iOS, and tvOS's limit is much lower. `set` reports nothing,
 so a value can be dropped silently. `UbiquitousStorage` checks value size; `UserDefaultsStorage` doesn't. Document, and
 consider a `valueTooLarge` check like Ubiquitous's.
 
-### 4d. App Group SQLite and suspension (medium, docs, verify)
+### 4c. App Group SQLite and suspension (medium, docs, verify)
 
 `REFACTOR_PLAN §4` says "the scope docs say so" about `0xdead10cc`, but no scope doc mentions it. An open WAL connection
 keeps a shared lock on the `-shm` file, and the system terminates an app suspended while holding a lock in a shared
 container. Document on `SQLiteStorage.Scope.appGroup`; confirm on a device whether an idle connection triggers it.
 
-### 4e. Minor
+### 4d. Minor
 
 - FileStorage's durability on power loss isn't stated (SQLite's is): `Data.write(.atomic)` doesn't `fsync`.
 - Interrupted atomic writes leave hidden temp files (`.dat.nosync…`) that `clear()` never removes: disk space, not values.
@@ -143,8 +132,7 @@ container. Document on `SQLiteStorage.Scope.appGroup`; confirm on a device wheth
 
 ### Docs and comments
 
-- `REFACTOR_PLAN §4` claims the App Group scope docs warn about suspension; they don't (§4d).
-- README `withStorage`: needs "only against calls through this instance" (§4a).
+- `REFACTOR_PLAN §4` claims the App Group scope docs warn about suspension; they don't (§4c).
 - README Thread Safety note: "so that waiting calls suspend instead" — callers suspend, but the actor's thread still
   blocks for the whole call.
 - `UserDefaultsStorage.Scope`: lists launch arguments and registered defaults, not the global domain, which every suite
@@ -217,4 +205,4 @@ No data races found:
 - Creation is deduplicated without a race, and failures aren't cached.
 - The observation's version check lets a change win over a concurrent read.
 
-The remaining races are logical: observation delivery order (documented) and per-instance atomicity (§4a).
+The remaining races are logical: observation delivery order (documented), and other instances or processes writing between the steps of a `move` or an `update`, which only calls through the same `UnifiedStorage` wait for (documented).

@@ -57,9 +57,4 @@ public actor IsolatedDataStorage<Wrapped: DataStorage>: AsyncDataStorage {
     public func set(_ value: Data?, forKey key: Key) throws(Error) {
         try wrapped.set(value, forKey: key)
     }
-
-    /// Runs `body` on the actor with the wrapped storage, so several operations are one atomic step, such as read-modify-write.
-    public func withStorage<T: Sendable, E: Swift.Error>(_ body: @Sendable (Wrapped) throws(E) -> T) throws(E) -> T {
-        try body(wrapped)
-    }
 }

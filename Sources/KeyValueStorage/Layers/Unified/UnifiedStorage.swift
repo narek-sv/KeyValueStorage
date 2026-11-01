@@ -10,9 +10,9 @@
 /// One entry point for every storage, keyed by typed keys.
 ///
 /// - It's safe to call from any thread, task or actor, and calls on storages of different types or scopes never wait for
-///   each other; only a `move` holds its two scopes, and calls in them wait until it's done. Only `Sendable` storages
-///   compile as keys (`UnifiedStorable`): the built-in storages are thread-safe, and `IsolatedDataStorage` makes any other
-///   one shareable.
+///   each other; only `move` and `update` hold their scopes, and calls in them wait until they're done. Only `Sendable`
+///   storages compile as keys (`UnifiedStorable`): the built-in storages are thread-safe, and `IsolatedDataStorage` makes
+///   any other one shareable.
 /// - It creates one storage per storage type and scope, on first use, through its factory.
 /// - When its factory makes a storage observable, the changes made through it are published; see `ObservableStorage`.
 public final class UnifiedStorage: @unchecked Sendable {
@@ -24,12 +24,12 @@ public final class UnifiedStorage: @unchecked Sendable {
     // MARK: Properties
 
     private let factory: any UnifiedStorageFactory
-    /// Guards the slots and the waiting moves; held only to look up or change them, never across an `await`.
+    /// Guards the slots and the waiting holds; held only to look up or change them, never across an `await`.
     private let lock = Lock()
     /// Each storage type and scope's slot, made on first use and kept.
     private var slots = [AnyHashable: Slot]()
-    /// Moves waiting for their scopes, in the order they came.
-    private var waitingMoves = [WaitingMove]()
+    /// Moves and updates waiting to hold their scopes, in the order they came.
+    private var waitingHolds = [WaitingHold]()
 
     // MARK: Initializers
 
@@ -90,7 +90,8 @@ public final class UnifiedStorage: @unchecked Sendable {
             return
         }
 
-        try await withScopes(scope, key.scope) { (source: Entry<Storage>, target: Entry<Storage>) throws(CodingStorageError<Storage>) in
+        try await withHeldScopes([scope, key.scope]) { (entries: [Entry<Storage>]) throws(CodingStorageError<Storage>) in
+            let (source, target) = (entries[0], entries[1])
             let codingKey = CodingStorageKey<Storage, Value>(key: key.key)
             guard let value = try await source.fetch(forKey: codingKey) else {
                 return
@@ -102,6 +103,31 @@ public final class UnifiedStorage: @unchecked Sendable {
             }
 
             try await source.delete(forKey: codingKey)
+        }
+    }
+
+    /// Saves what `transform` makes of the key's value, or deletes the value for `nil`, as one step, such as to count:
+    /// calls through this `UnifiedStorage` in the key's scope wait until it's done, and it waits for those already running.
+    /// - Parameter transform: Gets the stored value, or `nil` if there's none. It can't `await` or throw, so it never waits
+    ///   for this storage; work out what can fail before updating.
+    /// - Returns: The value `transform` made, now stored.
+    /// - Warning: Other `UnifiedStorage` instances, storages used directly and other processes, such as app extensions,
+    ///   don't wait, so their saves can come between the read and the write.
+    @discardableResult
+    public func update<Storage: UnifiedStorable, Value: CodingValue>(
+        forKey key: Key<Storage, Value>,
+        _ transform: (Value?) -> Value?
+    ) async throws(CodingStorageError<Storage>) -> Value? {
+        try await withHeldScopes([key.scope]) { (entries: [Entry<Storage>]) throws(CodingStorageError<Storage>) in
+            let codingKey = CodingStorageKey<Storage, Value>(key: key.key)
+            let updated = transform(try await entries[0].fetch(forKey: codingKey))
+            if let updated {
+                try await entries[0].save(updated, forKey: codingKey)
+            } else {
+                try await entries[0].delete(forKey: codingKey)
+            }
+
+            return updated
         }
     }
 
@@ -131,7 +157,7 @@ public final class UnifiedStorage: @unchecked Sendable {
 
     // MARK: Scopes
 
-    /// Runs `body` with the scope's storage, once no move holds or waits for the scope.
+    /// Runs `body` with the scope's storage, once no move or update holds or waits for the scope.
     private func withScope<Storage: UnifiedStorable, T>(
         _ scope: Storage.Scope,
         _ body: (Entry<Storage>) async throws(CodingStorageError<Storage>) -> T
@@ -144,22 +170,26 @@ public final class UnifiedStorage: @unchecked Sendable {
         return try await body(entry(in: slot, for: scope))
     }
 
-    /// Runs `body` with both scopes' storages, once no call runs in either; calls in them wait meanwhile.
-    private func withScopes<Storage: UnifiedStorable>(
-        _ first: Storage.Scope,
-        _ second: Storage.Scope,
-        _ body: (Entry<Storage>, Entry<Storage>) async throws(CodingStorageError<Storage>) -> Void
-    ) async throws(CodingStorageError<Storage>) {
+    /// Runs `body` with the scopes' storages, all created first, once no call runs in any of them; calls in them wait meanwhile.
+    private func withHeldScopes<Storage: UnifiedStorable, T>(
+        _ scopes: [Storage.Scope],
+        _ body: ([Entry<Storage>]) async throws(CodingStorageError<Storage>) -> T
+    ) async throws(CodingStorageError<Storage>) -> T {
         let slots = lock.withLock {
-            [slot(for: UnderlyingStorageKey<Storage>(scope: first)), slot(for: UnderlyingStorageKey<Storage>(scope: second))]
+            scopes.map { slot(for: UnderlyingStorageKey<Storage>(scope: $0)) }
         }
 
-        await enterMove(slots)
+        await enterHold(slots)
         defer {
-            leaveMove(slots)
+            leaveHold(slots)
         }
 
-        try await body(entry(in: slots[0], for: first), entry(in: slots[1], for: second))
+        var entries = [Entry<Storage>]()
+        for (slot, scope) in zip(slots, scopes) {
+            entries.append(try await entry(in: slot, for: scope))
+        }
+
+        return try await body(entries)
     }
 
     /// Under the lock: the scope's slot, made on first use.
@@ -188,7 +218,7 @@ public final class UnifiedStorage: @unchecked Sendable {
             return slot
         }
 
-        // Admitted at once if the scope was freed since the check above, so a move that ends meanwhile can't miss this call
+        // Admitted at once if the scope was freed since the check above, so a hold that ends meanwhile can't miss this call
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             let calls = lock.withLock {
                 slot.waitingCalls.append(continuation)
@@ -202,46 +232,46 @@ public final class UnifiedStorage: @unchecked Sendable {
     }
 
     private func leaveCall(_ slot: Slot) {
-        let moves = lock.withLock {
+        let holds = lock.withLock {
             slot.calls -= 1
-            return admitMoves()
+            return admitHolds()
         }
 
-        resume(moves)
+        resume(holds)
     }
 
-    private func enterMove(_ slots: [Slot]) async {
+    private func enterHold(_ slots: [Slot]) async {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            let moves = lock.withLock {
-                slots.forEach { $0.waitingMoves += 1 }
-                waitingMoves.append(WaitingMove(slots: slots, continuation: continuation))
-                return admitMoves()
+            let holds = lock.withLock {
+                slots.forEach { $0.waitingHolds += 1 }
+                waitingHolds.append(WaitingHold(slots: slots, continuation: continuation))
+                return admitHolds()
             }
 
-            resume(moves)
+            resume(holds)
         }
     }
 
-    private func leaveMove(_ slots: [Slot]) {
-        let (calls, moves) = lock.withLock {
+    private func leaveHold(_ slots: [Slot]) {
+        let (calls, holds) = lock.withLock {
             var calls = [CheckedContinuation<Void, Never>]()
             for slot in slots {
-                slot.isMoving = false
+                slot.isHeld = false
                 calls += admitCalls(in: slot)
             }
 
-            return (calls, admitMoves())
+            return (calls, admitHolds())
         }
 
-        resume(calls + moves)
+        resume(calls + holds)
     }
 
-    /// After unlocking: resumes the calls and moves let in under the lock.
+    /// After unlocking: resumes the calls and holds let in under the lock.
     private func resume(_ continuations: [CheckedContinuation<Void, Never>]) {
         continuations.forEach { $0.resume() }
     }
 
-    /// Under the lock: lets in the slot's waiting calls once no move holds or waits for it; returns them to resume after unlocking.
+    /// Under the lock: lets in the slot's waiting calls once no move or update holds or waits for it; returns them to resume after unlocking.
     private func admitCalls(in slot: Slot) -> [CheckedContinuation<Void, Never>] {
         guard slot.admitsCalls else {
             return []
@@ -253,20 +283,20 @@ public final class UnifiedStorage: @unchecked Sendable {
         return calls
     }
 
-    /// Under the lock: lets in every waiting move whose scopes are free, oldest first; returns them to resume after unlocking.
-    private func admitMoves() -> [CheckedContinuation<Void, Never>] {
+    /// Under the lock: lets in every waiting hold whose scopes are free, oldest first; returns them to resume after unlocking.
+    private func admitHolds() -> [CheckedContinuation<Void, Never>] {
         var admitted = [CheckedContinuation<Void, Never>]()
-        waitingMoves.removeAll { move in
-            guard move.slots.allSatisfy(\.admitsMove) else {
+        waitingHolds.removeAll { hold in
+            guard hold.slots.allSatisfy(\.admitsHold) else {
                 return false
             }
 
-            for slot in move.slots {
-                slot.isMoving = true
-                slot.waitingMoves -= 1
+            for slot in hold.slots {
+                slot.isHeld = true
+                slot.waitingHolds -= 1
             }
 
-            admitted.append(move.continuation)
+            admitted.append(hold.continuation)
             return true
         }
 
@@ -319,30 +349,30 @@ public final class UnifiedStorage: @unchecked Sendable {
 // MARK: - UnifiedStorage + Slot
 
 extension UnifiedStorage {
-    /// A storage type and scope: its storage's creation, and the calls and moves that use it. Guarded by the lock.
+    /// A storage type and scope: its storage's creation, and the calls, moves and updates that use it. Guarded by the lock.
     private final class Slot: @unchecked Sendable {
         /// The storage's creation task; `nil` before the first call, and after a failed creation.
         var creation: (any Sendable)?
         /// Calls running in the scope.
         var calls = 0
-        /// Whether a move holds the scope.
-        var isMoving = false
-        /// Moves waiting for the scope; new calls wait behind them, so a move never waits forever.
-        var waitingMoves = 0
-        /// Calls waiting for the scope's moves to end.
+        /// Whether a move or an update holds the scope.
+        var isHeld = false
+        /// Moves and updates waiting to hold the scope; new calls wait behind them, so they never wait forever.
+        var waitingHolds = 0
+        /// Calls waiting for the scope's holds to end.
         var waitingCalls = [CheckedContinuation<Void, Never>]()
 
         var admitsCalls: Bool {
-            !isMoving && waitingMoves == 0
+            !isHeld && waitingHolds == 0
         }
 
-        var admitsMove: Bool {
-            !isMoving && calls == 0
+        var admitsHold: Bool {
+            !isHeld && calls == 0
         }
     }
 
-    /// A move waiting until no call runs in its scopes and no other move holds them.
-    private struct WaitingMove {
+    /// A move or an update waiting until no call runs in its scopes and nothing else holds them.
+    private struct WaitingHold {
         let slots: [Slot]
         let continuation: CheckedContinuation<Void, Never>
     }

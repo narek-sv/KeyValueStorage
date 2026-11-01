@@ -233,6 +233,10 @@ try await storage.delete(forKey: key)
 try await storage.set("Bob", forKey: key) // save
 try await storage.set(nil, forKey: key) // delete
 
+// Reads the value and saves what the closure makes of it as one step, or deletes it for nil
+let count = UserDefaultsKey<Int>(key: "launches")
+try await storage.update(forKey: count) { ($0 ?? 0) + 1 }
+
 // Removes every value of the storage's scope, `.default` when omitted,
 // including the values saved in previous launches
 try await storage.clear(storage: KeychainStorage.self, forScope: .own(namespace: "auth"))
@@ -508,27 +512,20 @@ let storage = try FileStorage(scope: .default)
 Task.detached { try storage.save(data, forKey: "avatar") }   // fine: FileStorage is Sendable
 ```
 
-**`UnifiedStorage` takes only `Sendable` storages.** It's safe to call from any thread, task or actor, and calls on storages of different types or scopes, such as a User Defaults fetch and a file write, never wait for each other. Only `move(_:from:)` holds its two scopes: calls in them wait until it's done, and it waits for those already running. For your own storages, thread safety is your responsibility: one that's `Sendable`, such as an actor or a class behind a lock, works as it is, and one that isn't doesn't compile as a key.
+**`UnifiedStorage` takes only `Sendable` storages.** It's safe to call from any thread, task or actor, and calls on storages of different types or scopes, such as a User Defaults fetch and a file write, never wait for each other. Only `move(_:from:)` and `update(forKey:_:)` hold their scopes: calls in them wait until they're done, and they wait for those already running. For your own storages, thread safety is your responsibility: one that's `Sendable`, such as an actor or a class behind a lock, works as it is, and one that isn't doesn't compile as a key.
 
-**Use one `UnifiedStorage` for your app.** An instance coordinates only its own calls: `move(_:from:)` holds its scopes against calls through the same instance, not through another. Several instances never break a value, since every storage they create is thread-safe, but a call through one can see another's move half done. So:
+**Use one `UnifiedStorage` for your app.** An instance coordinates only its own calls: `move(_:from:)` and `update(forKey:_:)` hold their scopes against calls through the same instance, not through another. Several instances never break a value, since every storage they create is thread-safe, but a call through one can see another's move or update half done. So:
 * Create one `UnifiedStorage` and share it, for example as a static property or through dependency injection.
 * If you need more than one, such as one with observation and one without, give each its own scopes.
-* Nothing coordinates with your app extensions, other processes, or storages you use directly: move values before they use the key, for example at launch.
+* Nothing coordinates with your app extensions, other processes, or storages you use directly: move values before they use the key, for example at launch, and don't count on `update` against their writes.
 
-Even through one instance, a sequence of calls, such as a fetch followed by a save, isn't atomic: another task can save in between.
+Even through one instance, a sequence of calls, such as a fetch followed by a save, isn't atomic: another task can save in between. Use `update(forKey:_:)` to read and write a value as one step.
 
 **`IsolatedDataStorage` makes the rest easy.** It's an actor around any synchronous storage, `Sendable` and an `AsyncDataStorage` itself, that runs the storage's operations one at a time:
 
 ```swift
 // Make your own storage usable in UnifiedStorage, however simple it is
 typealias NotesKey<Value: CodingValue> = UnifiedStorageKey<IsolatedDataStorage<NotesStorage>, Value>
-
-// Several operations as one atomic step, on any storage
-let counter = IsolatedDataStorage(try SQLiteStorage(scope: .default))
-try await counter.withStorage { storage in
-    let count = try storage.fetch(forKey: "count")
-    try storage.save(increment(count), forKey: "count")
-}
 ```
 
 ***NOTE***! Calls on one `SQLiteStorage` wait for each other behind its lock, blocking their threads meanwhile. An app that drives one SQLite scope from many tasks at once can wrap it in `IsolatedDataStorage`, so that waiting calls suspend instead.

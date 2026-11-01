@@ -49,7 +49,7 @@ Keychain's `errSecInteractionNotAllowed` is mapped to `.protectedDataUnavailable
 
 ## 4. Risks and notes
 
-- **Cross-process consistency:** isolation is per instance and per process. The app and an extension writing the same scope are only protected by the system itself (SQLite transactions and WAL, atomic file replace, UserDefaults and keychain internals). `withStorage` isn't atomic across processes.
+- **Cross-process consistency:** isolation is per instance and per process. The app and an extension writing the same scope are only protected by the system itself (SQLite transactions and WAL, atomic file replace, UserDefaults and keychain internals). `move` and `update` hold their scopes only against calls through the same `UnifiedStorage`, so neither is atomic across instances or processes.
 - **iOS group containers:** the system terminates a suspended app that holds a file lock in a group container (`0xdead10cc`). SQLite in an App Group scope should finish its work before suspension; the scope docs say so.
 - **Observation** sees only changes made through an `ObservableStorage` of the same storage type and scope, and only of the observer's value type. Concurrent writers of one key may deliver out of order.
 - **Blocking SQLite calls:** `DefaultSQLiteDatabase` locks each operation, so calls on one instance block while they wait. `IsolatedDataStorage` turns that into suspension when many tasks share one SQLite scope.

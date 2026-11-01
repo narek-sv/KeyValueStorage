@@ -30,8 +30,8 @@ final class UnifiedStorageFactoryTests: XCTestCase {
 
         // Then
         XCTAssertTrue(factory.coder(for: isolated) is RawDataCoder)
-        let calls = await isolated.withStorage { $0.calls }
-        XCTAssertEqual(calls, [.save(Data("raw".utf8), "key")])
+        let stored = try await isolated.fetch(forKey: "key")
+        XCTAssertEqual(stored, Data("raw".utf8))
         XCTAssertNil(observable)
     }
 
