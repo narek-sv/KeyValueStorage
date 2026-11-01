@@ -272,6 +272,23 @@ final class UnifiedStorageTests: XCTestCase {
         XCTAssertNotNil(streamed)
     }
 
+    func testAStreamGetsTheBufferingPolicyItsCallerGives() async throws {
+        // Given
+        let storage = UnifiedStorage(observable: true)
+        let key = Key<Int>(key: "key", scope: .init(name: "buffering-\(UUID().uuidString)"))
+        let made = try await storage.stream(forKey: key, includingCurrentValue: false, bufferingPolicy: .bufferingNewest(1))
+        let stream = try XCTUnwrap(made)
+
+        // When: changes before the consumer reads any
+        try await storage.save(1, forKey: key)
+        try await storage.save(2, forKey: key)
+
+        // Then: only the latest was kept
+        var iterator = stream.makeAsyncIterator()
+        let latest = await iterator.next()
+        XCTAssertEqual(latest, 2)
+    }
+
     func testTheObservableFlagChoosesWhetherChangesArePublished() async throws {
         // Given
         let key = InMemoryKey<Int>(key: "key", scope: .own(namespace: "unified-flag"))

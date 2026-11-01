@@ -81,6 +81,46 @@ final class ObservableStorageTests: XCTestCase {
         XCTAssertEqual(second, 6)
     }
 
+    func testTheStreamKeepsEveryUnreadChangeByDefault() async throws {
+        // Given
+        let storage = makeStorage()
+        try await storage.save(1, forKey: key)
+        let stream = try await storage.stream(forKey: key)
+
+        // When: changes before the consumer reads any
+        try await storage.save(2, forKey: key)
+        try await storage.delete(forKey: key)
+        try await storage.save(3, forKey: key)
+
+        // Then
+        var iterator = stream.makeAsyncIterator()
+        var values = [Int?]()
+        for _ in 0..<4 {
+            values.append(await iterator.next() ?? -1)
+        }
+
+        XCTAssertEqual(values, [1, 2, nil, 3])
+    }
+
+    func testTheStreamCanKeepOnlyTheLatestUnreadChange() async throws {
+        // Given
+        let storage = makeStorage()
+        try await storage.save(1, forKey: key)
+        let stream = try await storage.stream(forKey: key, bufferingPolicy: .bufferingNewest(1))
+
+        // When: changes before the consumer reads any
+        try await storage.save(2, forKey: key)
+        try await storage.save(3, forKey: key)
+        var iterator = stream.makeAsyncIterator()
+        let latest = await iterator.next()
+        try await storage.save(4, forKey: key)
+        let next = await iterator.next()
+
+        // Then: only the latest unread value is kept, and later changes still arrive
+        XCTAssertEqual(latest, 3)
+        XCTAssertEqual(next, 4)
+    }
+
     func testAValueSavedBeforeSubscribingWinsOverTheValueRead() async throws {
         // Given
         let storage = makeStorage()

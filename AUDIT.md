@@ -108,7 +108,6 @@ None open: the gaps found are documented, and what only a device can settle is l
 
 ### Test gaps
 
-- Observation: `AsyncStream` buffering under a slow consumer.
 - `UnifiedStorage`: caller cancellation during creation.
 - iOS: a 255-byte file name through a real atomic write (checked on macOS: works).
 
@@ -142,14 +141,6 @@ each other's observation events.
 
 ## 7. Leaks, hangs and crashes
 
-- **Cooperative pool blocking (medium).** Synchronous storages run Keychain, file and SQLite calls on Swift's
-  cooperative threads. SQLite waits up to 1 s for another process (`busy_timeout`). A burst of contention, such as the
-  app and an extension writing one database, can occupy every cooperative thread and stall all async work in the app.
-  Fix: run blocking storages on their own executor or dispatch queue (a custom executor for `IsolatedDataStorage`).
-- **Unbounded `AsyncStream` (low).** `bufferingPolicy: .unbounded`: a slow consumer of a frequently written key grows
-  memory without limit. `.bufferingNewest(1)` fits state observation.
-- **Delivery under the observation's lock (low).** A slow subscriber blocks every writer of that key; a subscriber that
-  waits synchronously for another thread saving the same key deadlocks.
 - **No eviction in `UnifiedStorage` (low).** With a namespace per account, SQLite connections and their file
   descriptors accumulate for the instance's lifetime.
 - **Creation ignores cancellation (low).** Awaiting the creation task ignores the caller's cancellation; a custom async

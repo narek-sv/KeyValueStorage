@@ -20,6 +20,8 @@ import Foundation
 ///   on other devices, or directly to `UserDefaults`, the keychain or files.
 /// - An observer sees only the values saved with its own value type.
 /// - Two calls that save one key at once may deliver their values out of order.
+/// - Subscribers run inside the save, and other saves of the key wait for them: keep them short, and move slow work off with
+///   `receive(on:)` or a stream. A subscriber that waits for another save of the same key never returns.
 /// - Warning: Subclasses inherit `Sendable`: their own state must be thread-safe too.
 open class ObservableStorage<Storage: AsyncDataStorage & Sendable>: @unchecked Sendable {
     public typealias Error = CodingStorageError<Storage>
@@ -114,10 +116,15 @@ open class ObservableStorage<Storage: AsyncDataStorage & Sendable>: @unchecked S
 
     /// - Parameter includingCurrentValue: Whether the stream starts with the stored value, or `nil` if there's none: the
     ///   value this call reads, or a change published since. Reading it can throw, for example when the stored data can't be decoded.
+    /// - Parameter bufferingPolicy: What the stream keeps of the values its consumer hasn't read yet. `.unbounded` keeps every
+    ///   one, so a consumer slower than the changes falls behind and holds them all in memory; `.bufferingNewest(1)` keeps only
+    ///   the latest, for a consumer that needs the current value rather than every change.
     open func stream<Value: CodingValue>(forKey key: CodingStorageKey<Storage, Value>,
-                                         includingCurrentValue: Bool = true) async throws(Error) -> AsyncStream<Value?> {
+                                         includingCurrentValue: Bool = true,
+                                         bufferingPolicy: AsyncStream<Value?>.Continuation.BufferingPolicy = .unbounded)
+    async throws(Error) -> AsyncStream<Value?> {
         let publisher = try await publisher(forKey: key, includingCurrentValue: includingCurrentValue)
-        return AsyncStream(bufferingPolicy: .unbounded) { continuation in
+        return AsyncStream(bufferingPolicy: bufferingPolicy) { continuation in
             let subscription = Subscription(publisher.sink {
                 continuation.yield($0)
             })

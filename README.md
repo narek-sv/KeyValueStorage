@@ -462,6 +462,12 @@ for await value in stream {
 }
 ```
 
+A stream keeps every change its consumer hasn't read yet, so a consumer slower than the changes falls behind and holds them all in memory. To get only the current value, keep only the latest:
+
+```swift
+let latest = try await storage.stream(forKey: key, bufferingPolicy: .bufferingNewest(1))
+```
+
 Without `UnifiedStorage`, wrap a coding storage in `ObservableStorage`, which saves, fetches and deletes like it and adds `publisher` and `stream`:
 
 ```swift
@@ -471,7 +477,7 @@ for await theme in try await settings.stream(forKey: CodingStorageKey<FileStorag
 }
 ```
 
-Changes are delivered on the thread that makes them, right after the write succeeds, so move to the main thread before updating the UI. Streams resume on the executor of the task that iterates them. An observer sees only the values saved with its own value type.
+Changes are delivered on the thread that makes them, right after the write succeeds, so move to the main thread before updating the UI. Subscribers run inside the save, and other saves of the same key wait for them: keep them short, and move slow work off with `receive(on:)` or a stream. Streams resume on the executor of the task that iterates them. An observer sees only the values saved with its own value type.
 
 However, it's important to note that only the changes made through observable storages of the current process are published, from any instance of the same storage type and scope. Changes made by other processes (for example, App Extensions), on the user's other devices, by storages without observation, or written directly to `UserDefaults`, the keychain or files aren't. Two calls that save one key at the same moment may deliver their values out of order.
 

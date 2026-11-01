@@ -147,11 +147,17 @@ public final class UnifiedStorage: @unchecked Sendable {
     /// The stream resumes on the executor of the task that iterates it; see `ObservableStorage`.
     /// - Parameter includingCurrentValue: Whether the stream starts with the stored value, or `nil` if there's none: the
     ///   value this call reads, or a change published since.
+    /// - Parameter bufferingPolicy: What the stream keeps of the values its consumer hasn't read yet: every one with
+    ///   `.unbounded`, held in memory while the consumer falls behind, or only the latest with `.bufferingNewest(1)`.
     /// - Returns: `nil` if the factory doesn't make the key's storage observable.
-    public func stream<Storage: UnifiedStorable, Value: CodingValue>(forKey key: Key<Storage, Value>, includingCurrentValue: Bool = true)
-    async throws(CodingStorageError<Storage>) -> AsyncStream<Value?>? {
+    public func stream<Storage: UnifiedStorable, Value: CodingValue>(
+        forKey key: Key<Storage, Value>,
+        includingCurrentValue: Bool = true,
+        bufferingPolicy: AsyncStream<Value?>.Continuation.BufferingPolicy = .unbounded
+    ) async throws(CodingStorageError<Storage>) -> AsyncStream<Value?>? {
         try await withScope(key.scope) { (entry: Entry<Storage>) throws(CodingStorageError<Storage>) in
-            try await entry.observable?.stream(forKey: .init(key: key.key), includingCurrentValue: includingCurrentValue)
+            try await entry.observable?.stream(forKey: .init(key: key.key), includingCurrentValue: includingCurrentValue,
+                                               bufferingPolicy: bufferingPolicy)
         }
     }
 
