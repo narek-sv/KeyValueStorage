@@ -133,6 +133,23 @@ final class FileIntegrationTests: XCTestCase {
 
     // MARK: Values
 
+    func testAKeyWithTheLongestFileNameWorksInEveryOperation() throws {
+        // Given: a key whose file name is 255 bytes, the most a name can have; an atomic save writes through a temporary
+        // file, whose name mustn't need more
+        let storage = try storage()
+        let key = FileStorage.Key(String(repeating: "a", count: 255))
+
+        // When - Then
+        try storage.save(Data([1]), forKey: key)
+        try storage.save(Data([2]), forKey: key)
+        XCTAssertEqual(try storage.fetch(forKey: key), Data([2]))
+        try storage.delete(forKey: key)
+        XCTAssertNil(try storage.fetch(forKey: key))
+        try storage.save(Data([3]), forKey: key)
+        try storage.clear()
+        XCTAssertNil(try storage.fetch(forKey: key))
+    }
+
     func testValuesRoundTripInFilesNamedAfterTheirKeys() throws {
         // Given
         let storage = try storage(.own(namespace: "values"))

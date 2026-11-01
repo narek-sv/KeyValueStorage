@@ -13,7 +13,7 @@ Severity: **high** (data loss or release blocker), **medium** (wrong behavior us
 The core is solid. Scope isolation holds for all six storages with the default locators, errors are typed end to end,
 the naming encodings are injective and safe on case- and normalization-insensitive volumes, and the test suite is
 unusually thorough. No finding blocks a release on its own. What's left: checks that need a device (§3.1 and
-`REFACTOR_PLAN §2`), release leftovers in the docs (§5), and design and performance improvements (§1, §2, §7).
+`REFACTOR_PLAN §2`), release leftovers in the docs (§5), and design and performance improvements (§1, §2).
 
 ---
 
@@ -108,10 +108,7 @@ None open: the gaps found are documented, and what only a device can settle is l
 
 ### Test gaps
 
-- `UnifiedStorage`: caller cancellation during creation.
-- iOS: a 255-byte file name through a real atomic write (checked on macOS: works).
-
-Otherwise excellent: every compound condition's paths are covered, limits are tested on both sides, and edge-case keys
+None open. The suite is excellent: every compound condition's paths are covered, limits are tested on both sides, and edge-case keys
 (`""`, NUL, `é`/`e\u{301}`, `..`, `/`) run against the real systems.
 
 ---
@@ -141,10 +138,6 @@ each other's observation events.
 
 ## 7. Leaks, hangs and crashes
 
-- **No eviction in `UnifiedStorage` (low).** With a namespace per account, SQLite connections and their file
-  descriptors accumulate for the instance's lifetime.
-- **Creation ignores cancellation (low).** Awaiting the creation task ignores the caller's cancellation; a custom async
-  storage whose `init` hangs blocks its scope forever.
 - **Crashes:** none found; the Ubiquitous key limit still needs a check on the oldest systems (§3.1). Lock re-entry (the registry is never re-entered from an observation's release),
   statement lifetimes and every error path check out.
 

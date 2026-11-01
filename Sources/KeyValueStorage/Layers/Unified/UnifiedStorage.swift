@@ -13,7 +13,9 @@
 ///   each other; only `move` and `update` hold their scopes, and calls in them wait until they're done. Only `Sendable`
 ///   storages compile as keys (`UnifiedStorable`): the built-in storages are thread-safe, and `IsolatedDataStorage` makes
 ///   any other one shareable.
-/// - It creates one storage per storage type and scope, on first use, through its factory.
+/// - It creates one storage per storage type and scope, on first use, through its factory, and keeps it while it lives:
+///   with a scope per account, such as a namespace per user, each SQLite scope keeps its database open until then.
+/// - Cancelling a call doesn't cancel its storage's creation, which concurrent calls share.
 /// - When its factory makes a storage observable, the changes made through it are published; see `ObservableStorage`.
 public final class UnifiedStorage: @unchecked Sendable {
 

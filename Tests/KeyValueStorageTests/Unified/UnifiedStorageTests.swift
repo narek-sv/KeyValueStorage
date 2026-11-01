@@ -86,6 +86,32 @@ final class UnifiedStorageTests: XCTestCase {
         XCTAssertEqual(factory.dataStorageCalls, 2)
     }
 
+    func testACancelledCallDoesntCancelTheCreationItShares() async throws {
+        // Given: a creation that waits, and two calls waiting for it
+        let gate = Gate()
+        let factory = GatedCreationFactory(gate: gate)
+        let storage = UnifiedStorage(factory: factory)
+        let key = Key<Int>(key: "key", scope: .init(name: "cancelled-\(UUID().uuidString)"))
+        let cancelled = Task { try await storage.save(1, forKey: key) }
+        while !gate.isWaiting {
+            await Task.yield()
+        }
+
+        let other = Task { try await storage.save(2, forKey: key) }
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        // When
+        cancelled.cancel()
+        gate.open()
+
+        // Then: both calls finished with the one storage
+        try await cancelled.value
+        try await other.value
+        XCTAssertEqual(factory.creations, 1)
+        let value = try await storage.fetch(forKey: key)
+        XCTAssertNotNil(value)
+    }
+
     func testConcurrentCallsShareOneFailedCreationAndALaterCallRetries() async throws {
         // Given
         let factory = RecordingFactory(failures: 1)
@@ -381,6 +407,35 @@ private final class RecordingFactory: UnifiedStorageFactory, @unchecked Sendable
 
     func observableStorage<Storage: UnifiedStorable>(for storage: AsyncCodingStorage<Storage>) async -> ObservableStorage<Storage>? {
         observable ? ObservableStorage(storage) : nil
+    }
+}
+
+// MARK: - GatedCreationFactory
+
+/// Creates each storage once its gate opens, counting the creations; a cancelled creation fails, as a server-backed one would.
+private final class GatedCreationFactory: UnifiedStorageFactory, @unchecked Sendable {
+    static let cancelled = MockError(id: 8)
+
+    private let gate: Gate
+    private let lock = NSLock()
+    private var count = 0
+
+    var creations: Int {
+        lock.withLock { count }
+    }
+
+    init(gate: Gate) {
+        self.gate = gate
+    }
+
+    func dataStorage<Storage: UnifiedStorable>(for scope: Storage.Scope) async throws(Storage.Error) -> Storage {
+        await gate.wait()
+        if Task.isCancelled, let error = Self.cancelled as? Storage.Error {
+            throw error
+        }
+
+        lock.withLock { count += 1 }
+        return try await Storage(scope: scope)
     }
 }
 
