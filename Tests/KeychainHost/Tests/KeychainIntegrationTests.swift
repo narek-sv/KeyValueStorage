@@ -131,6 +131,22 @@ final class KeychainIntegrationTests: XCTestCase {
         XCTAssertNil(try unlocked.fetch(forKey: "key"))
     }
 
+    func testEveryScopeSavesAgainAfterADelete() throws {
+        // A deleted synced item leaves a tombstone: a save over it must store the value, not find a duplicate it can't update
+        for scope in [KeychainStorage.Scope.own(namespace: namespace()), .iCloud(.own, namespace: namespace())] {
+            // Given
+            let storage = storage(scope)
+            try storage.save(Data([1]), forKey: "key")
+            try storage.delete(forKey: "key")
+
+            // When
+            try storage.save(Data([2]), forKey: "key")
+
+            // Then
+            XCTAssertEqual(try storage.fetch(forKey: "key"), Data([2]), "\(scope)")
+        }
+    }
+
     // MARK: Scopes
 
     func testSyncedScopesNeverReachTheLocalItemsOfTheirService() throws {

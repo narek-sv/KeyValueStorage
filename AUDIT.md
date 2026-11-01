@@ -17,7 +17,7 @@ unusually thorough. What stands between the branch and a release:
 1. Upgrading from 3.0 orphans every stored value, and nothing documents it (§4a).
 2. Changing a scope's protection in an app update hides every existing value (§4b).
 3. `IsolatedDataStorage.withStorage` is atomic only within one instance, but the README calls it an atomic step (§4c).
-4. The Ubiquitous key limit may be looser than the store's, which would crash (§3.2, verify).
+4. The Ubiquitous key limit may be looser than the store's, which would crash (§3.1, verify).
 
 ---
 
@@ -98,13 +98,7 @@ Note: calling the async API from the main actor in a tight loop costs ~9 µs per
 
 ## 3. Bugs
 
-### 3.1 Keychain save race (low)
-
-`save`: update → `.notFound`; add → `.duplicate` (another save added it); update again → `.notFound` (a concurrent delete
-removed it). `save` throws `.keychain(status: errSecItemNotFound)` instead of succeeding. Needs three concurrent calls on
-one key; a retry loop (bounded) or treating the last `.notFound` as "add again" fixes it.
-
-### 3.2 Ubiquitous key limit may crash (medium, verify)
+### 3.1 Ubiquitous key limit may crash (medium, verify)
 
 `DefaultUbiquitousLocator` allows stored keys of up to 128 UTF-16 code units. Apple's key-value store documentation has
 given the limit as 64 bytes of UTF-8. The locator's own docs say a longer key raises an Objective-C exception. If the
@@ -181,14 +175,13 @@ container. Document on `SQLiteStorage.Scope.appGroup`; confirm on a device wheth
   also reads.
 - `AsyncCodingStorage`: "wrap a synchronous storage in `IsolatedDataStorage` to share it" — the built-in synchronous
   storages are already `Sendable`; it means non-`Sendable` ones.
-- README Ubiquitous: states 128 UTF-16 code units as fact (§3.2).
+- README Ubiquitous: states 128 UTF-16 code units as fact (§3.1).
 - Release leftovers: Installation `from: "3.0.0"`; the coverage badge says ≥98% while the plan says 100%; the README
   "Tests" section says nothing concrete.
 
 ### Test gaps
 
 - Observation: `AsyncStream` buffering under a slow consumer.
-- Keychain: the three-way save race (§3.1).
 - `UnifiedStorage`: caller cancellation during creation.
 - iOS: a 255-byte file name through a real atomic write (checked on macOS: works).
 
@@ -234,7 +227,7 @@ each other's observation events.
   descriptors accumulate for the instance's lifetime.
 - **Creation ignores cancellation (low).** Awaiting the creation task ignores the caller's cancellation; a custom async
   storage whose `init` hangs blocks its scope forever.
-- **Crashes:** none found beyond §3.2. Lock re-entry (the registry is never re-entered from an observation's release),
+- **Crashes:** none found beyond §3.1. Lock re-entry (the registry is never re-entered from an observation's release),
   statement lifetimes and every error path check out.
 
 ---
@@ -249,4 +242,4 @@ No data races found:
 - Creation is deduplicated without a race, and failures aren't cached.
 - The observation's version check lets a change win over a concurrent read.
 
-The remaining races are logical: observation delivery order (documented), per-instance atomicity (§4c), the Keychain save race (§3.1).
+The remaining races are logical: observation delivery order (documented) and per-instance atomicity (§4c).

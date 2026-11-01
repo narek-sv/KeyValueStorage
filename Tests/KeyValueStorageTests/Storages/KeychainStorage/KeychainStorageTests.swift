@@ -249,6 +249,22 @@ final class KeychainStorageTests: XCTestCase {
         XCTAssertEqual(backingStore.calls.map(operation), [.update, .add, .update])
     }
 
+    func testAnItemAddedAndRemovedBetweenSavesCallsIsAnEarlierSave() throws {
+        // Given: another call adds the item after the update found none, and another removes it before the second update
+        let other = item("key", data: Data([9]))
+        backingStore.beforeAdd = { [backingStore] in
+            backingStore.items.append(other)
+            backingStore.beforeUpdate = { backingStore.items.removeAll() }
+        }
+
+        // When
+        try makeStorage().save(data, forKey: "key")
+
+        // Then: as if this save came before the other, whose removal leaves nothing
+        XCTAssertEqual(backingStore.items, [])
+        XCTAssertEqual(backingStore.calls.map(operation), [.update, .add, .update])
+    }
+
     func testAFailingUpdateAfterADuplicateIsReported() {
         // Given: another call adds the item, and the second update fails
         let other = item("key", data: Data([9]))

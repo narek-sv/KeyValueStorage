@@ -39,6 +39,8 @@ final class KeychainBackingStoreMock: KeychainBackingStore, @unchecked Sendable 
     var failures = [Operation: KeychainOperationStatus]()
     /// Runs as an add starts, such as another caller adding the same item first.
     var beforeAdd: (() -> Void)?
+    /// Runs as an update starts, such as another caller removing the item first.
+    var beforeUpdate: (() -> Void)?
     private(set) var calls = [Call]()
 
     func read(_ query: KeychainQuery) -> (KeychainOperationStatus, AnyObject?) {
@@ -80,6 +82,7 @@ final class KeychainBackingStoreMock: KeychainBackingStore, @unchecked Sendable 
 
     func update(_ query: KeychainQuery, with attributes: KeychainQuery) -> KeychainOperationStatus {
         calls.append(.update(query, attributes))
+        beforeUpdate?()
         if let failure = failures[.update] {
             return failure
         }

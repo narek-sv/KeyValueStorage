@@ -66,8 +66,18 @@ public final class KeychainStorage: DataStorage, Sendable {
         }
 
         let added = backingStore.add(query(account: account, accessibility: accessibility, valueData: value))
-        // Added by another call since the update: replace it, so the last save wins
-        try check(added == .duplicate ? update(value, account: account) : added)
+        guard added == .duplicate else {
+            return try check(added)
+        }
+
+        // Added by another call since the update: replace it, so the last save wins. Removed again since then, it was
+        // the later save, and its removal leaves nothing, as if this save had come first
+        let replaced = update(value, account: account)
+        guard replaced != .notFound else {
+            return
+        }
+
+        try check(replaced)
     }
 
     public func delete(forKey key: Key) throws(Error) {
