@@ -35,6 +35,28 @@ final class UnifiedStorageKeyTests: XCTestCase {
         XCTAssertNotEqual(FileKey<Int>(key: "\u{E9}"), FileKey<Int>(key: "e\u{301}"))
     }
 
+    func testAStringIsTheSameKeyAsALiteralOrAnExactString() {
+        // Given: a name made at runtime
+        let name = "key-\(42)"
+
+        // When
+        let key = FileKey<Int>(key: name, scope: .own(namespace: "ns"))
+        let exact = FileKey<Int>(key: ExactString(name), scope: .own(namespace: "ns"))
+
+        // Then
+        XCTAssertEqual(key, exact)
+        XCTAssertEqual(key.hashValue, exact.hashValue)
+        XCTAssertEqual(key, FileKey<Int>(key: "key-42", scope: .own(namespace: "ns")))
+        XCTAssertEqual(key.key, ExactString(name))
+        XCTAssertEqual(FileKey<Int>(key: name), FileKey<Int>(key: ExactString(name), scope: .default))
+    }
+
+    func testAStringKeepsItsExactBytes() {
+        let composed = "\u{E9}"
+        let decomposed = "e\u{301}"
+        XCTAssertNotEqual(FileKey<Int>(key: composed), FileKey<Int>(key: decomposed))
+    }
+
     func testTheKeyKeepsItsParts() {
         let key = SQLiteKey<String>(key: "name", scope: .own(.cache, namespace: "ns"))
         XCTAssertEqual(key.key, "name")

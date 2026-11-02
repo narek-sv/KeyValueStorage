@@ -42,6 +42,23 @@ final class PublicAPITests: XCTestCase {
         XCTAssertEqual(stored.map { Array($0.prefix(6)) }, Array("bplist".utf8))
     }
     
+    /// A key named at runtime takes the `String` as it is, and reaches the same value as the name written any other way.
+    func testAKeyNamedByAStringReachesItsValue() async throws {
+        // Given
+        let namespace = ExactString("publicAPIStringKey-\(UUID().uuidString)")
+        let storage = UnifiedStorage()
+        let name = "user-\(42)"
+
+        // When
+        try await storage.save(1, forKey: InMemoryKey<Int>(key: name, scope: .own(namespace: namespace)))
+        let fetched = try await storage.fetch(forKey: InMemoryKey<Int>(key: "user-42", scope: .own(namespace: namespace)))
+
+        // Then
+        XCTAssertEqual(fetched, 1)
+        let coding = CodingStorage(storage: InMemoryStorage(scope: .own(namespace: namespace)), coder: JSONDataCoder())
+        XCTAssertEqual(try coding.fetch(forKey: CodingStorageKey<InMemoryStorage, Int>(key: name)), 1)
+    }
+
     func testAFactoryImplementsOnlyWhatItChanges() async throws {
         // Given
         let factory = CountingFactory()

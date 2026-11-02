@@ -28,6 +28,27 @@ final class CodingStorageKeyTests: XCTestCase {
         XCTAssertEqual(keys.count, 3)
     }
 
+    func testAStringIsTheSameKeyAsALiteralOrAnExactString() {
+        // Given: a name made at runtime
+        let name = "key-\(42)"
+
+        // When
+        let key = Key<Int>(key: name)
+        let exact = Key<Int>(key: ExactString(name))
+
+        // Then
+        XCTAssertEqual(key, exact)
+        XCTAssertEqual(key.hashValue, exact.hashValue)
+        XCTAssertEqual(key, Key<Int>(key: "key-42"))
+        XCTAssertEqual(key.key, ExactString(name))
+    }
+
+    func testAStringKeepsItsExactBytes() {
+        let composed = "\u{E9}"
+        let decomposed = "e\u{301}"
+        XCTAssertNotEqual(Key<Int>(key: composed), Key<Int>(key: decomposed))
+    }
+
     func testTheValueTypeIsKept() {
         XCTAssertTrue(Key<Int>(key: "key").codingType == Int.self)
         XCTAssertEqual(Key<Int>(key: "key").key, "key")

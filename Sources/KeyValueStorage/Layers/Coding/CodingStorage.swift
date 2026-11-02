@@ -21,6 +21,15 @@ public struct CodingStorageKey<Storage: AsyncDataStorage, Value: CodingValue>: S
     }
 }
 
+// MARK: - CodingStorageKey + String
+
+public extension CodingStorageKey where Storage.Key == ExactString {
+    /// Any string as the key, such as one made at runtime, compared by its exact bytes.
+    init(key: String) {
+        self.init(key: ExactString(key))
+    }
+}
+
 // MARK: - CodingStorageKey + Hashable
 
 /// Keys of other value types are other types, so `==` compares only the key; the hash also mixes in the value type, for

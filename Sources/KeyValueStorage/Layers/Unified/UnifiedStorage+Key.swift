@@ -25,6 +25,15 @@ public struct UnifiedStorageKey<Storage: UnifiedStorable, Value: CodingValue>: S
     }
 }
 
+// MARK: - UnifiedStorageKey + String
+
+public extension UnifiedStorageKey where Storage.Key == ExactString {
+    /// Any string as the key, such as one made at runtime, compared by its exact bytes.
+    init(key: String, scope: Storage.Scope = .default) {
+        self.init(key: ExactString(key), scope: scope)
+    }
+}
+
 // MARK: - UnifiedStorageKey + Hashable
 
 /// Keys of other value or storage types are other types, so `==` compares only the key and scope; the hash also mixes in

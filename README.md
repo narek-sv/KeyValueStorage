@@ -222,10 +222,10 @@ As you can see, the key holds all the necessary information about the value:
 * The value type - `String`
 * The scope (*optional*) - who sees the value and where it lives; `.default` when omitted
 
-A key's name is an `ExactString`, compared by its exact bytes. A string literal is one already; wrap a `String` value in `.init`:
+A key's name can be any string, a literal or one made at runtime, and is compared by its exact bytes, so `"é"` and `"e\u{301}"` are two keys:
 
 ```swift
-let token = KeychainKey<String>(key: .init(accountID))
+let token = KeychainKey<String>(key: accountID)
 ```
 
 Now all that is left is to instantiate the storage and use it:

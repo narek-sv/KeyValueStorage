@@ -29,6 +29,7 @@ Version 4 rebuilds the library around scopes, synchronous thread-safe storages a
 - `UnifiedStorage.move(_:from:)`, which moves a key's value into a new scope, such as after its protection changes, without losing it.
 - `UnifiedStorage.update(forKey:_:)`, which reads and writes a value as one step.
 - `UnifiedStorage.close(storage:forScope:)`, which lets go of a scope's storage, such as to close the database of a SQLite scope the app is done with.
+- `UnifiedStorageKey(key:scope:)` and `CodingStorageKey(key:)` take a `String` too, for keys named at runtime.
 - `UnifiedStorage(observable:)`.
 - Retention for files and SQLite, `.persistent`, `.cache` or `.temporary`, and protection levels for both.
 - `DataStorage`, for synchronous custom storages, which need no `await` through `CodingStorage`; `AsyncDataStorage`, for asynchronous ones; and `IsolatedDataStorage`, an actor that makes any synchronous storage shareable.
