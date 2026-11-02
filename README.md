@@ -73,6 +73,7 @@ Here's how the built-in storages compare:
 * A fetch followed by a save isn't atomic across processes, and a write fails if another process keeps the database busy for over a second.
 * Large values are written twice, first to the database's log and then into the database, so they briefly need about twice their size on disk.
 * Deleted values free space inside the database for reuse, but the database file itself doesn't shrink.
+* A scope's database stays open while `UnifiedStorage` keeps its storage: close the scopes the app is done with, see [Closing storages](#closing-storages).
 * A single value can't exceed SQLite's size limit, so very large values belong in files.
 
 **iCloud Key-Value Store** - small preferences and state that follow the user to their other devices.
@@ -273,6 +274,26 @@ try await storage.move(token, from: .own(protection: .whenUnlocked, namespace: "
 `move` saves the value in the key's scope, unless a value is there already, and only then removes it from the old scope, so the value is never lost; a failed or interrupted move is finished by calling it again. Calls through the same `UnifiedStorage` in either scope wait until the move is done. Other `UnifiedStorage` instances, storages used directly and other processes don't wait, so move values before they use the key.
 
 A move needs two places: between scopes that resolve to one, such as File or SQLite App Group ids that differ only in case on macOS, it takes the value for one already in the target, and deletes it.
+
+### Closing storages
+
+`UnifiedStorage` creates a scope's storage on first use and keeps it, so a SQLite scope keeps its database open until the app quits. Close a scope the app is done with, such as a chat the user left. Its values stay, and the next call opens it again:
+
+```swift
+await storage.close(storage: SQLiteStorage.self, forScope: .own(namespace: "chat-42"))
+```
+
+A damaged SQLite database fails every call, and clearing it fails too. Close its scope, delete the database's files, and the next call creates an empty database:
+
+```swift
+await storage.close(storage: SQLiteStorage.self, forScope: scope)
+let database = try DefaultSQLiteLocator().databaseURL(for: scope)
+for suffix in ["", "-wal", "-shm"] {
+    try? FileManager.default.removeItem(atPath: database.path + suffix)
+}
+```
+
+`close` waits for the calls running in the scope, and calls through the same `UnifiedStorage` wait for it. Your app extensions, other `UnifiedStorage` instances and storages you use directly keep their own connections, so don't delete a database while they may have it open. A factory that keeps its own reference to a storage keeps it open too.
 
 ---
 ## Type Inference
@@ -578,9 +599,9 @@ let storage = try FileStorage(scope: .default)
 Task.detached { try storage.save(data, forKey: "avatar") }   // fine: FileStorage is Sendable
 ```
 
-**`UnifiedStorage` takes only `Sendable` storages.** It's safe to call from any thread, task or actor, and calls on storages of different types or scopes, such as a User Defaults fetch and a file write, never wait for each other. Only `move(_:from:)` and `update(forKey:_:)` hold their scopes: calls in them wait until they're done, and they wait for those already running. For your own storages, thread safety is your responsibility: one that's `Sendable`, such as an actor or a class behind a lock, works as it is, and one that isn't doesn't compile as a key.
+**`UnifiedStorage` takes only `Sendable` storages.** It's safe to call from any thread, task or actor, and calls on storages of different types or scopes, such as a User Defaults fetch and a file write, never wait for each other. Only `move(_:from:)`, `update(forKey:_:)` and `close(storage:forScope:)` hold their scopes: calls in them wait until they're done, and they wait for those already running. For your own storages, thread safety is your responsibility: one that's `Sendable`, such as an actor or a class behind a lock, works as it is, and one that isn't doesn't compile as a key.
 
-**Use one `UnifiedStorage` for your app.** An instance coordinates only its own calls: `move(_:from:)` and `update(forKey:_:)` hold their scopes against calls through the same instance, not through another. Several instances never break a value, since every storage they create is thread-safe, but a call through one can see another's move or update half done. So:
+**Use one `UnifiedStorage` for your app.** An instance coordinates only its own calls: `move(_:from:)`, `update(forKey:_:)` and `close(storage:forScope:)` hold their scopes against calls through the same instance, not through another. Several instances never break a value, since every storage they create is thread-safe, but a call through one can see another's move or update half done. So:
 * Create one `UnifiedStorage` and share it, for example as a static property or through dependency injection.
 * If you need more than one, such as one with observation and one without, give each its own scopes.
 * Nothing coordinates with your app extensions, other processes, or storages you use directly: move values before they use the key, for example at launch, and don't count on `update` against their writes.

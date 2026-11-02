@@ -79,6 +79,42 @@ final class UnifiedIntegrationTests: XCTestCase {
         XCTAssertNil(oldFlag)
     }
 
+    // MARK: Closing
+
+    func testAClosedDatabaseCanBeDeletedAndTheNextCallsStartANewOne() async throws {
+        // Given: a SQLite scope with a value, its database open
+        let storage = UnifiedStorage(factory: factory)
+        let key = SQLiteKey<Int>(key: "key", scope: .own(namespace: "closed"))
+        try await storage.save(1, forKey: key)
+        let database = try factory.sqliteLocator.databaseURL(for: key.scope)
+
+        // When: closed, then its files deleted, as for a damaged database; not awaited by the test, so a close or a call
+        // that waits forever fails at the timeout instead of hanging
+        let finished = expectation(description: "the close and the calls after it finished")
+        let calls = Task {
+            defer { finished.fulfill() }
+            await storage.close(storage: SQLiteStorage.self, forScope: key.scope)
+            for suffix in ["", "-wal", "-shm"] {
+                try? FileManager.default.removeItem(atPath: database.path + suffix)
+            }
+
+            let fetched = try await storage.fetch(forKey: key)
+            try await storage.save(2, forKey: key)
+            return fetched
+        }
+
+        guard await XCTWaiter.fulfillment(of: [finished], timeout: 5) == .completed else {
+            return XCTFail("The close or a call after it waited forever")
+        }
+
+        // Then: the next calls opened a new database, which another connection sees; the closed connection would have kept
+        // the deleted file and its value
+        let fetched = try await calls.value
+        XCTAssertNil(fetched)
+        let other = try SQLiteStorage(scope: key.scope, backingStore: DefaultSQLiteBackingStoreWrapper(), locator: factory.sqliteLocator)
+        XCTAssertEqual(try other.fetch(forKey: "key"), Data("2".utf8))
+    }
+
     // MARK: Values
 
     func testEveryValueTypeKeepsItsBytesThroughEachStorage() async throws {

@@ -56,47 +56,21 @@ device; the release comes last, once everything else is gone.
 
 | # | Severity | Item |
 | --- | --- | --- |
-| 1 | Medium | No way to release or reset a storage `UnifiedStorage` created |
-| 2 | Low | `String` keys need `.init` |
-| 3 | Low | Custom locators in `UnifiedStorage` take cast-heavy factory code |
-| 4 | Low, design | No retention that persists but stays out of backups |
-| 5 | Low | Code that must stay in sync across storages |
-| 6 | Low, design | Observation sees only changes made through observable storages in this process |
-| 7 | Low | `admitHolds()` depends on `removeAll(where:)`'s evaluation order |
-| 8 | Low | The rest of the facade's cost, and one lock per instance |
-| 9 | Medium, verify | Error cases the device checks may add |
-| 10 | Medium, verify | tvOS on a device |
-| 11 | Low, verify | Ubiquitous key limit on the oldest supported systems |
-| 12 | Last | The release: README, DocC, the CHANGELOG's date, the coverage badge, the tag |
-
-### Medium
-
-#### 1. No way to release or reset a storage `UnifiedStorage` created (medium)
-
-`UnifiedStorage` files each storage type's scopes in `tables` and keeps every `StorageSlot`, with its `CreationTask` and so
-its storage, until the instance itself is deallocated. A failed creation is dropped; a successful one never is
-(`UnifiedStorage.swift`: `tables`, `creation(in:for:)`, `entry(in:from:)`). The class doc says so. What that rules out:
-
-- **Resources per scope.** Each SQLite scope keeps its connection open, with three file descriptors (database, `-wal`,
-  `-shm`; measured 3.0 per scope over 20 scopes) and a page cache of up to 2,000 pages of 4 KiB (Apple's defaults,
-  measured), about 8 MB. A scope per account is fine; a scope per document or conversation accumulates for the app's
-  lifetime, toward the process's file descriptor limit (iOS apps' limit wasn't measured).
-- **Recovery from a damaged database.** Once a database is `SQLITE_CORRUPT` or `SQLITE_NOTADB`, every call fails,
-  `clear()` can't help (its `DELETE` fails too), and deleting the files under the open connection doesn't either: the
-  connection keeps using the unlinked file, so only a relaunch recovers. The likeliest cause is the system deleting some
-  of a `.cache` or `.temporary` database's files (§2).
-- **Tests** can't reset an instance between cases.
-- **App Group suspension:** if §2 shows that an idle WAL connection gets a suspended app terminated (`0xdead10cc`), apps
-  need to close it first, and can't.
-
-To do: a method, such as `release(storage:forScope:)`, that holds the scope like `move` (new calls wait, running ones
-finish), drops the slot's creation, and lets the next call create a new storage. The storage closes when the last call
-that uses it returns (`DefaultSQLiteDatabase.deinit`). It needs a test for each hold path, as `move` has, a mutation
-check, and the class doc's "keeps it while it lives" line updated.
+| 1 | Low | `String` keys need `.init` |
+| 2 | Low | Custom locators in `UnifiedStorage` take cast-heavy factory code |
+| 3 | Low, design | No retention that persists but stays out of backups |
+| 4 | Low | Code that must stay in sync across storages |
+| 5 | Low, design | Observation sees only changes made through observable storages in this process |
+| 6 | Low | `admitHolds()` depends on `removeAll(where:)`'s evaluation order |
+| 7 | Low | The rest of the facade's cost, and one lock per instance |
+| 8 | Medium, verify | Error cases the device checks may add |
+| 9 | Medium, verify | tvOS on a device |
+| 10 | Low, verify | Ubiquitous key limit on the oldest supported systems |
+| 11 | Last | The release: README, DocC, the CHANGELOG's date, the coverage badge, the tag |
 
 ### Low
 
-#### 2. `String` keys need `.init` (low)
+#### 1. `String` keys need `.init` (low)
 
 `UnifiedStorageKey(key:scope:)` takes `Storage.Key`, an `ExactString` for every built-in storage. A literal converts
 (`ExpressibleByStringInterpolation`), a `String` value doesn't: `FileKey<Data>(key: url.absoluteString)` fails to compile,
@@ -105,7 +79,7 @@ and every dynamic key (user ids, URLs) needs `key: .init(id)` or `"\(id)"`. The 
 To do: `init(key: String, scope:)` where `Storage.Key == ExactString`, on `UnifiedStorageKey` and `CodingStorageKey`. A
 literal would pick the `String` overload, with the same result; check that no call becomes ambiguous.
 
-#### 3. Custom locators in `UnifiedStorage` take cast-heavy factory code (low)
+#### 2. Custom locators in `UnifiedStorage` take cast-heavy factory code (low)
 
 Giving one storage type a custom locator or backing store takes a generic `dataStorage(for:)` that compares
 `Storage.self` with the type, casts the scope and the storage, and bridges the typed error with `error as! Storage.Error`
@@ -116,7 +90,7 @@ storage would crash.
 To do: a helper on `UnifiedStorageFactory` that takes a builder per storage type and keeps the defaults for the rest, with
 no casts at the call site.
 
-#### 4. No retention that persists but stays out of backups (low, design)
+#### 3. No retention that persists but stays out of backups (low, design)
 
 `.persistent` is in Application Support, which iCloud and computer backups include; `.cache` and `.temporary` aren't backed
 up, but the system can delete them. Apple's data storage guidelines ask apps to keep what they can download again out of
@@ -127,7 +101,7 @@ and `Retention.persistent` point data that can be downloaded again to `.cache`.
 To do: decide: leave it out, as documented now, or add a retention, such as `.persistentExcludedFromBackup`, that sets the
 flag on the scope's folder when the storage creates it.
 
-#### 5. Code that must stay in sync (low)
+#### 4. Code that must stay in sync (low)
 
 - `DefaultFileLocator` and `DefaultSQLiteLocator` each implement the folder rules (base folders, app folder, namespace and
   protection folder names, group checks). SQLite relies on landing in File's folder; one test guards it, but the rule is
@@ -140,7 +114,7 @@ To do: one shared folder rule and one shared stored-key codec, so that "a rule d
 holds in code rather than by review. Since the public API can change (rule 1), File and SQLite could also share one
 public `Retention`, `Protection` and `Scope`.
 
-#### 6. Observation is narrow (low, design)
+#### 5. Observation is narrow (low, design)
 
 Only changes made in this process, through an `ObservableStorage` of the same storage type and scope, with the same value
 type, are seen; delivery runs on the saving thread, inside the save. All of it is documented, including that a `sink` in
@@ -149,7 +123,7 @@ type, are seen; delivery runs on the saving thread, inside the save. All of it i
 To do, if it's wanted: feed observers Ubiquitous's `didChangeExternallyNotification` and UserDefaults'
 `didChangeNotification`, for changes from other devices and other code.
 
-#### 7. `admitHolds()` depends on `removeAll(where:)`'s evaluation order (low)
+#### 6. `admitHolds()` depends on `removeAll(where:)`'s evaluation order (low)
 
 `admitHolds()` admits waiting moves and updates inside the predicate of `waitingHolds.removeAll { … }`: the predicate marks
 each admitted hold's slots held and decrements their waiting counts, and later holds in the list see those marks. That's
@@ -159,7 +133,7 @@ break the core of `move` and `update` silently.
 
 To do: an explicit loop that keeps the holds it doesn't admit, in order; the lock's mutation tests guard the change.
 
-#### 8. The rest of the facade's cost, and one lock per instance (low)
+#### 7. The rest of the facade's cost, and one lock per instance (low)
 
 - Over a storage that does nothing, a call costs ~0.9 µs through `UnifiedStorage` and 86 ns through the coding storage.
   The lock, the lookup and awaiting the created storage explain ~0.15 µs; the rest is probably generic code that isn't
@@ -169,11 +143,11 @@ To do: an explicit loop that keeps the holds it doesn't admit, in order; the loc
 
 ### On a real device
 
-#### 9. Error cases the device checks may add (medium, verify)
+#### 8. Error cases the device checks may add (medium, verify)
 
 Two device checks in §2 end in a new error case: mapping SQLite's locked-database result to a `.protectedDataUnavailable`
 case, as File and Keychain have, and a `valueTooLarge` check for User Defaults if `set` drops values once a suite reaches
-4 MB on iOS (500 KB on tvOS, item 10). Until then, a SQLite database protected while the device is locked fails with
+4 MB on iOS (500 KB on tvOS, item 9). Until then, a SQLite database protected while the device is locked fails with
 `.sqlite(code:message:)`, and User Defaults stays silent over its limit; both are documented.
 
 Measured so far (a Mac with its screen locked, 2026-11-01): opening a `.complete` database fails with `SQLITE_CANTOPEN`,
@@ -182,7 +156,7 @@ which other open failures share, so a mapping may not be possible from the resul
 To do: run §2's lock test and User Defaults size test, and add `SQLiteStorage.Error.protectedDataUnavailable` and
 `UserDefaultsStorage.Error.valueTooLarge` if they show the need.
 
-#### 10. tvOS on a device (medium, verify)
+#### 9. tvOS on a device (medium, verify)
 
 Apple's App Programming Guide for tvOS: "your app can only access 500 KB of persistent storage that is local to the device
 (using the NSUserDefaults class). Outside of this limited local storage, all other data must be purgeable by the operating
@@ -196,10 +170,10 @@ The default File and SQLite scopes are `.own(.persistent)`, in Application Suppo
 The README's Supported Platforms, `Retention.persistent` and the User Defaults notes say to use `.cache` for files and
 SQLite on tvOS. CI builds for tvOS but runs no tvOS tests, and the Simulator doesn't enforce the device sandbox.
 
-To do: §2's tvOS checks. If `.persistent` throws, decide whether it deserves an error of its own (with item 9), a
+To do: §2's tvOS checks. If `.persistent` throws, decide whether it deserves an error of its own (with item 8), a
 different default scope on tvOS, or a doc line.
 
-#### 11. Ubiquitous key limit on older systems (low, verify)
+#### 10. Ubiquitous key limit on older systems (low, verify)
 
 `DefaultUbiquitousLocator` allows stored keys of up to 128 UTF-16 code units. Apple's current `NSUbiquitousKeyValueStore`
 reference (checked 2026-11-02): "The maximum length for each key string is 128 characters using the UTF-16 encoding …
@@ -211,7 +185,7 @@ To do: §2's Ubiquitous check on the oldest supported systems; only if one crash
 
 ### Last
 
-#### 12. The release
+#### 11. The release
 
 Once every other item is addressed (rule 1):
 - README: "Migrating from 2.x" points to the 3.0.0 CHANGELOG's migration code, which is written for the 3.x API.
@@ -222,7 +196,7 @@ Once every other item is addressed (rule 1):
 
 ## 2. Real-device tests (deferred: need a real iPhone or Apple TV)
 
-The lock test and the User Defaults size test below decide item 9; the tvOS checks decide item 10.
+The lock test and the User Defaults size test below decide item 8; the tvOS checks decide item 9.
 
 Keychain's `errSecInteractionNotAllowed` is mapped to `.protectedDataUnavailable` from Apple's docs; SQLite's code still needs the run. `ProtectedDataTests` in KeychainHost records what SQLite (each protection class, on an open and on a new connection) and a `.complete` file do while the device is locked, and that both recover after unlocking. It skips on the Simulator and unless `KVS_LOCK_TEST=1`.
 - From its report: map SQLite's locked-database result code to a `.protectedDataUnavailable` case, like `FileStorage`'s, and confirm File's `EPERM` mapping on a device.
@@ -232,10 +206,10 @@ Keychain's `errSecInteractionNotAllowed` is mapped to `.protectedDataUnavailable
 - **App Groups the app isn't entitled to:** `containerURL(forSecurityApplicationGroupIdentifier:)` returns `nil` on a device (`FileIntegrationTests.testWhichGroupIdsTheSystemGivesAContainer` asserts it; the Simulator and macOS give any id a container), and a UserDefaults suite named after one stays in the app's own preferences.
 - **Keychain `.iCloud(.appGroup(id:))` with an App Group id**, not a Keychain Sharing group: whether synced items in an App Group access group sync to the user's other devices.
 - **The same key written on two devices before they sync**, for Keychain's and Ubiquitous's `.iCloud` scopes: which value wins. Last writer is likely but not measured; the result becomes a doc line on each `.iCloud` case.
-- **Ubiquitous:** a signed host with the iCloud key-value store entitlement and an Apple Account, ideally with a second device to see values sync. Check the key-length limit on the oldest supported systems too (item 11), the default adapter's integration tests, the quota, signed-out behavior, what an unentitled build does (keeps nothing, `synchronize()` returns `false`), and that the store, like UserDefaults, drops keys with NUL (assumed; the locator escapes it).
+- **Ubiquitous:** a signed host with the iCloud key-value store entitlement and an Apple Account, ideally with a second device to see values sync. Check the key-length limit on the oldest supported systems too (item 10), the default adapter's integration tests, the quota, signed-out behavior, what an unentitled build does (keeps nothing, `synchronize()` returns `false`), and that the store, like UserDefaults, drops keys with NUL (assumed; the locator escapes it).
 - **UserDefaults before the first unlock after a restart:** fetches return `nil` (documented); whether saves made then last, or are replaced by the file's values once it's readable.
 - **UserDefaults size:** whether `set` drops a value once its suite reaches 4 MB on iOS, or 500 KB on tvOS (with the tvOS checks below); if it does, a `valueTooLarge` check like Ubiquitous's.
-- **App Group SQLite and suspension:** whether an idle connection, whose WAL index keeps a shared lock on its `-shm` file, gets a suspended app terminated (`0xdead10cc`); the scope warns about locks held while reading and writing. If it does, apps need item 1 to close the connection first.
+- **App Group SQLite and suspension:** whether an idle connection, whose WAL index keeps a shared lock on its `-shm` file, gets a suspended app terminated (`0xdead10cc`); the scope warns about locks held while reading and writing. If it does, apps close those scopes with `close(storage:forScope:)` before they're suspended.
 - **tvOS, on an Apple TV:** what `.persistent` File and SQLite scopes do (fail, and with which error, or work and get purged), whether `.cache` values survive while the app runs and relaunches, and what User Defaults does past 500 KB (drops the value, logs, or terminates the app).
 - Blocker: KeychainHost is ad-hoc signed, and its entitlements hardcode a placeholder team (`ABCDE12345`). Running it on a device needs a signing setup that leaves the committed project alone, such as a local, git-ignored xcconfig with the team and bundle ID, and entitlements built from `$(AppIdentifierPrefix)`.
 
@@ -244,7 +218,7 @@ Keychain's `errSecInteractionNotAllowed` is mapped to `.protectedDataUnavailable
 ## 3. Assessment
 
 The core is solid: scope isolation holds for all six storages, no data race was found, errors are typed end to end, and
-the suite (400 tests, no warnings) covers every compound condition.
+the suite (409 tests, no warnings) covers every compound condition.
 
 ### 3.1 Architecture — A−
 
@@ -261,7 +235,7 @@ the suite (400 tests, no warnings) covers every compound condition.
 - **Encodings:** `portableName` is lossless, ASCII-only and capital-free; `percentEscaping` is exactly invertible;
   every `clear()` re-encodes each name before removing it, so a locator's lenient decoder never claims foreign items.
 
-Weak spots: items 1, 2, 3, 5 and 6.
+Weak spots: items 1, 2, 4 and 5.
 
 ### 3.2 Performance — real-life use A, extreme cases B
 
@@ -283,8 +257,8 @@ so its lookup doesn't box scopes, stays flat however many scopes are cached, and
 **Extreme cases:**
 - **Large values** are saved and fetched whole, in memory (File reads the whole file; JSON adds copies for non-`Data`
   types), and an observed key keeps its latest change in memory, plus the value each publisher read. Documented.
-- **Many scopes:** storages are never released (item 1).
-- **Contention:** one lock per `UnifiedStorage` instance (item 8), and one per SQLite connection, whose calls block their
+- **Many scopes:** each SQLite scope keeps its database open until `close(storage:forScope:)`.
+- **Contention:** one lock per `UnifiedStorage` instance (item 7), and one per SQLite connection, whose calls block their
   threads; blocking I/O runs on the cooperative pool, a trade-off taken on purpose.
 - **Checked and fine:** a large SQLite value doesn't leave a large WAL behind. Apple's SQLite is built with
   `DEFAULT_JOURNAL_SIZE_LIMIT=32768`, so after a 50 MB save the `-wal` was 50 MB and dropped to 62 KB on the next write
@@ -315,7 +289,7 @@ launch arguments and registered defaults; storages of one type and scope with di
 
 ### 3.4 Leaks, hangs and crashes
 
-- **Crashes:** none in the library; the Ubiquitous key limit still needs a check on the oldest systems (item 11). A `sink`
+- **Crashes:** none in the library; the Ubiquitous key limit still needs a check on the oldest systems (item 10). A `sink`
   written in `@MainActor` code crashes in the Swift 6 language mode when a save off the main actor calls it (confirmed
   with a probe); that's the documented delivery thread meeting the language's isolation checks, warned about in
   `ObservableStorage`, `UnifiedStorage.publisher` and the README. Lock re-entry (the registry is never re-entered from an
@@ -323,8 +297,8 @@ launch arguments and registered defaults; storages of one type and scope with di
 - **Hangs:** none in the library. Calling a `UnifiedStorage` from inside its own storages, coders, factory or
   `ObservableStorage` subclasses can wait forever for a move or update that waits for the outer call, and a subscriber
   that waits for another save of its key never returns; both are documented.
-- **Leaks:** none. Storages live as long as their `UnifiedStorage` (item 1), and observed values stay in memory while
-  observed (documented).
+- **Leaks:** none. Storages live until `close(storage:forScope:)` or until their `UnifiedStorage` is deallocated, and
+  observed values stay in memory while observed (documented).
 
 ### 3.5 Thread safety
 
@@ -336,6 +310,8 @@ No data races found:
   and hold is let in once its scope frees up.
 - Locks are taken in one order (observation, then registry).
 - Creation is deduplicated without a race, and failures aren't cached.
+- `close` releases a scope's storage outside the lock and before calls come back in, and a call lets go of its storage
+  before it leaves the scope, so a scope never has two storages at once.
 - The observation's version check lets a change win over a concurrent read.
 - The keychain's update, add, update sequence stays correct when another call adds or removes the item in between.
 
@@ -344,17 +320,17 @@ between the steps of a `move` or an `update`, which only calls through the same 
 
 ### 3.6 Docs and tests
 
-Docs and comments: none open besides the release (item 12). Tests: none open. Every compound condition's paths are
+Docs and comments: none open besides the release (item 11). Tests: none open. Every compound condition's paths are
 covered, limits are tested on both sides, edge-case keys (`""`, NUL, `é`/`e\u{301}`, `..`, `/`) run against the real
-systems, and the tests of `move` and `update` wait for the scope state they need through `UnifiedStorage.state(of:in:)`,
+systems, and the tests of `move`, `update` and `close` wait for the scope state they need through `UnifiedStorage.state(of:in:)`,
 so they neither depend on timing nor pass without checking. Every tried mutation of the lock's admission logic
-fails a test within seconds, none by hanging, except the race listed in §4.
+and of `close` fails a test within seconds, none by hanging.
 
 ---
 
 ## 4. Uncovered by design
 
-No test can reach these: `Lock`'s `NSLock` fallback (before macOS 13 / iOS 16), `FileStorage`'s `.atomic`-only writing options (before macOS 11), `OwnIdentity.identifier` without a bundle ID, `assert` failure arms, the race in which a move ends between a call's two admission checks in `UnifiedStorage.enterCall` (its code runs in every waiting test, its timing in none), SQLite's out-of-memory and empty-blob-pointer paths, and `SQLiteStorage.init()`, which would open a database in the real Application Support. The Keychain and Ubiquitous default adapters run in KeychainHost and on a device.
+No test can reach these: `Lock`'s `NSLock` fallback (before macOS 13 / iOS 16), `FileStorage`'s `.atomic`-only writing options (before macOS 11), `OwnIdentity.identifier` without a bundle ID, `assert` failure arms, a call that has left a scope still holding its storage when a `close` releases it (the call consumes its reference before it leaves, but the window without that is a few instructions, which no test can time), SQLite's out-of-memory and empty-blob-pointer paths, and `SQLiteStorage.init()`, which would open a database in the real Application Support. The Keychain and Ubiquitous default adapters run in KeychainHost and on a device.
 
 ## 5. Risks and notes
 

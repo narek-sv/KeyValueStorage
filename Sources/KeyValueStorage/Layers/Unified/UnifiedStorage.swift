@@ -10,11 +10,12 @@
 /// One entry point for every storage, keyed by typed keys.
 ///
 /// - It's safe to call from any thread, task or actor, and calls on storages of different types or scopes never wait for
-///   each other; only `move` and `update` hold their scopes, and calls in them wait until they're done. Only `Sendable`
-///   storages compile as keys (`UnifiedStorable`): the built-in storages are thread-safe, and `IsolatedDataStorage` makes
-///   any other one shareable.
-/// - It creates one storage per storage type and scope, on first use, through its factory, and keeps it while it lives:
-///   with a scope per account, such as a namespace per user, each SQLite scope keeps its database open until then.
+///   each other; only `move`, `update` and `close` hold their scopes, and calls in them wait until they're done. Only
+///   `Sendable` storages compile as keys (`UnifiedStorable`): the built-in storages are thread-safe, and
+///   `IsolatedDataStorage` makes any other one shareable.
+/// - It creates one storage per storage type and scope, on first use, through its factory, and keeps it until
+///   `close(storage:forScope:)` lets go of it, or until it's deallocated: close a scope the app is done with, such as a
+///   SQLite scope per account, to close its database.
 /// - Cancelling a call doesn't cancel its storage's creation, which concurrent calls share.
 /// - When its factory makes a storage observable, the changes made through it are published; see `ObservableStorage`.
 /// - Warning: Don't call it from inside its own storages, coders, factory or `ObservableStorage` subclasses: such a call can
@@ -32,7 +33,7 @@ public final class UnifiedStorage: @unchecked Sendable {
     private let lock = Lock()
     /// Each storage type's `SlotTable`, made on first use and kept: typed tables hash scopes without boxing them.
     private var tables = [ObjectIdentifier: AnyObject]()
-    /// Moves and updates waiting to hold their scopes, in the order they came.
+    /// Moves, updates and closes waiting to hold their scopes, in the order they came.
     private var waitingHolds = [WaitingHold]()
 
     // MARK: Initializers
@@ -140,6 +141,28 @@ public final class UnifiedStorage: @unchecked Sendable {
         }
     }
 
+    /// Lets go of the storage of the scope, so the next call creates a new one, such as to close the database of a SQLite
+    /// scope the app is done with. The values stay.
+    ///
+    /// - Calls through this `UnifiedStorage` in the scope wait until it's done, and it waits for those already running.
+    /// - The storage is released before it returns, once nothing else keeps it: a factory that keeps its own reference keeps
+    ///   it open.
+    public func close<Storage: UnifiedStorable>(storage _: Storage.Type, forScope scope: Storage.Scope = .default) async {
+        let slot = lock.withLock { self.slot(for: scope, of: Storage.self) }
+        await enterHold([slot])
+
+        // Released here, outside the lock and before calls come in again: closing a database can take a while
+        _ = lock.withLock { () -> CreationTask<Storage>? in
+            defer {
+                slot.creation = nil
+            }
+
+            return slot.creation
+        }
+
+        leaveHold([slot])
+    }
+
     // MARK: Observation
 
     /// Changes are delivered on the thread that makes them; see `ObservableStorage`.
@@ -174,7 +197,7 @@ public final class UnifiedStorage: @unchecked Sendable {
 
     // MARK: Scopes
 
-    /// Runs `body` with the scope's storage, once no move or update holds or waits for the scope.
+    /// Runs `body` with the scope's storage, once no move, update or close holds or waits for the scope.
     private func withScope<Storage: UnifiedStorable, T>(
         _ scope: Storage.Scope,
         _ body: (Entry<Storage>) async throws(CodingStorageError<Storage>) -> T
@@ -184,7 +207,8 @@ public final class UnifiedStorage: @unchecked Sendable {
             leaveCall(slot)
         }
 
-        return try await body(entry(in: slot, from: creation))
+        // Consumed, so the call lets go of the storage before it leaves the scope: a close let in next releases it at once
+        return try await body(entry(in: slot, from: consume creation))
     }
 
     /// Runs `body` with the scopes' storages, all created first, once no call runs in any of them; calls in them wait meanwhile.
@@ -302,7 +326,7 @@ public final class UnifiedStorage: @unchecked Sendable {
         continuations.forEach { $0.resume() }
     }
 
-    /// Under the lock: lets in the slot's waiting calls once no move or update holds or waits for it; returns them to resume after unlocking.
+    /// Under the lock: lets in the slot's waiting calls once no move, update or close holds or waits for it; returns them to resume after unlocking.
     private func admitCalls(in slot: Slot) -> [CheckedContinuation<Void, Never>] {
         guard slot.admitsCalls else {
             return []
@@ -383,13 +407,13 @@ public final class UnifiedStorage: @unchecked Sendable {
 // MARK: - UnifiedStorage + Slot
 
 extension UnifiedStorage {
-    /// A storage type and scope: the calls, moves and updates that use it. Guarded by the lock.
+    /// A storage type and scope: the calls, moves, updates and closes that use it. Guarded by the lock.
     private class Slot: @unchecked Sendable {
         /// Calls running in the scope.
         var calls = 0
-        /// Whether a move or an update holds the scope.
+        /// Whether a move, an update or a close holds the scope.
         var isHeld = false
-        /// Moves and updates waiting to hold the scope; new calls wait behind them, so they never wait forever.
+        /// Moves, updates and closes waiting to hold the scope; new calls wait behind them, so they never wait forever.
         var waitingHolds = 0
         /// Calls waiting for the scope's holds to end.
         var waitingCalls = [CheckedContinuation<Void, Never>]()
@@ -414,7 +438,7 @@ extension UnifiedStorage {
         var slots = [Storage.Scope: StorageSlot<Storage>]()
     }
 
-    /// A move or an update waiting until no call runs in its scopes and nothing else holds them.
+    /// A move, an update or a close waiting until no call runs in its scopes and nothing else holds them.
     private struct WaitingHold {
         let slots: [Slot]
         let continuation: CheckedContinuation<Void, Never>
@@ -424,15 +448,15 @@ extension UnifiedStorage {
 // MARK: - UnifiedStorage + Scope State
 
 extension UnifiedStorage {
-    /// What a scope's calls, moves and updates are doing, for tests, which wait for a state instead of sleeping.
+    /// What a scope's calls, moves, updates and closes are doing, for tests, which wait for a state instead of sleeping.
     struct ScopeState: Equatable {
         /// Calls running in the scope.
         let runningCalls: Int
-        /// Calls waiting for the scope's moves and updates to end.
+        /// Calls waiting for the scope's moves, updates and closes to end.
         let waitingCalls: Int
-        /// Whether a move or an update holds the scope.
+        /// Whether a move, an update or a close holds the scope.
         let isHeld: Bool
-        /// Moves and updates waiting to hold the scope.
+        /// Moves, updates and closes waiting to hold the scope.
         let waitingHolds: Int
     }
 
