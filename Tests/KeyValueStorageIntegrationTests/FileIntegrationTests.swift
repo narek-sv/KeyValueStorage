@@ -299,12 +299,14 @@ final class FileIntegrationTests: XCTestCase {
         let value = Data([1])
         let fetches = Fetches()
         let failures = Failures()
-        let deadline = Date().addingTimeInterval(0.5)
+        // Only stops threads that never overlap, which never find both
+        let deadline = Date().addingTimeInterval(10)
 
-        // When: one thread fetches the file while another deletes and saves it again, for half a second; both have
-        // returned when `concurrentPerform` does
+        // When: one thread fetches the file while another deletes and saves it again, until the fetches have found the
+        // file and found none 1,000 times each, which only overlapping threads do; both have returned when
+        // `concurrentPerform` does
         DispatchQueue.concurrentPerform(iterations: 2) { thread in
-            while Date() < deadline {
+            while !fetches.foundBoth(1_000), Date() < deadline {
                 do {
                     if thread == 0 {
                         let fetched = try storage.fetch(forKey: "key")
@@ -322,9 +324,9 @@ final class FileIntegrationTests: XCTestCase {
             }
         }
 
-        // Then: the threads overlapped, since the fetches found the file and found none, and no fetch failed
-        XCTAssertGreaterThan(fetches.found, 0)
-        XCTAssertGreaterThan(fetches.missing, 0)
+        // Then: the threads overlapped, and no fetch failed
+        XCTAssertGreaterThanOrEqual(fetches.found, 1_000)
+        XCTAssertGreaterThanOrEqual(fetches.missing, 1_000)
         XCTAssertEqual(Set(failures.all), [])
     }
 
@@ -644,6 +646,11 @@ private final class Fetches: @unchecked Sendable {
 
     var missing: Int {
         lock.withLock { counts.missing }
+    }
+
+    /// Whether the fetches found the file, and found none, `count` times each.
+    func foundBoth(_ count: Int) -> Bool {
+        lock.withLock { counts.found >= count && counts.missing >= count }
     }
 
     func record(_ value: Data?) {

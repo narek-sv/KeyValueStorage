@@ -74,15 +74,19 @@ final class UnifiedStorageUpdateTests: XCTestCase {
         let updates = 200
 
         // When: increments from many tasks at once
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            for _ in 0..<updates {
-                group.addTask {
-                    try await storage.update(forKey: key) { ($0 ?? 0) + 1 }
+        let increments = Task {
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                for _ in 0..<updates {
+                    group.addTask {
+                        try await storage.update(forKey: key) { ($0 ?? 0) + 1 }
+                    }
                 }
-            }
 
-            try await group.waitForAll()
+                try await group.waitForAll()
+            }
         }
+
+        try await waitForValue(of: increments)
 
         // Then
         XCTAssertEqual(place.value(forKey: "key"), updates)
@@ -176,16 +180,16 @@ final class UnifiedStorageUpdateTests: XCTestCase {
         place.store(1, forKey: "key")
         place.hold(.save)
         let update = Task { try await storage.update(forKey: key) { ($0 ?? 0) + 1 } }
-        await place.waitUntilHeld()
+        try await place.waitUntilHeld()
         let fetched = Task { try await storage.fetch(forKey: key) }
-        await settle()
+        try await waitUntil { storage.state(of: key.scope, in: PlaceStorage.self).waitingCalls == 1 }
 
         // When
         place.release()
-        _ = try await update.value
+        _ = try await waitForValue(of: update)
 
         // Then: the read waited, and saw the update's value
-        let value = try await fetched.value
+        let value = try await waitForValue(of: fetched)
         XCTAssertEqual(value, 2)
     }
 
@@ -195,17 +199,17 @@ final class UnifiedStorageUpdateTests: XCTestCase {
         let storage = UnifiedStorage()
         place.hold(.save)
         let save = Task { try await storage.save(10, forKey: key) }
-        await place.waitUntilHeld()
+        try await place.waitUntilHeld()
         let update = Task { try await storage.update(forKey: key) { ($0 ?? 0) + 1 } }
-        await settle()
+        try await waitUntil { storage.state(of: key.scope, in: PlaceStorage.self).waitingHolds == 1 }
 
-        // Then: the update hasn't read yet
+        // Then: the update waits, and hasn't read yet
         XCTAssertEqual(place.calls, [])
 
         // When
         place.release()
-        try await save.value
-        let updated = try await update.value
+        try await waitForValue(of: save)
+        let updated = try await waitForValue(of: update)
 
         // Then: it updated the saved value
         XCTAssertEqual(updated, 11)
@@ -219,7 +223,7 @@ final class UnifiedStorageUpdateTests: XCTestCase {
         let storage = UnifiedStorage()
         place.hold(.save)
         let update = Task { try await storage.update(forKey: key) { _ in 1 } }
-        await place.waitUntilHeld()
+        try await place.waitUntilHeld()
 
         // When
         try await storage.save(3, forKey: otherKey)
@@ -227,7 +231,7 @@ final class UnifiedStorageUpdateTests: XCTestCase {
         // Then
         XCTAssertEqual(other.value(forKey: "key"), 3)
         place.release()
-        _ = try await update.value
+        _ = try await waitForValue(of: update)
     }
 
     func testUpdatesAndMovesOfOneScopeTakeTurns() async throws {
@@ -238,19 +242,23 @@ final class UnifiedStorageUpdateTests: XCTestCase {
         source.store(100, forKey: "key")
 
         // When
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            for index in 0..<50 {
-                group.addTask {
-                    if index == 25 {
-                        try await storage.move(key, from: source.scope)
-                    } else {
-                        try await storage.update(forKey: key) { ($0 ?? 0) + 1 }
+        let turns = Task {
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                for index in 0..<50 {
+                    group.addTask {
+                        if index == 25 {
+                            try await storage.move(key, from: source.scope)
+                        } else {
+                            try await storage.update(forKey: key) { ($0 ?? 0) + 1 }
+                        }
                     }
                 }
-            }
 
-            try await group.waitForAll()
+                try await group.waitForAll()
+            }
         }
+
+        try await waitForValue(of: turns)
 
         // Then: every increment counted, on the moved value if the move came first, or on their own if it came later and
         // kept the target's newer value
@@ -283,11 +291,6 @@ final class UnifiedStorageUpdateTests: XCTestCase {
     private func place() -> (Place, Key) {
         let place = Place.named("update-\(UUID().uuidString)")
         return (place, Key(key: "key", scope: place.scope))
-    }
-
-    /// Lets tasks started just before reach the point where they wait.
-    private func settle() async {
-        try? await Task.sleep(nanoseconds: 200_000_000)
     }
 }
 

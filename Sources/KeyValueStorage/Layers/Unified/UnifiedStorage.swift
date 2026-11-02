@@ -421,6 +421,30 @@ extension UnifiedStorage {
     }
 }
 
+// MARK: - UnifiedStorage + Scope State
+
+extension UnifiedStorage {
+    /// What a scope's calls, moves and updates are doing, for tests, which wait for a state instead of sleeping.
+    struct ScopeState: Equatable {
+        /// Calls running in the scope.
+        let runningCalls: Int
+        /// Calls waiting for the scope's moves and updates to end.
+        let waitingCalls: Int
+        /// Whether a move or an update holds the scope.
+        let isHeld: Bool
+        /// Moves and updates waiting to hold the scope.
+        let waitingHolds: Int
+    }
+
+    func state<Storage: UnifiedStorable>(of scope: Storage.Scope, in _: Storage.Type) -> ScopeState {
+        lock.withLock {
+            let slot = self.slot(for: scope, of: Storage.self)
+            return ScopeState(runningCalls: slot.calls, waitingCalls: slot.waitingCalls.count,
+                              isHeld: slot.isHeld, waitingHolds: slot.waitingHolds)
+        }
+    }
+}
+
 // MARK: - UnifiedStorage + Entry
 
 extension UnifiedStorage {

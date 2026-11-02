@@ -60,7 +60,6 @@ final class Place: @unchecked Sendable {
     private var failures = [Operation: MockError]()
     private var held: Operation?
     private var heldCall: CheckedContinuation<Void, Never>?
-    private var holdWaiter: CheckedContinuation<Void, Never>?
 
     private init(name: String) {
         self.scope = MockScope(name: name)
@@ -107,20 +106,10 @@ final class Place: @unchecked Sendable {
         lock.withLock { held = operation }
     }
 
-    /// Returns once a held call waits.
-    func waitUntilHeld() async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            let isHeld = lock.withLock {
-                if heldCall == nil {
-                    holdWaiter = continuation
-                }
-
-                return heldCall != nil
-            }
-
-            if isHeld {
-                continuation.resume()
-            }
+    /// Returns once a held call waits; fails the test and throws if none does within `waitUntil`'s timeout.
+    func waitUntilHeld(file: StaticString = #filePath, line: UInt = #line) async throws {
+        try await waitUntil(file: file, line: line) {
+            lock.withLock { heldCall != nil }
         }
     }
 
@@ -146,13 +135,7 @@ final class Place: @unchecked Sendable {
 
         if isHeld {
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                let waiter = lock.withLock {
-                    heldCall = continuation
-                    defer { holdWaiter = nil }
-                    return holdWaiter
-                }
-
-                waiter?.resume()
+                lock.withLock { heldCall = continuation }
             }
         }
 

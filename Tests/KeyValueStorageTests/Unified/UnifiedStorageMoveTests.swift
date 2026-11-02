@@ -156,7 +156,7 @@ final class UnifiedStorageMoveTests: XCTestCase {
 
         XCTAssertEqual(source.value(forKey: "key"), 1)
         XCTAssertEqual(source.calls, [], "both storages are created before the move reads or writes")
-        let fetched = try await storage.fetch(forKey: Key(key: "key", scope: source.scope))
+        let fetched = try await waitForValue(of: Task { try await storage.fetch(forKey: Key(key: "key", scope: source.scope)) })
         XCTAssertEqual(fetched, 1, "the move's scopes are free again")
     }
 
@@ -169,18 +169,21 @@ final class UnifiedStorageMoveTests: XCTestCase {
         source.store(1, forKey: "key")
         source.hold(.delete)
         let move = Task { try await storage.move(key, from: source.scope) }
-        await source.waitUntilHeld()
+        try await source.waitUntilHeld()
         let fetchedSource = Task { try await storage.fetch(forKey: Key(key: "key", scope: source.scope)) }
         let fetchedTarget = Task { try await storage.fetch(forKey: key) }
-        await settle()
+        try await waitUntil {
+            storage.state(of: source.scope, in: PlaceStorage.self).waitingCalls == 1
+                && storage.state(of: key.scope, in: PlaceStorage.self).waitingCalls == 1
+        }
 
         // When
         source.release()
-        try await move.value
+        try await waitForValue(of: move)
 
         // Then: neither saw the move half done, the value in both scopes
-        let sourceValue = try await fetchedSource.value
-        let targetValue = try await fetchedTarget.value
+        let sourceValue = try await waitForValue(of: fetchedSource)
+        let targetValue = try await waitForValue(of: fetchedTarget)
         XCTAssertNil(sourceValue)
         XCTAssertEqual(targetValue, 1)
     }
@@ -192,17 +195,17 @@ final class UnifiedStorageMoveTests: XCTestCase {
         source.store(1, forKey: "key")
         target.hold(.save)
         let save = Task { try await storage.save(2, forKey: key) }
-        await target.waitUntilHeld()
+        try await target.waitUntilHeld()
         let move = Task { try await storage.move(key, from: source.scope) }
-        await settle()
+        try await waitUntil { storage.state(of: source.scope, in: PlaceStorage.self).waitingHolds == 1 }
 
-        // Then: the move hasn't started
+        // Then: the move waits, and hasn't started
         XCTAssertEqual(source.calls, [])
 
         // When
         target.release()
-        try await save.value
-        try await move.value
+        try await waitForValue(of: save)
+        try await waitForValue(of: move)
 
         // Then: the move found the saved value newer than its own
         XCTAssertEqual(target.value(forKey: "key"), 2)
@@ -216,19 +219,19 @@ final class UnifiedStorageMoveTests: XCTestCase {
         source.store(1, forKey: "key")
         target.hold(.save)
         let save = Task { try await storage.save(2, forKey: key) }
-        await target.waitUntilHeld()
+        try await target.waitUntilHeld()
         let move = Task { try await storage.move(key, from: source.scope) }
-        await settle()
+        try await waitUntil { storage.state(of: source.scope, in: PlaceStorage.self).waitingHolds == 1 }
         let fetched = Task { try await storage.fetch(forKey: Key(key: "key", scope: source.scope)) }
-        await settle()
+        try await waitUntil { storage.state(of: source.scope, in: PlaceStorage.self).waitingCalls == 1 }
 
         // When
         target.release()
-        try await save.value
-        try await move.value
+        try await waitForValue(of: save)
+        try await waitForValue(of: move)
 
         // Then: the read waited for the move, which removed the source's value
-        let value = try await fetched.value
+        let value = try await waitForValue(of: fetched)
         XCTAssertNil(value)
     }
 
@@ -241,21 +244,56 @@ final class UnifiedStorageMoveTests: XCTestCase {
         source.store(1, forKey: "key")
         source.hold(.delete)
         let first = Task { try await storage.move(key, from: source.scope) }
-        await source.waitUntilHeld()
+        try await source.waitUntilHeld()
         let second = Task { try await storage.move(Key(key: "key", scope: third.scope), from: target.scope) }
-        await settle()
+        try await waitUntil { storage.state(of: target.scope, in: PlaceStorage.self).waitingHolds == 1 }
         let fetched = Task { try await storage.fetch(forKey: key) }
-        await settle()
+        try await waitUntil { storage.state(of: target.scope, in: PlaceStorage.self).waitingCalls == 1 }
 
         // When
         source.release()
-        try await first.value
-        try await second.value
+        try await waitForValue(of: first)
+        try await waitForValue(of: second)
 
         // Then: the read didn't run between the moves, when the target held the value
-        let value = try await fetched.value
+        let value = try await waitForValue(of: fetched)
         XCTAssertNil(value)
         XCTAssertEqual(third.value(forKey: "key"), 1)
+    }
+
+    func testAMoveWaitsForCallsLetInAfterAnotherMove() async throws {
+        let (source, target, key) = places()
+        // Given: a read of the target that waited for a move, was let in after it, and is held while it runs
+        let storage = UnifiedStorage()
+        let other = Place.named("other-\(UUID().uuidString)")
+        source.store(1, forKey: "key")
+        other.store(3, forKey: "key")
+        source.hold(.delete)
+        let first = Task { try await storage.move(key, from: source.scope) }
+        try await source.waitUntilHeld()
+        let fetched = Task { try await storage.fetch(forKey: key) }
+        try await waitUntil { storage.state(of: key.scope, in: PlaceStorage.self).waitingCalls == 1 }
+        target.hold(.fetch)
+        source.release()
+        try await waitForValue(of: first)
+        try await target.waitUntilHeld()
+
+        // When: a move from a third scope into the target
+        let second = Task { try await storage.move(key, from: other.scope) }
+
+        // Then: it waits for the read, which still runs
+        try await waitUntil { storage.state(of: key.scope, in: PlaceStorage.self).waitingHolds == 1 }
+        XCTAssertEqual(other.calls, [])
+
+        // When
+        target.release()
+
+        // Then: the read saw the first move's value, and the second move kept it, as it's newer than its own
+        let value = try await waitForValue(of: fetched)
+        try await waitForValue(of: second)
+        XCTAssertEqual(value, 1)
+        XCTAssertEqual(target.value(forKey: "key"), 1)
+        XCTAssertNil(other.value(forKey: "key"))
     }
 
     func testCallsInOtherScopesDontWaitForAMove() async throws {
@@ -266,7 +304,7 @@ final class UnifiedStorageMoveTests: XCTestCase {
         source.store(1, forKey: "key")
         source.hold(.delete)
         let move = Task { try await storage.move(key, from: source.scope) }
-        await source.waitUntilHeld()
+        try await source.waitUntilHeld()
 
         // When
         try await storage.save(3, forKey: Key(key: "key", scope: other.scope))
@@ -275,7 +313,7 @@ final class UnifiedStorageMoveTests: XCTestCase {
         // Then
         XCTAssertEqual(fetched, 3)
         source.release()
-        try await move.value
+        try await waitForValue(of: move)
     }
 
     func testCallsInOneScopeStillRunSideBySide() async throws {
@@ -285,7 +323,7 @@ final class UnifiedStorageMoveTests: XCTestCase {
         source.store(1, forKey: "key")
         source.hold(.fetch)
         let held = Task { try await storage.fetch(forKey: Key(key: "key", scope: source.scope)) }
-        await source.waitUntilHeld()
+        try await source.waitUntilHeld()
 
         // When: more calls in the same scope
         let done = expectation(description: "calls beside the held one")
@@ -302,8 +340,8 @@ final class UnifiedStorageMoveTests: XCTestCase {
         }
 
         source.release()
-        let other = try await others.value
-        let value = try await held.value
+        let other = try await waitForValue(of: others)
+        let value = try await waitForValue(of: held)
         XCTAssertEqual(other, 2)
         XCTAssertEqual(value, 1)
     }
@@ -356,10 +394,23 @@ final class UnifiedStorageMoveTests: XCTestCase {
             first.store(1, forKey: "key")
             second.store(2, forKey: "key")
 
-            // When
-            async let toSecond: Void = storage.move(Key(key: "key", scope: second.scope), from: first.scope)
-            async let toFirst: Void = storage.move(Key(key: "key", scope: first.scope), from: second.scope)
-            _ = try await (toSecond, toFirst)
+            // When: both at once, not awaited by the test, so a deadlock fails at the timeout instead of hanging
+            let finished = expectation(description: "both moves finished")
+            Task {
+                do {
+                    async let toSecond: Void = storage.move(Key(key: "key", scope: second.scope), from: first.scope)
+                    async let toFirst: Void = storage.move(Key(key: "key", scope: first.scope), from: second.scope)
+                    _ = try await (toSecond, toFirst)
+                } catch {
+                    XCTFail("A move failed: \(error)")
+                }
+
+                finished.fulfill()
+            }
+
+            guard await XCTWaiter.fulfillment(of: [finished], timeout: 5) == .completed else {
+                return XCTFail("The moves deadlocked")
+            }
 
             // Then: one scope holds a value, whichever move came last
             XCTAssertEqual([first.value(forKey: "key"), second.value(forKey: "key")].compactMap { $0 }.count, 1)
@@ -396,10 +447,5 @@ final class UnifiedStorageMoveTests: XCTestCase {
         let id = UUID().uuidString
         let target = Place.named("target-\(id)")
         return (Place.named("source-\(id)"), target, Key(key: "key", scope: target.scope))
-    }
-
-    /// Lets tasks started just before reach the point where they wait.
-    private func settle() async {
-        try? await Task.sleep(nanoseconds: 200_000_000)
     }
 }

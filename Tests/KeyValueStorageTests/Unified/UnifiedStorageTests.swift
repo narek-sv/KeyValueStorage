@@ -56,14 +56,18 @@ final class UnifiedStorageTests: XCTestCase {
         let storage = UnifiedStorage(factory: factory)
 
         // When
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            for index in 0..<100 {
-                group.addTask {
-                    try await storage.save(index, forKey: Key<Int>(key: .init("key\(index)")))
+        let saves = Task {
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                for index in 0..<100 {
+                    group.addTask {
+                        try await storage.save(index, forKey: Key<Int>(key: .init("key\(index)")))
+                    }
                 }
+                try await group.waitForAll()
             }
-            try await group.waitForAll()
         }
+
+        try await waitForValue(of: saves)
 
         // Then
         XCTAssertEqual(factory.dataStorageCalls, 1)
@@ -93,20 +97,18 @@ final class UnifiedStorageTests: XCTestCase {
         let storage = UnifiedStorage(factory: factory)
         let key = Key<Int>(key: "key", scope: .init(name: "cancelled-\(UUID().uuidString)"))
         let cancelled = Task { try await storage.save(1, forKey: key) }
-        while !gate.isWaiting {
-            await Task.yield()
-        }
-
+        try await waitUntil { gate.isWaiting }
         let other = Task { try await storage.save(2, forKey: key) }
-        try? await Task.sleep(nanoseconds: 100_000_000)
+        // Both calls are in the scope, so the second got the creation the first started
+        try await waitUntil { storage.state(of: key.scope, in: AsyncDataStorageMock.self).runningCalls == 2 }
 
         // When
         cancelled.cancel()
         gate.open()
 
         // Then: both calls finished with the one storage
-        try await cancelled.value
-        try await other.value
+        try await waitForValue(of: cancelled)
+        try await waitForValue(of: other)
         XCTAssertEqual(factory.creations, 1)
         let value = try await storage.fetch(forKey: key)
         XCTAssertNotNil(value)
@@ -119,20 +121,24 @@ final class UnifiedStorageTests: XCTestCase {
         let key = Key<Int>(key: "key", scope: .init(name: "shared-failure"))
 
         // When: every waiting call gets the one failure, and each removes the failed creation only once
-        let failures = await withTaskGroup(of: Bool.self) { group in
-            for _ in 0..<50 {
-                group.addTask {
-                    do {
-                        try await storage.save(1, forKey: key)
-                        return false
-                    } catch {
-                        return true
+        let saves = Task {
+            await withTaskGroup(of: Bool.self) { group in
+                for _ in 0..<50 {
+                    group.addTask {
+                        do {
+                            try await storage.save(1, forKey: key)
+                            return false
+                        } catch {
+                            return true
+                        }
                     }
                 }
-            }
 
-            return await group.reduce(0) { $0 + ($1 ? 1 : 0) }
+                return await group.reduce(0) { $0 + ($1 ? 1 : 0) }
+            }
         }
+
+        let failures = try await waitForValue(of: saves)
         try await storage.save(2, forKey: key)
 
         // Then: the calls that waited for the failed creation failed, and the retry created the storage once more
@@ -234,9 +240,7 @@ final class UnifiedStorageTests: XCTestCase {
             try await storage.fetch(forKey: UnifiedStorageKey<GatedStorage, Int>(key: "key"))
         }
 
-        while !GatedStorage.gate.isWaiting {
-            await Task.yield()
-        }
+        try await waitUntil { GatedStorage.gate.isWaiting }
 
         // When: another storage, while the first one waits
         try await storage.save(1, forKey: Key<Int>(key: "key"))
@@ -246,7 +250,7 @@ final class UnifiedStorageTests: XCTestCase {
         XCTAssertEqual(other, 1)
         XCTAssertTrue(GatedStorage.gate.isWaiting)
         GatedStorage.gate.open()
-        let waited = try await waiting.value
+        let waited = try await waitForValue(of: waiting)
         XCTAssertNil(waited)
     }
 
