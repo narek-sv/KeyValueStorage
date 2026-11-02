@@ -67,5 +67,20 @@ public extension KeychainStorage {
         public static var `default`: Self {
             .own(namespace: defaultNamespace)
         }
+
+        /// `own(protection:namespace:)`, with any string as the namespace, such as one made at runtime.
+        public static func own(protection: Protection = .whenUnlocked, namespace: String) -> Self {
+            .own(protection: protection, namespace: Namespace(namespace))
+        }
+
+        /// `appGroup(id:protection:namespace:)`, with any string as the namespace, such as one made at runtime.
+        public static func appGroup(id: String, protection: Protection = .whenUnlocked, namespace: String) -> Self {
+            .appGroup(id: id, protection: protection, namespace: Namespace(namespace))
+        }
+
+        /// `iCloud(_:protection:namespace:)`, with any string as the namespace, such as one made at runtime.
+        public static func iCloud(_ owner: Owner, protection: SyncedProtection = .whenUnlocked, namespace: String) -> Self {
+            .iCloud(owner, protection: protection, namespace: Namespace(namespace))
+        }
     }
 }

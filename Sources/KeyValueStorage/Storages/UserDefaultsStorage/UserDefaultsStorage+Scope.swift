@@ -28,5 +28,15 @@ public extension UserDefaultsStorage {
         public static var `default`: Self {
             .own(namespace: defaultNamespace)
         }
+
+        /// `own(namespace:)`, with any string as the namespace, such as one made at runtime.
+        public static func own(namespace: String) -> Self {
+            .own(namespace: Namespace(namespace))
+        }
+
+        /// `appGroup(id:namespace:)`, with any string as the namespace, such as one made at runtime.
+        public static func appGroup(id: String, namespace: String) -> Self {
+            .appGroup(id: id, namespace: Namespace(namespace))
+        }
     }
 }

@@ -26,5 +26,10 @@ public extension UbiquitousStorage {
         public static var `default`: Self {
             .iCloud(.own, namespace: defaultNamespace)
         }
+
+        /// `iCloud(_:namespace:)`, with any string as the namespace, such as one made at runtime.
+        public static func iCloud(_ owner: Owner, namespace: String) -> Self {
+            .iCloud(owner, namespace: Namespace(namespace))
+        }
     }
 }

@@ -54,6 +54,16 @@ public extension FileStorage {
         public static var `default`: Self {
             .own(namespace: defaultNamespace)
         }
+
+        /// `own(_:protection:namespace:)`, with any string as the namespace, such as one made at runtime.
+        public static func own(_ retention: Retention = .persistent, protection: Protection = .inherited, namespace: String) -> Self {
+            .own(retention, protection: protection, namespace: Namespace(namespace))
+        }
+
+        /// `appGroup(id:protection:namespace:)`, with any string as the namespace, such as one made at runtime.
+        public static func appGroup(id: String, protection: Protection = .inherited, namespace: String) -> Self {
+            .appGroup(id: id, protection: protection, namespace: Namespace(namespace))
+        }
     }
 }
 

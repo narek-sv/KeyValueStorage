@@ -222,10 +222,11 @@ As you can see, the key holds all the necessary information about the value:
 * The value type - `String`
 * The scope (*optional*) - who sees the value and where it lives; `.default` when omitted
 
-A key's name can be any string, a literal or one made at runtime, and is compared by its exact bytes, so `"é"` and `"e\u{301}"` are two keys:
+A key's name and a scope's namespace can be any string, a literal or one made at runtime, and are compared by their exact bytes, so `"é"` and `"e\u{301}"` are two keys:
 
 ```swift
 let token = KeychainKey<String>(key: accountID)
+let draft = FileKey<String>(key: "draft", scope: .own(namespace: userID))
 ```
 
 Now all that is left is to instantiate the storage and use it:
