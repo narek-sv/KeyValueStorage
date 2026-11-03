@@ -117,7 +117,7 @@ final class UserDefaultsIntegrationTests: XCTestCase {
         CFPreferencesAppSynchronize(suiteName as CFString)
 
         // Then: every value is in the file, under its own stored key
-        let plist = suiteFile(suiteName, once: "ns!/sentinel")
+        let plist = try suiteFile(suiteName, once: "ns!/sentinel")
         XCTAssertNotNil(plist["ns!/sentinel"], "the suite's file was never written")
         let stored = Set(plist.allValues.compactMap { $0 as? Data }).subtracting([Data("sentinel".utf8)])
         XCTAssertEqual(stored, expected, "lost: \(expected.subtracting(stored).map { String(decoding: $0, as: UTF8.self) }.sorted())")
@@ -239,7 +239,7 @@ final class UserDefaultsIntegrationTests: XCTestCase {
 
         // Then: the value works, and its file is in the app's own preferences, not a group container
         XCTAssertEqual(storage.fetch(forKey: "key"), Data([1]))
-        XCTAssertEqual(suiteFile(groupId, once: "ns!/key")["ns!/key"] as? Data, Data([1]))
+        XCTAssertEqual(try suiteFile(groupId, once: "ns!/key")["ns!/key"] as? Data, Data([1]))
     }
 
     #if os(macOS)
@@ -263,7 +263,7 @@ final class UserDefaultsIntegrationTests: XCTestCase {
         }
 
         // Then: one file for both
-        _ = suiteFile(groupIds[0], once: "ns!/key0")
+        _ = try suiteFile(groupIds[0], once: "ns!/key0")
         let files = try FileManager.default.contentsOfDirectory(atPath: preferences.path).filter { $0.lowercased() == "group.keyvaluestorage.case.plist" }
         XCTAssertEqual(files.count, 1, "\(files)")
     }
@@ -281,15 +281,31 @@ final class UserDefaultsIntegrationTests: XCTestCase {
         try UserDefaultsStorage(scope: scope ?? self.scope, backingStore: DefaultUserDefaultsBackingStoreWrapper(), locator: locator)
     }
 
-    /// The suite's file once the system has written `key` to it, waiting up to 10 s; an `NSDictionary`, because a Swift
+    /// The suite's file once the system has written `key` to it, or as it is after 30 s; an `NSDictionary`, because a Swift
     /// dictionary merges keys that differ only in normalization.
-    private func suiteFile(_ suiteName: String, once key: String) -> NSDictionary {
-        let file = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true).appendingPathComponent("Library/Preferences/\(suiteName).plist")
-        var plist = NSDictionary()
-        for _ in 0..<200 where plist[key] == nil {
-            Thread.sleep(forTimeInterval: 0.05)
-            plist = (try? Data(contentsOf: file)).flatMap { try? PropertyListSerialization.propertyList(from: $0, format: nil) as? NSDictionary } ?? [:]
+    /// - Note: In a test process the system writes a suite's file up to about 10 s after a change, more on a busy CI runner,
+    ///   and synchronizing doesn't hurry it. Each write replaces the file, so the folder reports it.
+    private func suiteFile(_ suiteName: String, once key: String) throws -> NSDictionary {
+        let folder = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true).appendingPathComponent("Library/Preferences", isDirectory: true)
+        let file = folder.appendingPathComponent("\(suiteName).plist")
+        let descriptor = open(folder.path, O_EVTONLY)
+        guard descriptor >= 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
+
+        // Watched before the first read, so a write in between still wakes the wait
+        let changed = DispatchSemaphore(value: 0)
+        let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: descriptor, eventMask: .write)
+        source.setEventHandler { changed.signal() }
+        source.setCancelHandler { close(descriptor) }
+        source.resume()
+        defer { source.cancel() }
+
+        let deadline = DispatchTime.now() + 30
+        var plist = NSDictionary()
+        repeat {
+            plist = (try? Data(contentsOf: file)).flatMap { try? PropertyListSerialization.propertyList(from: $0, format: nil) as? NSDictionary } ?? [:]
+        } while plist[key] == nil && changed.wait(timeout: deadline) == .success
 
         return plist
     }
