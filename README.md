@@ -606,6 +606,7 @@ Task.detached { try storage.save(data, forKey: "avatar") }   // fine: FileStorag
 **Use one `UnifiedStorage` for your app.** An instance coordinates only its own calls: `move(_:from:)`, `update(_:_:)` and `close(storage:forScope:)` hold their scopes against calls through the same instance, not through another. Several instances never break a value, since every storage they create is thread-safe, but a call through one can see another's move or update half done. So:
 * Create one `UnifiedStorage` and share it, for example as a static property or through dependency injection.
 * If you need more than one, such as one with observation and one without, give each its own scopes.
+* Reach each scope through one storage type: `FileStorage` and `IsolatedDataStorage<FileStorage>` are two storages over the same files, so a move or an update through one doesn't hold the other's calls, a close closes only its own, and each one's observers get only the changes made through it.
 * Nothing coordinates with your app extensions, other processes, or storages you use directly: move values before they use them, for example at launch, and don't count on `update` against their writes.
 * Don't call a `UnifiedStorage` from inside its own storages, coders, factory or `ObservableStorage` subclasses: such a call can wait for a move or an update that waits for the call it's made in, and never return.
 
@@ -618,7 +619,7 @@ Even through one instance, a sequence of calls, such as a fetch followed by a sa
 let draft = IsolatedDataStorage<NotesStorage>.Entry<String>(key: "draft")
 ```
 
-***NOTE***! Calls on one `SQLiteStorage` wait for each other behind its lock, blocking their threads meanwhile. An app that drives one SQLite scope from many tasks at once can wrap it in `IsolatedDataStorage`, so that waiting callers suspend instead of blocking their threads; the call that runs still blocks one.
+***NOTE***! Calls on one `SQLiteStorage` wait for each other behind its lock, blocking their threads meanwhile. An app that drives one SQLite scope from many tasks at once can wrap it in `IsolatedDataStorage`, in every entry of that scope, so that waiting callers suspend instead of blocking their threads; the call that runs still blocks one.
 
 ---
 ## Tests
