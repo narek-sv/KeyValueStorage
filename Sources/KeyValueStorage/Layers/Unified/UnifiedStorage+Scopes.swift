@@ -44,9 +44,30 @@ extension UnifiedStorage {
             return try await body(storage(in: slot, from: consume creation))
         }
 
-        /// Runs `body` with the scopes' storages, all created first, once no call runs in any of them; calls in them wait meanwhile.
+        /// Runs `body` with the scope's storage, once no call runs in it; calls in it wait meanwhile.
         func withExclusiveAccess<Storage: UnifiedStorable, T>(
-            to scopes: [Storage.Scope],
+            to scope: Storage.Scope,
+            _ body: (ScopeStorage<Storage>) async throws(CodingStorageError<Storage>) -> T
+        ) async throws(CodingStorageError<Storage>) -> T {
+            try await withExclusiveAccess(toAll: [scope]) { (storages: [ScopeStorage<Storage>]) throws(CodingStorageError<Storage>) in
+                try await body(storages[0])
+            }
+        }
+
+        /// Runs `body` with both scopes' storages, taken together, once no call runs in either; calls in them wait meanwhile.
+        func withExclusiveAccess<Storage: UnifiedStorable, T>(
+            to first: Storage.Scope,
+            _ second: Storage.Scope,
+            _ body: (ScopeStorage<Storage>, ScopeStorage<Storage>) async throws(CodingStorageError<Storage>) -> T
+        ) async throws(CodingStorageError<Storage>) -> T {
+            try await withExclusiveAccess(toAll: [first, second]) { (storages: [ScopeStorage<Storage>]) throws(CodingStorageError<Storage>) in
+                try await body(storages[0], storages[1])
+            }
+        }
+
+        /// Runs `body` with the scopes' storages, all created first, once no call runs in any of them; calls in them wait meanwhile.
+        private func withExclusiveAccess<Storage: UnifiedStorable, T>(
+            toAll scopes: [Storage.Scope],
             _ body: ([ScopeStorage<Storage>]) async throws(CodingStorageError<Storage>) -> T
         ) async throws(CodingStorageError<Storage>) -> T {
             let slots = lock.withLock {

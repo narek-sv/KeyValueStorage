@@ -91,8 +91,8 @@ public final class UnifiedStorage: Sendable {
             return
         }
 
-        try await scopes.withExclusiveAccess(to: [scope, entry.scope]) { (storages: [ScopeStorage<Storage>]) throws(CodingStorageError<Storage>) in
-            let (source, target) = (storages[0], storages[1])
+        try await scopes.withExclusiveAccess(to: scope, entry.scope) {
+            (source: ScopeStorage<Storage>, target: ScopeStorage<Storage>) throws(CodingStorageError<Storage>) in
             let codingKey = CodingStorageKey<Storage, Value>(key: entry.key)
             guard let value = try await source.fetch(forKey: codingKey) else {
                 return
@@ -121,10 +121,10 @@ public final class UnifiedStorage: Sendable {
         _ entry: Entry<Storage, Value>,
         _ transform: (Value?) -> Value?
     ) async throws(CodingStorageError<Storage>) -> Value? {
-        try await scopes.withExclusiveAccess(to: [entry.scope]) { (storages: [ScopeStorage<Storage>]) throws(CodingStorageError<Storage>) in
+        try await scopes.withExclusiveAccess(to: entry.scope) { (storage: ScopeStorage<Storage>) throws(CodingStorageError<Storage>) in
             let codingKey = CodingStorageKey<Storage, Value>(key: entry.key)
-            let updated = transform(try await storages[0].fetch(forKey: codingKey))
-            try await storages[0].set(updated, forKey: codingKey)
+            let updated = transform(try await storage.fetch(forKey: codingKey))
+            try await storage.set(updated, forKey: codingKey)
             return updated
         }
     }
