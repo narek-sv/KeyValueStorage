@@ -101,9 +101,9 @@ final class UnifiedStorageMoveTests: XCTestCase {
         // When
         try await storage.move(InMemoryStorage.Entry<Int>(key: "key", scope: scope), to: name)
 
-        // Then
-        let moved = try await storage.fetch(InMemoryStorage.Entry<Int>(key: "renamed-42", scope: scope))
-        let left = try await storage.fetch(InMemoryStorage.Entry<Int>(key: "key", scope: scope))
+        // Then: with a timeout, so a move that never lets calls back in fails the test instead of hanging it
+        let moved = try await waitForValue(of: Task { try await storage.fetch(InMemoryStorage.Entry<Int>(key: "renamed-42", scope: scope)) })
+        let left = try await waitForValue(of: Task { try await storage.fetch(InMemoryStorage.Entry<Int>(key: "key", scope: scope)) })
         XCTAssertEqual(moved, 1)
         XCTAssertNil(left)
         try await storage.clear(storage: InMemoryStorage.self, forScope: scope)
