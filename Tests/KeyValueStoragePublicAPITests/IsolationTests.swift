@@ -11,7 +11,7 @@ import Combine
 import KeyValueStorage // intentionally not @testable: calls the API like clients do
 
 /// Calls every public API from different isolation contexts, so each Swift version's runtime isolation checks
-/// run for every entry point. Swift 6.0, for example, crashed when a storage's `scope` was read outside its actor.
+/// run for each of them. Swift 6.0, for example, crashed when a storage's `scope` was read outside its actor.
 final class IsolationTests: XCTestCase {
     func testNonisolated() async throws {
         try await exerciseAPI(context: "nonisolated")
@@ -78,21 +78,21 @@ private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #is
 
     // Unified storage
     let storage = UnifiedStorage(factory: ObservableUnifiedStorageFactory())
-    let key = InMemoryKey<Int>(key: "unified", scope: .own(namespace: .init(id)))
+    let entry = InMemoryStorage.Entry<Int>(key: "unified", scope: .own(namespace: .init(id)))
     let published = Values<Int?>()
-    let subscription = try await storage.publisher(forKey: key)?.sink { published.append($0) }
-    let stream = try await storage.stream(forKey: key, includingCurrentValue: false)
+    let subscription = try await storage.publisher(for: entry)?.sink { published.append($0) }
+    let stream = try await storage.stream(for: entry, includingCurrentValue: false)
     let streamed = Task { () -> Int?? in
         guard let stream else { return nil }
         for await value in stream { return value }
         return nil
     }
     
-    try await storage.save(1, forKey: key)
-    let fetched = try await storage.fetch(forKey: key)
-    try await storage.set(nil, forKey: key)
-    try await storage.set(2, forKey: key)
-    try await storage.delete(forKey: key)
+    try await storage.save(1, to: entry)
+    let fetched = try await storage.fetch(entry)
+    try await storage.set(nil, to: entry)
+    try await storage.set(2, to: entry)
+    try await storage.delete(entry)
     try await storage.clear(storage: InMemoryStorage.self, forScope: .own(namespace: .init(id)))
     let firstStreamed = await streamed.value
     

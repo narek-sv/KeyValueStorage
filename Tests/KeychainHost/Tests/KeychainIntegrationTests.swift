@@ -117,21 +117,21 @@ final class KeychainIntegrationTests: XCTestCase {
     }
 
     func testAMoveGivesTheItemItsNewScopesProtection() async throws {
-        // Given: an item saved while the key's protection was the default
+        // Given: an item saved while the entry's protection was the default
         let storage = UnifiedStorage()
         let old = KeychainStorage.Scope.own(namespace: namespace())
-        let key = KeychainKey<String>(key: "token", scope: .own(protection: .afterFirstUnlock, namespace: namespace()))
-        try await storage.save("secret", forKey: KeychainKey<String>(key: "token", scope: old))
+        let entry = KeychainStorage.Entry<String>(key: "token", scope: .own(protection: .afterFirstUnlock, namespace: namespace()))
+        try await storage.save("secret", to: KeychainStorage.Entry<String>(key: "token", scope: old))
 
         // When
-        try await storage.move(key, from: old)
+        try await storage.move(entry, from: old)
 
         // Then: the item is in the new scope only, with its accessibility
-        let moved = try await storage.fetch(forKey: key)
-        let left = try await storage.fetch(forKey: KeychainKey<String>(key: "token", scope: old))
+        let moved = try await storage.fetch(entry)
+        let left = try await storage.fetch(KeychainStorage.Entry<String>(key: "token", scope: old))
         XCTAssertEqual(moved, "secret")
         XCTAssertNil(left)
-        XCTAssertEqual(try attribute(kSecAttrAccessible, of: key.scope, account: "token") as? String, kSecAttrAccessibleAfterFirstUnlock as String)
+        XCTAssertEqual(try attribute(kSecAttrAccessible, of: entry.scope, account: "token") as? String, kSecAttrAccessibleAfterFirstUnlock as String)
     }
 
     func testScopesThatDifferOnlyInProtectionNeverShareItems() throws {

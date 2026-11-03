@@ -10,19 +10,19 @@ import Foundation
 @testable import KeyValueStorage
 
 final class UnifiedStorageMoveTests: XCTestCase {
-    private typealias Key = UnifiedStorageKey<PlaceStorage, Int>
+    private typealias Entry = PlaceStorage.Entry<Int>
 
     private let error = MockError(id: 1)
 
     // MARK: Values
 
-    func testTheValueIsSavedInTheKeysScopeThenRemovedFromTheOther() async throws {
-        let (source, target, key) = places()
+    func testTheValueIsSavedInTheEntrysScopeThenRemovedFromTheOther() async throws {
+        let (source, target, entry) = places()
         // Given
         source.store(1, forKey: "key")
 
         // When
-        try await UnifiedStorage().move(key, from: source.scope)
+        try await UnifiedStorage().move(entry, from: source.scope)
 
         // Then
         XCTAssertNil(source.value(forKey: "key"))
@@ -31,13 +31,13 @@ final class UnifiedStorageMoveTests: XCTestCase {
         XCTAssertEqual(target.calls, [.fetch("key"), .save(Data("1".utf8), "key")])
     }
 
-    func testMovingFromTheKeysOwnScopeChangesNothing() async throws {
-        let (_, target, key) = places()
+    func testMovingFromTheEntrysOwnScopeChangesNothing() async throws {
+        let (_, target, entry) = places()
         // Given
         target.store(1, forKey: "key")
 
         // When
-        try await UnifiedStorage().move(key, from: target.scope)
+        try await UnifiedStorage().move(entry, from: target.scope)
 
         // Then
         XCTAssertEqual(target.value(forKey: "key"), 1)
@@ -45,12 +45,12 @@ final class UnifiedStorageMoveTests: XCTestCase {
     }
 
     func testWithoutAValueNothingChanges() async throws {
-        let (source, target, key) = places()
+        let (source, target, entry) = places()
         // Given
         target.store(2, forKey: "key")
 
         // When
-        try await UnifiedStorage().move(key, from: source.scope)
+        try await UnifiedStorage().move(entry, from: source.scope)
 
         // Then
         XCTAssertEqual(target.value(forKey: "key"), 2)
@@ -58,14 +58,14 @@ final class UnifiedStorageMoveTests: XCTestCase {
         XCTAssertEqual(target.calls, [])
     }
 
-    func testAValueAlreadyInTheKeysScopeIsKeptAndTheOtherRemoved() async throws {
-        let (source, target, key) = places()
+    func testAValueAlreadyInTheEntrysScopeIsKeptAndTheOtherRemoved() async throws {
+        let (source, target, entry) = places()
         // Given
         source.store(1, forKey: "key")
         target.store(2, forKey: "key")
 
         // When
-        try await UnifiedStorage().move(key, from: source.scope)
+        try await UnifiedStorage().move(entry, from: source.scope)
 
         // Then
         XCTAssertNil(source.value(forKey: "key"))
@@ -73,14 +73,14 @@ final class UnifiedStorageMoveTests: XCTestCase {
         XCTAssertEqual(target.calls, [.fetch("key")])
     }
 
-    func testAValueTheKeysTypeCantDecodeChangesNothing() async throws {
-        let (source, target, key) = places()
-        // Given: the source holds the value as a string, which the key's value type can't decode
+    func testAValueTheEntrysTypeCantDecodeChangesNothing() async throws {
+        let (source, target, entry) = places()
+        // Given: the source holds the value as a string, which the entry's value type can't decode
         source.storeData(Data("one".utf8), forKey: "key")
 
         // When - Then
         do {
-            try await UnifiedStorage().move(key, from: source.scope)
+            try await UnifiedStorage().move(entry, from: source.scope)
             XCTFail("Expected an error")
         } catch {
             guard case .coding = error else {
@@ -95,14 +95,14 @@ final class UnifiedStorageMoveTests: XCTestCase {
     // MARK: Failures
 
     func testAFailedReadOfEitherScopeChangesNothing() async throws {
-        let (source, target, key) = places()
+        let (source, target, entry) = places()
         for failing in [source, target] {
             // Given
             source.store(1, forKey: "key")
             failing.fail(.fetch, with: error)
 
             // When - Then
-            await assertThrows(CodingStorageError<PlaceStorage>.storage(error)) { try await UnifiedStorage().move(key, from: source.scope) }
+            await assertThrows(CodingStorageError<PlaceStorage>.storage(error)) { try await UnifiedStorage().move(entry, from: source.scope) }
             XCTAssertEqual(source.value(forKey: "key"), 1)
             XCTAssertNil(target.value(forKey: "key"))
             failing.fail(.fetch, with: nil)
@@ -110,30 +110,30 @@ final class UnifiedStorageMoveTests: XCTestCase {
     }
 
     func testAFailedSaveKeepsTheValueWhereItWas() async throws {
-        let (source, target, key) = places()
+        let (source, target, entry) = places()
         // Given
         source.store(1, forKey: "key")
         target.fail(.save, with: error)
 
         // When - Then
-        await assertThrows(CodingStorageError<PlaceStorage>.storage(error)) { try await UnifiedStorage().move(key, from: source.scope) }
+        await assertThrows(CodingStorageError<PlaceStorage>.storage(error)) { try await UnifiedStorage().move(entry, from: source.scope) }
         XCTAssertEqual(source.value(forKey: "key"), 1)
         XCTAssertEqual(source.calls, [.fetch("key")])
     }
 
     func testAFailedRemovalIsFinishedByMovingAgain() async throws {
-        let (source, target, key) = places()
+        let (source, target, entry) = places()
         // Given: a move that saved the value but couldn't remove the old one
         let storage = UnifiedStorage()
         source.store(1, forKey: "key")
         source.fail(.delete, with: error)
-        await assertThrows(CodingStorageError<PlaceStorage>.storage(error)) { try await storage.move(key, from: source.scope) }
+        await assertThrows(CodingStorageError<PlaceStorage>.storage(error)) { try await storage.move(entry, from: source.scope) }
         XCTAssertEqual(source.value(forKey: "key"), 1)
         XCTAssertEqual(target.value(forKey: "key"), 1)
 
         // When
         source.fail(.delete, with: nil)
-        try await storage.move(key, from: source.scope)
+        try await storage.move(entry, from: source.scope)
 
         // Then: only the removal is done again
         XCTAssertNil(source.value(forKey: "key"))
@@ -142,39 +142,39 @@ final class UnifiedStorageMoveTests: XCTestCase {
     }
 
     func testAScopeWhoseStorageCantBeCreatedChangesNothingAndReleasesTheOther() async throws {
-        let (source, _, key) = places()
+        let (source, _, entry) = places()
         // Given
         let storage = UnifiedStorage(factory: UnavailableFactory())
         let unavailable = MockScope(name: UnavailableFactory.scopeName)
         source.store(1, forKey: "key")
 
         // When - Then
-        await assertThrows(CodingStorageError<PlaceStorage>.storage(UnavailableFactory.error)) { try await storage.move(key, from: unavailable) }
+        await assertThrows(CodingStorageError<PlaceStorage>.storage(UnavailableFactory.error)) { try await storage.move(entry, from: unavailable) }
         await assertThrows(CodingStorageError<PlaceStorage>.storage(UnavailableFactory.error)) {
-            try await storage.move(Key(key: "key", scope: unavailable), from: source.scope)
+            try await storage.move(Entry(key: "key", scope: unavailable), from: source.scope)
         }
 
         XCTAssertEqual(source.value(forKey: "key"), 1)
         XCTAssertEqual(source.calls, [], "both storages are created before the move reads or writes")
-        let fetched = try await waitForValue(of: Task { try await storage.fetch(forKey: Key(key: "key", scope: source.scope)) })
+        let fetched = try await waitForValue(of: Task { try await storage.fetch(Entry(key: "key", scope: source.scope)) })
         XCTAssertEqual(fetched, 1, "the move's scopes are free again")
     }
 
     // MARK: Waiting
 
     func testCallsInEitherScopeWaitForAMove() async throws {
-        let (source, _, key) = places()
+        let (source, _, entry) = places()
         // Given: a move held at its last step, the removal, with calls in both scopes after it
         let storage = UnifiedStorage()
         source.store(1, forKey: "key")
         source.hold(.delete)
-        let move = Task { try await storage.move(key, from: source.scope) }
+        let move = Task { try await storage.move(entry, from: source.scope) }
         try await source.waitUntilHeld()
-        let fetchedSource = Task { try await storage.fetch(forKey: Key(key: "key", scope: source.scope)) }
-        let fetchedTarget = Task { try await storage.fetch(forKey: key) }
+        let fetchedSource = Task { try await storage.fetch(Entry(key: "key", scope: source.scope)) }
+        let fetchedTarget = Task { try await storage.fetch(entry) }
         try await waitUntil {
             storage.state(of: source.scope, in: PlaceStorage.self).waitingCalls == 1
-                && storage.state(of: key.scope, in: PlaceStorage.self).waitingCalls == 1
+                && storage.state(of: entry.scope, in: PlaceStorage.self).waitingCalls == 1
         }
 
         // When
@@ -189,14 +189,14 @@ final class UnifiedStorageMoveTests: XCTestCase {
     }
 
     func testAMoveWaitsForCallsAlreadyRunningInItsScopes() async throws {
-        let (source, target, key) = places()
-        // Given: a save in the key's scope, held while it runs
+        let (source, target, entry) = places()
+        // Given: a save in the entry's scope, held while it runs
         let storage = UnifiedStorage()
         source.store(1, forKey: "key")
         target.hold(.save)
-        let save = Task { try await storage.save(2, forKey: key) }
+        let save = Task { try await storage.save(2, to: entry) }
         try await target.waitUntilHeld()
-        let move = Task { try await storage.move(key, from: source.scope) }
+        let move = Task { try await storage.move(entry, from: source.scope) }
         try await waitUntil { storage.state(of: source.scope, in: PlaceStorage.self).waitingHolds == 1 }
 
         // Then: the move waits, and hasn't started
@@ -213,16 +213,16 @@ final class UnifiedStorageMoveTests: XCTestCase {
     }
 
     func testCallsThatComeWhileAMoveWaitsRunAfterIt() async throws {
-        let (source, target, key) = places()
+        let (source, target, entry) = places()
         // Given: a move waiting for a running save, and a read of the source coming after the move
         let storage = UnifiedStorage()
         source.store(1, forKey: "key")
         target.hold(.save)
-        let save = Task { try await storage.save(2, forKey: key) }
+        let save = Task { try await storage.save(2, to: entry) }
         try await target.waitUntilHeld()
-        let move = Task { try await storage.move(key, from: source.scope) }
+        let move = Task { try await storage.move(entry, from: source.scope) }
         try await waitUntil { storage.state(of: source.scope, in: PlaceStorage.self).waitingHolds == 1 }
-        let fetched = Task { try await storage.fetch(forKey: Key(key: "key", scope: source.scope)) }
+        let fetched = Task { try await storage.fetch(Entry(key: "key", scope: source.scope)) }
         try await waitUntil { storage.state(of: source.scope, in: PlaceStorage.self).waitingCalls == 1 }
 
         // When
@@ -236,18 +236,18 @@ final class UnifiedStorageMoveTests: XCTestCase {
     }
 
     func testCallsWaitForEveryMoveOfTheirScope() async throws {
-        let (source, target, key) = places()
+        let (source, target, entry) = places()
         // Given: a move from the source to the target, held, then a move from the target to a third scope waiting for it,
         // and a read of the target coming after both
         let storage = UnifiedStorage()
         let third = Place.named("third-\(UUID().uuidString)")
         source.store(1, forKey: "key")
         source.hold(.delete)
-        let first = Task { try await storage.move(key, from: source.scope) }
+        let first = Task { try await storage.move(entry, from: source.scope) }
         try await source.waitUntilHeld()
-        let second = Task { try await storage.move(Key(key: "key", scope: third.scope), from: target.scope) }
+        let second = Task { try await storage.move(Entry(key: "key", scope: third.scope), from: target.scope) }
         try await waitUntil { storage.state(of: target.scope, in: PlaceStorage.self).waitingHolds == 1 }
-        let fetched = Task { try await storage.fetch(forKey: key) }
+        let fetched = Task { try await storage.fetch(entry) }
         try await waitUntil { storage.state(of: target.scope, in: PlaceStorage.self).waitingCalls == 1 }
 
         // When
@@ -262,27 +262,27 @@ final class UnifiedStorageMoveTests: XCTestCase {
     }
 
     func testAMoveWaitsForCallsLetInAfterAnotherMove() async throws {
-        let (source, target, key) = places()
+        let (source, target, entry) = places()
         // Given: a read of the target that waited for a move, was let in after it, and is held while it runs
         let storage = UnifiedStorage()
         let other = Place.named("other-\(UUID().uuidString)")
         source.store(1, forKey: "key")
         other.store(3, forKey: "key")
         source.hold(.delete)
-        let first = Task { try await storage.move(key, from: source.scope) }
+        let first = Task { try await storage.move(entry, from: source.scope) }
         try await source.waitUntilHeld()
-        let fetched = Task { try await storage.fetch(forKey: key) }
-        try await waitUntil { storage.state(of: key.scope, in: PlaceStorage.self).waitingCalls == 1 }
+        let fetched = Task { try await storage.fetch(entry) }
+        try await waitUntil { storage.state(of: entry.scope, in: PlaceStorage.self).waitingCalls == 1 }
         target.hold(.fetch)
         source.release()
         try await waitForValue(of: first)
         try await target.waitUntilHeld()
 
         // When: a move from a third scope into the target
-        let second = Task { try await storage.move(key, from: other.scope) }
+        let second = Task { try await storage.move(entry, from: other.scope) }
 
         // Then: it waits for the read, which still runs
-        try await waitUntil { storage.state(of: key.scope, in: PlaceStorage.self).waitingHolds == 1 }
+        try await waitUntil { storage.state(of: entry.scope, in: PlaceStorage.self).waitingHolds == 1 }
         XCTAssertEqual(other.calls, [])
 
         // When
@@ -297,18 +297,18 @@ final class UnifiedStorageMoveTests: XCTestCase {
     }
 
     func testCallsInOtherScopesDontWaitForAMove() async throws {
-        let (source, _, key) = places()
+        let (source, _, entry) = places()
         // Given: a held move
         let storage = UnifiedStorage()
         let other = Place.named("other-\(UUID().uuidString)")
         source.store(1, forKey: "key")
         source.hold(.delete)
-        let move = Task { try await storage.move(key, from: source.scope) }
+        let move = Task { try await storage.move(entry, from: source.scope) }
         try await source.waitUntilHeld()
 
         // When
-        try await storage.save(3, forKey: Key(key: "key", scope: other.scope))
-        let fetched = try await storage.fetch(forKey: Key(key: "key", scope: other.scope))
+        try await storage.save(3, to: Entry(key: "key", scope: other.scope))
+        let fetched = try await storage.fetch(Entry(key: "key", scope: other.scope))
 
         // Then
         XCTAssertEqual(fetched, 3)
@@ -322,14 +322,14 @@ final class UnifiedStorageMoveTests: XCTestCase {
         let storage = UnifiedStorage()
         source.store(1, forKey: "key")
         source.hold(.fetch)
-        let held = Task { try await storage.fetch(forKey: Key(key: "key", scope: source.scope)) }
+        let held = Task { try await storage.fetch(Entry(key: "key", scope: source.scope)) }
         try await source.waitUntilHeld()
 
         // When: more calls in the same scope
         let done = expectation(description: "calls beside the held one")
         let others = Task {
-            try await storage.save(2, forKey: Key(key: "other", scope: source.scope))
-            let fetched = try await storage.fetch(forKey: Key(key: "other", scope: source.scope))
+            try await storage.save(2, to: Entry(key: "other", scope: source.scope))
+            let fetched = try await storage.fetch(Entry(key: "other", scope: source.scope))
             done.fulfill()
             return fetched
         }
@@ -360,12 +360,12 @@ final class UnifiedStorageMoveTests: XCTestCase {
                 try await withThrowingTaskGroup(of: Void.self) { group in
                     for index in 0..<60 {
                         let from = scopes[index % 3].scope
-                        let to = Key(key: "key", scope: scopes[(index + 1 + index / 3 % 2) % 3].scope)
+                        let to = Entry(key: "key", scope: scopes[(index + 1 + index / 3 % 2) % 3].scope)
                         group.addTask {
                             switch index % 4 {
                             case 0, 1:  try await storage.move(to, from: from)
-                            case 2:     _ = try await storage.fetch(forKey: to)
-                            default:    try await storage.save(index, forKey: Key(key: "key", scope: from))
+                            case 2:     _ = try await storage.fetch(to)
+                            default:    try await storage.save(index, to: Entry(key: "key", scope: from))
                             }
                         }
                     }
@@ -398,8 +398,8 @@ final class UnifiedStorageMoveTests: XCTestCase {
             let finished = expectation(description: "both moves finished")
             Task {
                 do {
-                    async let toSecond: Void = storage.move(Key(key: "key", scope: second.scope), from: first.scope)
-                    async let toFirst: Void = storage.move(Key(key: "key", scope: first.scope), from: second.scope)
+                    async let toSecond: Void = storage.move(Entry(key: "key", scope: second.scope), from: first.scope)
+                    async let toFirst: Void = storage.move(Entry(key: "key", scope: first.scope), from: second.scope)
                     _ = try await (toSecond, toFirst)
                 } catch {
                     XCTFail("A move failed: \(error)")
@@ -419,19 +419,19 @@ final class UnifiedStorageMoveTests: XCTestCase {
 
     // MARK: Observation
 
-    func testObserversOfBothKeysSeeTheMove() async throws {
-        let (source, _, key) = places()
+    func testObserversOfBothEntriesSeeTheMove() async throws {
+        let (source, _, entry) = places()
         // Given
         let storage = UnifiedStorage(observable: true)
-        let sourceKey = Key(key: "key", scope: source.scope)
+        let sourceKey = Entry(key: "key", scope: source.scope)
         let sourceValues = PublishedValues()
         let targetValues = PublishedValues()
         source.store(1, forKey: "key")
-        let sourceSubscription = try await storage.publisher(forKey: sourceKey, includingCurrentValue: false)?.sink { sourceValues.append($0) }
-        let targetSubscription = try await storage.publisher(forKey: key, includingCurrentValue: false)?.sink { targetValues.append($0) }
+        let sourceSubscription = try await storage.publisher(for: sourceKey, includingCurrentValue: false)?.sink { sourceValues.append($0) }
+        let targetSubscription = try await storage.publisher(for: entry, includingCurrentValue: false)?.sink { targetValues.append($0) }
 
         // When
-        try await storage.move(key, from: source.scope)
+        try await storage.move(entry, from: source.scope)
 
         // Then
         XCTAssertEqual(sourceValues.all, [nil])
@@ -442,10 +442,10 @@ final class UnifiedStorageMoveTests: XCTestCase {
 
     // MARK: Helpers
 
-    /// A source and a target scope of their own, and the key in the target.
-    private func places() -> (Place, Place, Key) {
+    /// A source and a target scope of their own, and the entry in the target.
+    private func places() -> (Place, Place, Entry) {
         let id = UUID().uuidString
         let target = Place.named("target-\(id)")
-        return (Place.named("source-\(id)"), target, Key(key: "key", scope: target.scope))
+        return (Place.named("source-\(id)"), target, Entry(key: "key", scope: target.scope))
     }
 }

@@ -30,7 +30,7 @@ public protocol UserDefaultsLocator: Sendable {
 open class DefaultUserDefaultsLocator: UserDefaultsLocator, @unchecked Sendable {
     /// Every suite reads the global domain, so a suite of it would reach every scope.
     private static let globalDomainNames: Set = ["NSGlobalDomain", ".GlobalPreferences", "kCFPreferencesAnyApplication", "Apple Global Domain"]
-    /// Ends the namespace, and marks the library's entries in a suite other code also writes to.
+    /// Ends the namespace, and marks the library's stored keys in a suite other code also writes to.
     /// The escaped namespace has no `/`, so the first `/` always ends it.
     private static let namespaceMark = "!/"
     /// NUL, which the system drops when it writes its property list, so its values are lost on relaunch,

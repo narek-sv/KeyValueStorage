@@ -10,7 +10,7 @@ import Foundation
 @testable import KeyValueStorage
 
 final class UnifiedStorageUpdateTests: XCTestCase {
-    private typealias Key = UnifiedStorageKey<PlaceStorage, Int>
+    private typealias Entry = PlaceStorage.Entry<Int>
 
     private let error = MockError(id: 1)
 
@@ -18,12 +18,12 @@ final class UnifiedStorageUpdateTests: XCTestCase {
 
     func testTheTransformedValueIsSavedAndReturned() async throws {
         // Given
-        let (place, key) = place()
+        let (place, entry) = place()
         place.store(1, forKey: "key")
         let read = Read()
 
         // When
-        let updated = try await UnifiedStorage().update(forKey: key) { value in
+        let updated = try await UnifiedStorage().update(entry) { value in
             read.value = value
             return (value ?? 0) + 1
         }
@@ -37,12 +37,12 @@ final class UnifiedStorageUpdateTests: XCTestCase {
 
     func testWithoutAValueTheTransformGetsNil() async throws {
         // Given
-        let (place, key) = place()
+        let (place, entry) = place()
         let read = Read()
         read.value = 0
 
         // When
-        let updated = try await UnifiedStorage().update(forKey: key) { value in
+        let updated = try await UnifiedStorage().update(entry) { value in
             read.value = value
             return 5
         }
@@ -55,11 +55,11 @@ final class UnifiedStorageUpdateTests: XCTestCase {
 
     func testNilDeletesTheValue() async throws {
         // Given
-        let (place, key) = place()
+        let (place, entry) = place()
         place.store(1, forKey: "key")
 
         // When
-        let updated = try await UnifiedStorage().update(forKey: key) { _ in nil }
+        let updated = try await UnifiedStorage().update(entry) { _ in nil }
 
         // Then
         XCTAssertNil(updated)
@@ -69,7 +69,7 @@ final class UnifiedStorageUpdateTests: XCTestCase {
 
     func testConcurrentUpdatesThroughOneStorageLoseNothing() async throws {
         // Given
-        let (place, key) = place()
+        let (place, entry) = place()
         let storage = UnifiedStorage()
         let updates = 200
 
@@ -78,7 +78,7 @@ final class UnifiedStorageUpdateTests: XCTestCase {
             try await withThrowingTaskGroup(of: Void.self) { group in
                 for _ in 0..<updates {
                     group.addTask {
-                        try await storage.update(forKey: key) { ($0 ?? 0) + 1 }
+                        try await storage.update(entry) { ($0 ?? 0) + 1 }
                     }
                 }
 
@@ -96,14 +96,14 @@ final class UnifiedStorageUpdateTests: XCTestCase {
 
     func testAFailedReadNeitherTransformsNorWrites() async throws {
         // Given
-        let (place, key) = place()
+        let (place, entry) = place()
         place.store(1, forKey: "key")
         place.fail(.fetch, with: error)
         let read = Read()
 
         // When - Then
         await assertThrows(CodingStorageError<PlaceStorage>.storage(error)) {
-            try await UnifiedStorage().update(forKey: key) { value in
+            try await UnifiedStorage().update(entry) { value in
                 read.called = true
                 return value
             }
@@ -113,15 +113,15 @@ final class UnifiedStorageUpdateTests: XCTestCase {
         XCTAssertEqual(place.calls, [.fetch("key")])
     }
 
-    func testAValueTheKeysTypeCantDecodeIsNeitherTransformedNorReplaced() async throws {
+    func testAValueTheEntrysTypeCantDecodeIsNeitherTransformedNorReplaced() async throws {
         // Given
-        let (place, key) = place()
+        let (place, entry) = place()
         place.storeData(Data("one".utf8), forKey: "key")
         let read = Read()
 
         // When - Then
         do {
-            try await UnifiedStorage().update(forKey: key) { _ in
+            try await UnifiedStorage().update(entry) { _ in
                 read.called = true
                 return 2
             }
@@ -139,13 +139,13 @@ final class UnifiedStorageUpdateTests: XCTestCase {
     func testAFailedWriteKeepsTheValue() async throws {
         for (operation, result) in [(Place.Operation.save, Int?.some(2)), (.delete, nil)] {
             // Given
-            let (place, key) = place()
+            let (place, entry) = place()
             place.store(1, forKey: "key")
             place.fail(operation, with: error)
 
             // When - Then
             await assertThrows(CodingStorageError<PlaceStorage>.storage(error)) {
-                try await UnifiedStorage().update(forKey: key) { _ in result }
+                try await UnifiedStorage().update(entry) { _ in result }
             }
 
             XCTAssertEqual(place.value(forKey: "key"), 1, "\(operation)")
@@ -159,30 +159,30 @@ final class UnifiedStorageUpdateTests: XCTestCase {
 
         // When - Then
         await assertThrows(CodingStorageError<PlaceStorage>.storage(UnavailableFactory.error)) {
-            try await storage.update(forKey: Key(key: "key", scope: MockScope(name: UnavailableFactory.scopeName))) { value in
+            try await storage.update(Entry(key: "key", scope: MockScope(name: UnavailableFactory.scopeName))) { value in
                 read.called = true
                 return value
             }
         }
 
         XCTAssertFalse(read.called)
-        let (place, key) = place()
-        try await storage.save(1, forKey: key)
+        let (place, entry) = place()
+        try await storage.save(1, to: entry)
         XCTAssertEqual(place.value(forKey: "key"), 1, "the scope's hold was released")
     }
 
     // MARK: Waiting
 
     func testCallsInTheScopeWaitForAnUpdate() async throws {
-        // Given: an update held at its write, with a read of the key after it
-        let (place, key) = place()
+        // Given: an update held at its write, with a read of the entry after it
+        let (place, entry) = place()
         let storage = UnifiedStorage()
         place.store(1, forKey: "key")
         place.hold(.save)
-        let update = Task { try await storage.update(forKey: key) { ($0 ?? 0) + 1 } }
+        let update = Task { try await storage.update(entry) { ($0 ?? 0) + 1 } }
         try await place.waitUntilHeld()
-        let fetched = Task { try await storage.fetch(forKey: key) }
-        try await waitUntil { storage.state(of: key.scope, in: PlaceStorage.self).waitingCalls == 1 }
+        let fetched = Task { try await storage.fetch(entry) }
+        try await waitUntil { storage.state(of: entry.scope, in: PlaceStorage.self).waitingCalls == 1 }
 
         // When
         place.release()
@@ -195,13 +195,13 @@ final class UnifiedStorageUpdateTests: XCTestCase {
 
     func testAnUpdateWaitsForCallsAlreadyRunningInTheScope() async throws {
         // Given: a save in the scope, held while it runs
-        let (place, key) = place()
+        let (place, entry) = place()
         let storage = UnifiedStorage()
         place.hold(.save)
-        let save = Task { try await storage.save(10, forKey: key) }
+        let save = Task { try await storage.save(10, to: entry) }
         try await place.waitUntilHeld()
-        let update = Task { try await storage.update(forKey: key) { ($0 ?? 0) + 1 } }
-        try await waitUntil { storage.state(of: key.scope, in: PlaceStorage.self).waitingHolds == 1 }
+        let update = Task { try await storage.update(entry) { ($0 ?? 0) + 1 } }
+        try await waitUntil { storage.state(of: entry.scope, in: PlaceStorage.self).waitingHolds == 1 }
 
         // Then: the update waits, and hasn't read yet
         XCTAssertEqual(place.calls, [])
@@ -218,15 +218,15 @@ final class UnifiedStorageUpdateTests: XCTestCase {
 
     func testCallsInOtherScopesDontWaitForAnUpdate() async throws {
         // Given: a held update
-        let (place, key) = place()
+        let (place, entry) = place()
         let (other, otherKey) = self.place()
         let storage = UnifiedStorage()
         place.hold(.save)
-        let update = Task { try await storage.update(forKey: key) { _ in 1 } }
+        let update = Task { try await storage.update(entry) { _ in 1 } }
         try await place.waitUntilHeld()
 
         // When
-        try await storage.save(3, forKey: otherKey)
+        try await storage.save(3, to: otherKey)
 
         // Then
         XCTAssertEqual(other.value(forKey: "key"), 3)
@@ -235,8 +235,8 @@ final class UnifiedStorageUpdateTests: XCTestCase {
     }
 
     func testUpdatesAndMovesOfOneScopeTakeTurns() async throws {
-        // Given: increments of the key's scope, and moves into it from another scope, all at once
-        let (place, key) = place()
+        // Given: increments of the entry's scope, and moves into it from another scope, all at once
+        let (place, entry) = place()
         let (source, _) = self.place()
         let storage = UnifiedStorage()
         source.store(100, forKey: "key")
@@ -247,9 +247,9 @@ final class UnifiedStorageUpdateTests: XCTestCase {
                 for index in 0..<50 {
                     group.addTask {
                         if index == 25 {
-                            try await storage.move(key, from: source.scope)
+                            try await storage.move(entry, from: source.scope)
                         } else {
-                            try await storage.update(forKey: key) { ($0 ?? 0) + 1 }
+                            try await storage.update(entry) { ($0 ?? 0) + 1 }
                         }
                     }
                 }
@@ -271,14 +271,14 @@ final class UnifiedStorageUpdateTests: XCTestCase {
 
     func testObserversSeeTheUpdatedValue() async throws {
         // Given
-        let (_, key) = place()
+        let (_, entry) = place()
         let storage = UnifiedStorage(observable: true)
         let values = PublishedValues()
-        let subscription = try await storage.publisher(forKey: key, includingCurrentValue: false)?.sink { values.append($0) }
+        let subscription = try await storage.publisher(for: entry, includingCurrentValue: false)?.sink { values.append($0) }
 
         // When
-        try await storage.update(forKey: key) { _ in 1 }
-        try await storage.update(forKey: key) { _ in nil }
+        try await storage.update(entry) { _ in 1 }
+        try await storage.update(entry) { _ in nil }
 
         // Then
         XCTAssertEqual(values.all, [1, nil])
@@ -287,10 +287,10 @@ final class UnifiedStorageUpdateTests: XCTestCase {
 
     // MARK: Helpers
 
-    /// A scope of its own, and the key in it.
-    private func place() -> (Place, Key) {
+    /// A scope of its own, and the entry in it.
+    private func place() -> (Place, Entry) {
         let place = Place.named("update-\(UUID().uuidString)")
-        return (place, Key(key: "key", scope: place.scope))
+        return (place, Entry(key: "key", scope: place.scope))
     }
 }
 

@@ -68,8 +68,8 @@ final class IsolatedDataStorageTests: XCTestCase {
 
     func testOperationsNeverOverlap() async throws {
         // Given
-        let entries = Entries()
-        let storage = IsolatedDataStorage(OverlapDetectingStorage(entries: entries))
+        let running = RunningCalls()
+        let storage = IsolatedDataStorage(OverlapDetectingStorage(running: running))
 
         // When: every operation, from many tasks at once
         try await withThrowingTaskGroup(of: Void.self) { group in
@@ -86,7 +86,7 @@ final class IsolatedDataStorageTests: XCTestCase {
         }
 
         // Then
-        XCTAssertEqual(entries.maximum, 1)
+        XCTAssertEqual(running.maximum, 1)
     }
 
     // MARK: Coding
@@ -197,10 +197,10 @@ private final class Log: @unchecked Sendable {
     }
 }
 
-// MARK: - Entries
+// MARK: - RunningCalls
 
 /// Counts the calls in progress at once, from any thread.
-private final class Entries: @unchecked Sendable {
+private final class RunningCalls: @unchecked Sendable {
     private let lock = NSLock()
     private var current = 0
     private var highest = 0
@@ -229,15 +229,15 @@ private final class OverlapDetectingStorage: DataStorage {
     typealias Error = MockError
 
     let scope = MockScope(name: "overlap")
-    private let entries: Entries
+    private let running: RunningCalls
     private var value: Data?
 
-    init(entries: Entries) {
-        self.entries = entries
+    init(running: RunningCalls) {
+        self.running = running
     }
 
     init(scope: MockScope) {
-        self.entries = Entries()
+        self.running = RunningCalls()
     }
 
     func fetch(forKey key: String) throws(MockError) -> Data? {
@@ -257,8 +257,8 @@ private final class OverlapDetectingStorage: DataStorage {
     }
 
     private func call<T>(_ body: () -> T) -> T {
-        entries.enter()
-        defer { entries.leave() }
+        running.enter()
+        defer { running.leave() }
         usleep(100)
         return body()
     }

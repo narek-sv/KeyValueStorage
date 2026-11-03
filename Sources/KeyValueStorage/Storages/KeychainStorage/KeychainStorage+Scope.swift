@@ -20,7 +20,7 @@ public extension KeychainStorage {
 
     /// When the scope's items are usable, and whether they may move to another device.
     /// - Note: Part of the place: scopes that differ only in protection never share items.
-    /// - Warning: So a key whose protection changes, such as in an app update, finds none of the items saved with the old
+    /// - Warning: So an entry whose protection changes, such as in an app update, finds none of the items saved with the old
     ///   one: move them with `UnifiedStorage.move(_:from:)`.
     enum Protection: Hashable, Sendable {
         /// Usable once the user has unlocked the device after a restart, then also while locked (`kSecAttrAccessibleAfterFirstUnlock`).
@@ -39,7 +39,7 @@ public extension KeychainStorage {
 
     /// When the scope's items are usable; only the levels iCloud Keychain can sync.
     /// - Note: Part of the place: scopes that differ only in protection never share items.
-    /// - Warning: So a key whose protection changes, such as in an app update, finds none of the items saved with the old
+    /// - Warning: So an entry whose protection changes, such as in an app update, finds none of the items saved with the old
     ///   one: move them with `UnifiedStorage.move(_:from:)`.
     enum SyncedProtection: Hashable, Sendable {
         /// Usable once the user has unlocked the device after a restart, then also while locked (`kSecAttrAccessibleAfterFirstUnlock`).

@@ -6,10 +6,11 @@ Version 4 rebuilds the library around scopes, synchronous thread-safe storages a
 
 ### Breaking changes
 
-- **Scopes replace domains:** `UnifiedStorageKey(key:scope:)` takes a scope instead of an optional domain, and `clear(storage:forScope:)` replaces `clear(storage:forDomain:)`. A storage's `Scope` is where its values live: `.own` for the running app or extension, `.appGroup(id:)` for a group, `.iCloud` for synced keychain items and the iCloud key-value store, each with a `namespace`; Keychain, File and SQLite scopes also have a protection level. Every storage has a `.default` scope.
+- **Scopes replace domains:** an entry, `UnifiedStorage.Entry(key:scope:)`, takes a scope instead of an optional domain, and `clear(storage:forScope:)` replaces `clear(storage:forDomain:)`. A storage's `Scope` is where its values live: `.own` for the running app or extension, `.appGroup(id:)` for a group, `.iCloud` for synced keychain items and the iCloud key-value store, each with a `namespace`; Keychain, File and SQLite scopes also have a protection level. Every storage has a `.default` scope.
+- **Entries replace `UnifiedStorage`'s keys:** `UnifiedStorageKey` is `UnifiedStorage.Entry`, a value's storage type, scope and key, and every storage `UnifiedStorage` takes names its own, your own storages included: `FileStorage.Entry<Value>` replaces `FileKey<Value>`, and so on for `KeychainKey`, `UserDefaultsKey`, `InMemoryKey` and `SQLiteKey`. `UnifiedStorage`'s methods take the entry: `fetch(_:)`, `save(_:to:)`, `set(_:to:)`, `delete(_:)`, `publisher(for:)` and `stream(for:)` replace `fetch(forKey:)`, `save(_:forKey:)`, `set(_:forKey:)`, `delete(forKey:)`, `publisher(forKey:)` and `stream(forKey:)`, and `UnifiedStorage.Key` is removed.
 - **Where values live:** User Defaults' `.own` scopes use the suite `<app>.KeyValueStorage` instead of `UserDefaults.standard`, under `<namespace>!/<key>`; keychain services are `<app>:<namespace>:<protection>` or `<group>/<namespace>/<protection>`; files are in `<Application Support, Caches or tmp>/<app>/<namespace>!/<protection>` or the group container, named so that `Key` is `!key`; the SQLite database is `.KeyValueStorage.sqlite` in the files' folder of the same scope. See [App Groups](README.md#app-groups).
 - **Exact keys:** the built-in storages' keys and namespaces are `ExactString`, compared by their exact UTF-8 bytes, so `"é"` and `"e\u{301}"` are two keys in every storage, files included.
-- **Keychain protection is part of the scope:** a key whose protection changes finds none of the items saved with the old one, instead of changing their accessibility on the next save. Move them with `UnifiedStorage.move(_:from:)`.
+- **Keychain protection is part of the scope:** an entry whose protection changes finds none of the items saved with the old one, instead of changing their accessibility on the next save. Move them with `UnifiedStorage.move(_:from:)`.
 - **Only the library's values:** User Defaults and the iCloud key-value store take only `Data` under a stored key for a value: anything else fetches as `nil`, is never replaced or removed, and makes `save` throw `.keyOccupied`.
 - **Typed errors:** every storage throws its own `Error`, with new cases, and `UnifiedStorage`, `CodingStorage` and `AsyncCodingStorage` throw `CodingStorageError<Storage>`, `.storage` or `.coding`. See [Error handling](README.md#error-handling).
 - **Renamed and split protocols:** `KeyValueDataStorage` is `AsyncDataStorage`, refined by the synchronous `DataStorage`; `KeyValueCodingStorage` is `AsyncCodingStorage`, next to the synchronous `CodingStorage`; `KeyValueObservableStorage` is `ObservableStorage`, which wraps a coding storage instead of subclassing it; `KeyValueCodingStorageKey` is `CodingStorageKey`, and `KeyValuePublisher` is `ValuePublisher`.
@@ -25,16 +26,16 @@ Version 4 rebuilds the library around scopes, synchronous thread-safe storages a
 
 ### Added
 
-- `UbiquitousStorage` and `UbiquitousKey`, for the iCloud key-value store (watchOS 9.0 or later).
-- `UnifiedStorage.move(_:from:)`, which moves a key's value into a new scope, such as after its protection changes, without losing it.
-- `UnifiedStorage.update(forKey:_:)`, which reads and writes a value as one step.
+- `UbiquitousStorage`, for the iCloud key-value store (watchOS 9.0 or later).
+- `UnifiedStorage.move(_:from:)`, which moves an entry's value into a new scope, such as after its protection changes, without losing it.
+- `UnifiedStorage.update(_:_:)`, which reads and writes a value as one step.
 - `UnifiedStorage.close(storage:forScope:)`, which lets go of a scope's storage, such as to close the database of a SQLite scope the app is done with.
-- `UnifiedStorageKey(key:scope:)`, `CodingStorageKey(key:)` and every scope case with a namespace take a `String` too, for keys and namespaces named at runtime.
+- `UnifiedStorage.Entry(key:scope:)`, `CodingStorageKey(key:)` and every scope case with a namespace take a `String` too, for keys and namespaces named at runtime.
 - `UnifiedStorage(observable:)`.
 - Retention for files and SQLite, `.persistent`, `.cache` or `.temporary`, and protection levels for both.
 - `DataStorage`, for synchronous custom storages, which need no `await` through `CodingStorage`; `AsyncDataStorage`, for asynchronous ones; and `IsolatedDataStorage`, an actor that makes any synchronous storage shareable.
 - A locator and a backing store for every built-in storage: a custom locator changes where values live, and a custom backing store replaces the system calls, for example in tests. See [Custom Locators](README.md#custom-locators).
-- `bufferingPolicy` for `stream(forKey:)`.
+- `bufferingPolicy` for `stream(for:)`.
 - `ExactString` and `OwnIdentity`.
 - The privacy manifest also declares file timestamps, with the reason `C617.1`, for the file storage's `lstat`.
 

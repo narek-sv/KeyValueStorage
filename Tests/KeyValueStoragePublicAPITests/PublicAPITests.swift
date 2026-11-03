@@ -14,11 +14,11 @@ final class PublicAPITests: XCTestCase {
         // Given
         let defaultStorage = UnifiedStorage(factory: DefaultUnifiedStorageFactory())
         let observableStorage = UnifiedStorage(factory: ObservableUnifiedStorageFactory())
-        let key = InMemoryKey<Int>(key: "publicAPI")
+        let entry = InMemoryStorage.Entry<Int>(key: "publicAPI")
 
         // When
-        let defaultPublisher = try await defaultStorage.publisher(forKey: key)
-        let observablePublisher = try await observableStorage.publisher(forKey: key)
+        let defaultPublisher = try await defaultStorage.publisher(for: entry)
+        let observablePublisher = try await observableStorage.publisher(for: entry)
 
         // Then
         XCTAssertNil(defaultPublisher)
@@ -30,11 +30,11 @@ final class PublicAPITests: XCTestCase {
         // Given
         let namespace = ExactString("publicAPICoder-\(UUID().uuidString)")
         let storage = UnifiedStorage(factory: PropertyListFactory())
-        let key = InMemoryKey<String>(key: "key", scope: .own(namespace: namespace))
+        let entry = InMemoryStorage.Entry<String>(key: "key", scope: .own(namespace: namespace))
         
         // When
-        try await storage.save("value", forKey: key)
-        let fetched = try await storage.fetch(forKey: key)
+        try await storage.save("value", to: entry)
+        let fetched = try await storage.fetch(entry)
         
         // Then: a binary property list, not the raw coder's UTF-8
         XCTAssertEqual(fetched, "value")
@@ -42,21 +42,38 @@ final class PublicAPITests: XCTestCase {
         XCTAssertEqual(stored.map { Array($0.prefix(6)) }, Array("bplist".utf8))
     }
     
-    /// A key named at runtime takes the `String` as it is, and reaches the same value as the name written any other way.
-    func testAKeyNamedByAStringReachesItsValue() async throws {
+    /// An entry whose key is made at runtime takes the `String` as it is, and reaches the same value as the key written any other way.
+    func testAnEntryWithAStringKeyReachesItsValue() async throws {
         // Given
         let namespace = ExactString("publicAPIStringKey-\(UUID().uuidString)")
         let storage = UnifiedStorage()
         let name = "user-\(42)"
 
         // When
-        try await storage.save(1, forKey: InMemoryKey<Int>(key: name, scope: .own(namespace: namespace)))
-        let fetched = try await storage.fetch(forKey: InMemoryKey<Int>(key: "user-42", scope: .own(namespace: namespace)))
+        try await storage.save(1, to: InMemoryStorage.Entry<Int>(key: name, scope: .own(namespace: namespace)))
+        let fetched = try await storage.fetch(InMemoryStorage.Entry<Int>(key: "user-42", scope: .own(namespace: namespace)))
 
         // Then
         XCTAssertEqual(fetched, 1)
         let coding = CodingStorage(storage: InMemoryStorage(scope: .own(namespace: namespace)), coder: JSONDataCoder())
         XCTAssertEqual(try coding.fetch(forKey: CodingStorageKey<InMemoryStorage, Int>(key: name)), 1)
+    }
+
+    /// Entries declared in an extension of `UnifiedStorage.Entry` are named after a dot, as the README suggests.
+    func testAnEntryOfTheExtensionIsNamedAfterADot() async throws {
+        // Given
+        let storage = UnifiedStorage()
+        try await storage.delete(.launches)
+
+        // When
+        try await storage.save(1, to: .launches)
+        let updated = try await storage.update(.launches) { ($0 ?? 0) + 1 }
+        let fetched = try await storage.fetch(.launches)
+
+        // Then
+        XCTAssertEqual(updated, 2)
+        XCTAssertEqual(fetched, 2)
+        try await storage.delete(.launches)
     }
 
     func testAFactoryImplementsOnlyWhatItChanges() async throws {
@@ -65,13 +82,13 @@ final class PublicAPITests: XCTestCase {
         let storage = UnifiedStorage(factory: factory)
 
         // When
-        _ = try await storage.fetch(forKey: InMemoryKey<Int>(key: "publicAPI"))
+        _ = try await storage.fetch(InMemoryStorage.Entry<Int>(key: "publicAPI"))
 
         // Then
         XCTAssertEqual(factory.dataStorageCalls, 1)
         XCTAssertEqual(factory.codingStorageCalls, 1)
     }
-    
+
     func testRawDataCoderIsConfigurable() throws {
         // Given
         let coder = RawDataCoder(fallback: PropertyListDataCoder())
@@ -185,12 +202,12 @@ final class PublicAPITests: XCTestCase {
         XCTAssertNil(try coding.fetch(forKey: key))
     }
 
-    /// An app's own asynchronous storage, such as a server-backed one, works through `UnifiedStorage` with a key of its own.
+    /// An app's own asynchronous storage, such as a server-backed one, works through `UnifiedStorage` with entries of its own.
     func testAnAsyncStorageWorksThroughUnifiedStorage() async throws {
         // Given
         let storage = UnifiedStorage(factory: ObservableUnifiedStorageFactory())
-        let key = RemoteKey<String>(key: "name", scope: .init(namespace: "publicAPI-\(UUID().uuidString)"))
-        let publisher = try await storage.publisher(forKey: key, includingCurrentValue: false)
+        let entry = RemoteStorage.Entry<String>(key: "name", scope: .init(namespace: "publicAPI-\(UUID().uuidString)"))
+        let publisher = try await storage.publisher(for: entry, includingCurrentValue: false)
         let published = expectation(description: "published")
         let subscription = publisher?.sink { value in
             if value == "Alice" {
@@ -199,13 +216,13 @@ final class PublicAPITests: XCTestCase {
         }
 
         // When
-        try await storage.save("Alice", forKey: key)
-        let fetched = try await storage.fetch(forKey: key)
-        try await storage.delete(forKey: key)
-        let deleted = try await storage.fetch(forKey: key)
-        try await storage.save("Bob", forKey: key)
-        try await storage.clear(storage: RemoteStorage.self, forScope: key.scope)
-        let cleared = try await storage.fetch(forKey: key)
+        try await storage.save("Alice", to: entry)
+        let fetched = try await storage.fetch(entry)
+        try await storage.delete(entry)
+        let deleted = try await storage.fetch(entry)
+        try await storage.save("Bob", to: entry)
+        try await storage.clear(storage: RemoteStorage.self, forScope: entry.scope)
+        let cleared = try await storage.fetch(entry)
 
         // Then
         XCTAssertEqual(fetched, "Alice")
@@ -215,8 +232,8 @@ final class PublicAPITests: XCTestCase {
         subscription?.cancel()
     }
 
-    /// The built-in keys isolate their storages, so `UnifiedStorage` shares a synchronous one between concurrent tasks safely.
-    func testBuiltInKeysShareASynchronousStorageSafely() async throws {
+    /// The built-in storages are thread-safe, so `UnifiedStorage` shares a synchronous one between concurrent tasks safely.
+    func testABuiltInSynchronousStorageIsSharedSafely() async throws {
         // Given
         let scope = SQLiteStorage.Scope.own(.temporary, namespace: .init("publicAPIIsolated-\(UUID().uuidString)"))
         let folder = try DefaultSQLiteLocator().databaseURL(for: scope).deletingLastPathComponent().deletingLastPathComponent()
@@ -227,9 +244,9 @@ final class PublicAPITests: XCTestCase {
         let values = try await withThrowingTaskGroup(of: (Int, Int?).self) { group in
             for index in 0..<200 {
                 group.addTask {
-                    let key = SQLiteKey<Int>(key: .init("key\(index)"), scope: scope)
-                    try await storage.save(index, forKey: key)
-                    return (index, try await storage.fetch(forKey: key))
+                    let entry = SQLiteStorage.Entry<Int>(key: .init("key\(index)"), scope: scope)
+                    try await storage.save(index, to: entry)
+                    return (index, try await storage.fetch(entry))
                 }
             }
 
@@ -266,16 +283,16 @@ final class PublicAPITests: XCTestCase {
     func testCustomSynchronousStoragesWorkThroughUnifiedStorage() async throws {
         // Given
         let storage = UnifiedStorage()
-        let shared = UnifiedStorageKey<LockedStorage, String>(key: "name", scope: .init(namespace: "publicAPI-\(UUID().uuidString)"))
-        let isolated = UnifiedStorageKey<IsolatedDataStorage<PlainStorage>, String>(key: "name")
+        let shared = LockedStorage.Entry<String>(key: "name", scope: .init(namespace: "publicAPI-\(UUID().uuidString)"))
+        let isolated = IsolatedDataStorage<PlainStorage>.Entry<String>(key: "name")
 
         // When
-        try await storage.save("Alice", forKey: shared)
-        try await storage.save("Bob", forKey: isolated)
+        try await storage.save("Alice", to: shared)
+        try await storage.save("Bob", to: isolated)
 
         // Then
-        let sharedValue = try await storage.fetch(forKey: shared)
-        let isolatedValue = try await storage.fetch(forKey: isolated)
+        let sharedValue = try await storage.fetch(shared)
+        let isolatedValue = try await storage.fetch(isolated)
         XCTAssertEqual(sharedValue, "Alice")
         XCTAssertEqual(isolatedValue, "Bob")
     }
@@ -363,6 +380,13 @@ final class PublicAPITests: XCTestCase {
     }
 }
 
+/// As the README suggests, so the entries are named after a dot.
+private extension UnifiedStorage.Entry {
+    static var launches: InMemoryStorage.Entry<Int> {
+        .init(key: "launches", scope: .own(namespace: "publicAPIStaticEntries"))
+    }
+}
+
 /// Counts its calls, and otherwise creates what the defaults do.
 private final class CountingFactory: UnifiedStorageFactory, @unchecked Sendable {
     private(set) var dataStorageCalls = 0
@@ -424,8 +448,6 @@ private actor RemoteStorage: AsyncDataStorage {
         values = [:]
     }
 }
-
-private typealias RemoteKey<Value: CodingValue> = UnifiedStorageKey<RemoteStorage, Value>
 
 // MARK: - Custom Storages
 

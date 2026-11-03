@@ -6,7 +6,7 @@
 
 ---
 
-A typed key-value storage for Apple platforms, with one API over the storages the system comes with: User Defaults, the Keychain, files, SQLite, the iCloud key-value store and memory. Each key names its storage, its value type and its scope, the place where its value lives, so values are type-checked at compile time, each scope keeps its values apart, and an App Group scope shares them with your extensions and other apps. The built-in storages are thread-safe and throw typed errors, code that uses a synchronous storage directly never needs `await`, and you can add your own storages and encodings.
+A typed key-value storage for Apple platforms, with one API over the storages the system comes with: User Defaults, the Keychain, files, SQLite, the iCloud key-value store and memory. Each value is reached through its entry, which names its storage, its value type, its scope, the place where it lives, and its key, so values are type-checked at compile time, each scope keeps its values apart, and an App Group scope shares them with your extensions and other apps. The built-in storages are thread-safe and throw typed errors, code that uses a synchronous storage directly never needs `await`, and you can add your own storages and encodings.
 
 **No dependencies.** `KeyValueStorage` works on its own: it uses only frameworks that come with the system, Foundation, Security, Combine and SQLite, so adding it brings no other packages into your project.
 
@@ -25,7 +25,7 @@ On tvOS, Apple limits an app's persistent local storage to 500 KB of User Defaul
 
 ## Choosing a Storage
 
-Every storage works through the same API: declare a typed key, then save, fetch, delete and observe its value with `UnifiedStorage`. Six storages are built in: In Memory, User Defaults, Keychain, File System, SQLite and iCloud Key-Value Store. You can add your own storage, synchronous or asynchronous, by conforming to `DataStorage` or `AsyncDataStorage` (see [Custom Storages](#custom-storages)), and your own encoding by conforming to `DataCoder` (see [Coding](#coding)). Values can be shared with your app's extensions and your other apps (see [Setup](#setup)), and observed for changes (see [Observation](#observation)).
+Every storage works through the same API: declare a typed entry, then save, fetch, delete and observe its value with `UnifiedStorage`. Six storages are built in: In Memory, User Defaults, Keychain, File System, SQLite and iCloud Key-Value Store. You can add your own storage, synchronous or asynchronous, by conforming to `DataStorage` or `AsyncDataStorage` (see [Custom Storages](#custom-storages)), and your own encoding by conforming to `DataCoder` (see [Coding](#coding)). Values can be shared with your app's extensions and your other apps (see [Setup](#setup)), and observed for changes (see [Observation](#observation)).
 
 Here's how the built-in storages compare:
 
@@ -86,18 +86,18 @@ Here's how the built-in storages compare:
 * Clearing removes only the values saved through `KeyValueStorage` in the scope's namespace.
 
 Quick guide:
-* Secrets → `KeychainKey`
-* Settings and flags → `UserDefaultsKey`
-* Large values, such as images or videos → `FileKey`, in a `.cache` scope if you can download them again
-* Many small and medium values, such as records → `SQLiteKey`
-* Data written by both the app and its extensions → `SQLiteKey`
-* Temporary state and tests → `InMemoryKey`
-* Small preferences that follow the user across devices → `UbiquitousKey`
+* Secrets → `KeychainStorage`
+* Settings and flags → `UserDefaultsStorage`
+* Large values, such as images or videos → `FileStorage`, in a `.cache` scope if you can download them again
+* Many small and medium values, such as records → `SQLiteStorage`
+* Data written by both the app and its extensions → `SQLiteStorage`
+* Temporary state and tests → `InMemoryStorage`
+* Small preferences that follow the user across devices → `UbiquitousStorage`
 
 ---
 ## Setup
 
-`KeyValueStorage` works out of the box: keys with the default scope need no setup, except for the keychain on macOS and the iCloud key-value store. If you want to share values among your apps and extensions, you need a little setup in Xcode first. Here's what each setup is for:
+`KeyValueStorage` works out of the box: entries with the default scope need no setup, except for the keychain on macOS and the iCloud key-value store. If you want to share values among your apps and extensions, you need a little setup in Xcode first. Here's what each setup is for:
 
 * [App Groups](#app-groups) - share values of any storage with your extensions and your other apps.
 * [Keychain Sharing](#keychain-sharing) - share keychain items through a keychain access group instead of an App Group.
@@ -113,11 +113,11 @@ You need this when your app and its extensions, or several of your apps, read an
 1. In Xcode, select your app target, open **Signing & Capabilities**, click **+ Capability** and add **App Groups**.
 2. Add a group, for example `group.com.company.app`. On macOS, use the group exactly as the capability shows it.
 3. Add the capability to every extension and app that shares the values, and select the same group.
-4. Use the group in the keys' `.appGroup` scope:
+4. Use the group in the entries' `.appGroup` scope:
 
 ```swift
-let onboarded = UserDefaultsKey<Bool>(key: "onboarded", scope: .appGroup(id: "group.com.company.app", namespace: "settings"))
-let token = KeychainKey<String>(key: "token", scope: .appGroup(id: "group.com.company.app", namespace: "auth"))
+let onboarded = UserDefaultsStorage.Entry<Bool>(key: "onboarded", scope: .appGroup(id: "group.com.company.app", namespace: "settings"))
+let token = KeychainStorage.Entry<String>(key: "token", scope: .appGroup(id: "group.com.company.app", namespace: "auth"))
 ```
 
 A target without the group doesn't see the shared values: User Defaults quietly keeps its own values, File and SQLite throw `groupDirectoryNotFound` on a device but get a folder of their own on macOS and in the Simulator, and the keychain throws `.keychain(status: errSecMissingEntitlement)`.
@@ -126,12 +126,12 @@ Every scope names a `namespace`, which keeps sets of values apart within the sam
 
 | Storage | `.own` scope | `.appGroup` scope |
 | --- | --- | --- |
-| `UserDefaultsKey` | The app's own suite, `<app>.KeyValueStorage`, keys `<namespace>!/<key>` | The group's suite, keys `<namespace>!/<key>` |
-| `FileKey` | `<Application Support, Caches or tmp>/<app>/<namespace>!/<protection>` | `<group container>/<namespace>!/<protection>` |
-| `SQLiteKey` | `.KeyValueStorage.sqlite` in `FileKey`'s folder of the same scope | `.KeyValueStorage.sqlite` in `FileKey`'s folder of the same scope |
-| `KeychainKey` | The app's default access group, service `<app>:<namespace>:<protection>` | The group, service `<group>/<namespace>/<protection>` |
-| `InMemoryKey` | A bucket per namespace in the current process | — |
-| `UbiquitousKey` | — (`.iCloud(.own, namespace:)`) | App Groups have no effect; see [iCloud Key-Value Store](#icloud-key-value-store) |
+| `UserDefaultsStorage` | The app's own suite, `<app>.KeyValueStorage`, keys `<namespace>!/<key>` | The group's suite, keys `<namespace>!/<key>` |
+| `FileStorage` | `<Application Support, Caches or tmp>/<app>/<namespace>!/<protection>` | `<group container>/<namespace>!/<protection>` |
+| `SQLiteStorage` | `.KeyValueStorage.sqlite` in `FileStorage`'s folder of the same scope | `.KeyValueStorage.sqlite` in `FileStorage`'s folder of the same scope |
+| `KeychainStorage` | The app's default access group, service `<app>:<namespace>:<protection>` | The group, service `<group>/<namespace>/<protection>` |
+| `InMemoryStorage` | A bucket per namespace in the current process | — |
+| `UbiquitousStorage` | — (`.iCloud(.own, namespace:)`) | App Groups have no effect; see [iCloud Key-Value Store](#icloud-key-value-store) |
 
 `<app>` is the bundle identifier, or the process name without one, so every app and extension has its own `.own` values; only `.appGroup` and `.iCloud` scopes are shared. Scopes that differ only in protection never share values.
 
@@ -152,20 +152,20 @@ You need this to make keychain items available on all the user's devices. Use th
 * Deleting a synced item, or clearing the scope, removes it from all the user's devices.
 
 ```swift
-let token = KeychainKey<String>(key: "token", scope: .iCloud(.own, namespace: "auth"))
+let token = KeychainStorage.Entry<String>(key: "token", scope: .iCloud(.own, namespace: "auth"))
 ```
 
 ### iCloud Key-Value Store
 
-You need this to use `UbiquitousKey`. Without it, the store keeps nothing, and nothing reports it.
+You need this to use `UbiquitousStorage`. Without it, the store keeps nothing, and nothing reports it.
 
 1. Add the **iCloud** capability to your app target and select **Key-value storage**. Xcode names the app's store `$(TeamIdentifierPrefix)$(CFBundleIdentifier)` in the `com.apple.developer.ubiquity-kvstore-identifier` entitlement.
 2. To share the store with your extensions or your other apps of the same team, add the capability to each of them and set the entitlement to the same identifier in every target. An extension that keeps its default identifier silently gets a store of its own.
 
 ```swift
-let theme = UbiquitousKey<String>(key: "theme")
+let theme = UbiquitousStorage.Entry<String>(key: "theme")
 // or in a namespace of its own
-let layout = UbiquitousKey<String>(key: "layout", scope: .iCloud(.own, namespace: "editor"))
+let layout = UbiquitousStorage.Entry<String>(key: "layout", scope: .iCloud(.own, namespace: "editor"))
 ```
 
 Every app that names the same store can read, change and delete its values.
@@ -186,7 +186,7 @@ Declare your app's own use of these APIs in your app's privacy manifest.
 ## Usage
 
 The framework is capable of working with any type that conforms to `Codable` and `Sendable`.
-The concept here is that first you need to declare the key. It contains every piece of information about how and where the value is stored.
+The concept here is that first you declare the value's entry. It contains every piece of information about how and where the value is stored.
 
 ***NOTE***! If your target uses `MainActor` as its default actor isolation, which new Xcode 26 projects do, the `Codable` conformances of your types belong to the main actor. `KeyValueStorage` encodes and decodes values off the main actor, so using such a type as a value fails to compile with `main actor-isolated conformance of 'User' to 'Decodable' cannot satisfy conformance requirement for a 'Sendable' type parameter`. Mark the type, or only its conformance, as `nonisolated`:
 
@@ -197,36 +197,36 @@ nonisolated struct User: Codable { ... }
 struct User: nonisolated Codable { ... }
 ```
 
-First, you need to declare the key. You can use one of the built-in types:
+First, declare the entry, with the `Entry` of one of the built-in storages:
 
-* `UserDefaultsKey`
-* `KeychainKey`
-* `InMemoryKey`
-* `FileKey`
-* `SQLiteKey`
-* `UbiquitousKey`
+* `UserDefaultsStorage.Entry`
+* `KeychainStorage.Entry`
+* `InMemoryStorage.Entry`
+* `FileStorage.Entry`
+* `SQLiteStorage.Entry`
+* `UbiquitousStorage.Entry`
 
-or you can define your own ones. [See how to do that](#custom-storages)
+or of your own storage, which has one too. [See how to define one](#custom-storages)
 
 ```swift
 import KeyValueStorage
 
-let key = UserDefaultsKey<String>(key: "myKey")
+let name = UserDefaultsStorage.Entry<String>(key: "name")
 // or alternatively provide the scope
-let otherKey = UserDefaultsKey<String>(key: "myKey", scope: .appGroup(id: "group.com.company.app", namespace: "settings"))
+let sharedName = UserDefaultsStorage.Entry<String>(key: "name", scope: .appGroup(id: "group.com.company.app", namespace: "settings"))
 ```
 
-As you can see, the key holds all the necessary information about the value:
-* The key name - `"myKey"`
-* The storage type - `UserDefaults`
+As you can see, the entry holds all the necessary information about the value:
+* The key - `"name"`
+* The storage type - `UserDefaultsStorage`
 * The value type - `String`
 * The scope (*optional*) - who sees the value and where it lives; `.default` when omitted
 
-A key's name and a scope's namespace can be any string, a literal or one made at runtime, and are compared by their exact bytes, so `"é"` and `"e\u{301}"` are two keys:
+A key and a scope's namespace can be any string, a literal or one made at runtime, and are compared by their exact bytes, so `"é"` and `"e\u{301}"` are two keys:
 
 ```swift
-let token = KeychainKey<String>(key: accountID)
-let draft = FileKey<String>(key: "draft", scope: .own(namespace: userID))
+let token = KeychainStorage.Entry<String>(key: accountID)
+let draft = FileStorage.Entry<String>(key: "draft", scope: .own(namespace: userID))
 ```
 
 Now all that is left is to instantiate the storage and use it:
@@ -235,23 +235,22 @@ Now all that is left is to instantiate the storage and use it:
 // Instantiate the storage
 let storage = UnifiedStorage()
 
-// Saves the item and associates it with the key, 
-// or overrides the value if there is already such an item
-try await storage.save("Alice", forKey: key)
+// Saves the entry's value, or replaces the one already there
+try await storage.save("Alice", to: name)
 
-// Returns the item associated with the key or returns nil if there is no such item
-let value = try await storage.fetch(forKey: key) 
+// Returns the entry's value, or nil if there is none
+let value = try await storage.fetch(name)
 
-// Deletes the item associated with the key or does nothing if there is no such item
-try await storage.delete(forKey: key)
+// Deletes the entry's value, or does nothing if there is none
+try await storage.delete(name)
 
-// Sets the item identified by the key to the provided value
-try await storage.set("Bob", forKey: key) // save
-try await storage.set(nil, forKey: key) // delete
+// Saves the value, or deletes the entry's value for nil
+try await storage.set("Bob", to: name) // save
+try await storage.set(nil, to: name) // delete
 
 // Reads the value and saves what the closure makes of it as one step, or deletes it for nil
-let launches = SQLiteKey<Int>(key: "launches")
-try await storage.update(forKey: launches) { ($0 ?? 0) + 1 }
+let launches = SQLiteStorage.Entry<Int>(key: "launches")
+try await storage.update(launches) { ($0 ?? 0) + 1 }
 
 // Removes every value of the storage's scope, `.default` when omitted,
 // including the values saved in previous launches
@@ -264,15 +263,15 @@ Clearing removes only the values the library saved in that scope. Other code's v
 
 ### Moving values between scopes
 
-A scope is where values live, so a key whose scope changes, such as its protection or namespace in an app update, finds none of the values saved before. Move each key's value into its new scope, for example at launch:
+A scope is where values live, so an entry whose scope changes, such as its protection or namespace in an app update, finds none of the values saved before. Move each entry's value into its new scope, for example at launch:
 
 ```swift
 // An app update that reads the token while the device is locked changes its protection from the default `.whenUnlocked`
-let token = KeychainKey<String>(key: "token", scope: .own(protection: .afterFirstUnlock, namespace: "auth"))
+let token = KeychainStorage.Entry<String>(key: "token", scope: .own(protection: .afterFirstUnlock, namespace: "auth"))
 try await storage.move(token, from: .own(protection: .whenUnlocked, namespace: "auth"))
 ```
 
-`move` saves the value in the key's scope, unless a value is there already, and only then removes it from the old scope, so the value is never lost; a failed or interrupted move is finished by calling it again. Calls through the same `UnifiedStorage` in either scope wait until the move is done. Other `UnifiedStorage` instances, storages used directly and other processes don't wait, so move values before they use the key.
+`move` saves the value in the entry's scope, unless a value is there already, and only then removes it from the old scope, so the value is never lost; a failed or interrupted move is finished by calling it again. Calls through the same `UnifiedStorage` in either scope wait until the move is done. Other `UnifiedStorage` instances, storages used directly and other processes don't wait, so move values before they use them.
 
 A move needs two places: between scopes that resolve to one, such as File or SQLite App Group ids that differ only in case on macOS, it takes the value for one already in the target, and deletes it.
 
@@ -299,14 +298,14 @@ for suffix in ["", "-wal", "-shm"] {
 ---
 ## Type Inference
 
-The framework leverages the full capabilities of ***Swift Generics***, so it can infer the types of values based on the key compile-time, eliminating the need for extra checks or type casting.
+The framework leverages the full capabilities of ***Swift Generics***, so it can infer the types of values based on the entry at compile time, eliminating the need for extra checks or type casting.
 
 ```swift
 struct MyType: Codable, Sendable { ... }
 
-let key = UserDefaultsKey<MyType>(key: "myKey")
-let value = try await storage.fetch(forKey: key) // inferred type for value is MyType
-try await storage.save(/* accepts only MyType*/, forKey: key)
+let entry = UserDefaultsStorage.Entry<MyType>(key: "myKey")
+let value = try await storage.fetch(entry) // inferred type for value is MyType
+try await storage.save(/* accepts only MyType*/, to: entry)
 ```
 
 ---
@@ -342,16 +341,17 @@ actor RemoteStorage: AsyncDataStorage {
 }
 ```
 
-Then define a key type for it, and use it like the built-in storages. `UnifiedStorage` shares its storages between tasks, so it takes only `Sendable` ones, `UnifiedStorable` for short, and the compiler enforces it (see [Thread Safety](#thread-safety)):
+Then use it like the built-in storages, through its `Entry`. `UnifiedStorage` shares its storages between tasks, so it takes only `Sendable` ones, `UnifiedStorable` for short, and the compiler enforces it (see [Thread Safety](#thread-safety)):
 * a synchronous or asynchronous storage that's `Sendable`, such as an actor or a storage behind a lock, as is;
 * any other synchronous storage wrapped in `IsolatedDataStorage`.
 
 ```swift
-typealias RemoteKey<Value: CodingValue> = UnifiedStorageKey<RemoteStorage, Value>
-typealias NewKey<Value: CodingValue> = UnifiedStorageKey<IsolatedDataStorage<NewStorage>, Value>
+let id = RemoteStorage.Entry<UUID>(key: "id")
+try await storage.save(UUID(), to: id)
 
-let key = RemoteKey<UUID>(key: "id")
-try await storage.save(UUID(), forKey: key)
+// A storage that isn't `Sendable`, through `IsolatedDataStorage`
+let draft = IsolatedDataStorage<NewStorage>.Entry<String>(key: "draft")
+try await storage.save("Hello", to: draft)
 
 // A synchronous storage needs no `await`, also through its coding storage
 let coding = CodingStorage(storage: try NewStorage(scope: .default))
@@ -408,37 +408,38 @@ A locator must give every scope and key names of their own, and decode exactly t
 ---
 ## Xcode autocompletion 
 
-To get the advantages of Xcode autocompletion, it is recommended to declare all your keys in the extension of the `UnifiedStorageKey`, like this:
+To get the advantages of Xcode autocompletion, it is recommended to declare all your entries in an extension of `UnifiedStorage.Entry`, like this:
 
 ```swift
-extension UnifiedStorageKey {
-    static var key1: UserDefaultsKey<Int> {
-        .init(key: "key1")
+extension UnifiedStorage.Entry {
+    static var launches: UserDefaultsStorage.Entry<Int> {
+        .init(key: "launches")
     }
     
-    static var key2: InMemoryKey<Date> {
-        .init(key: "key2", scope: .own(namespace: "session"))
+    static var lastSync: InMemoryStorage.Entry<Date> {
+        .init(key: "lastSync", scope: .own(namespace: "session"))
     }
     
-    static var key3: KeychainKey<Double> {
-        .init(key: "key3", scope: .iCloud(.appGroup(id: "ABCDE12345.com.company.shared"), protection: .afterFirstUnlock, namespace: "auth"))
+    static var balance: KeychainStorage.Entry<Double> {
+        .init(key: "balance", scope: .iCloud(.appGroup(id: "ABCDE12345.com.company.shared"), protection: .afterFirstUnlock, namespace: "auth"))
     }
     
-    static var key4: FileKey<UUID> {
-        .init(key: "key4", scope: .appGroup(id: "group.com.company.app", namespace: "cache"))
+    static var avatarID: FileStorage.Entry<UUID> {
+        .init(key: "avatarID", scope: .appGroup(id: "group.com.company.app", namespace: "cache"))
     }
 }
+
+let launches = try await storage.fetch(.launches)
 ```
 
-then Xcode will suggest all the keys specified in the extension when you put a dot:
-<img width="620" alt="Screenshot 2024-03-03 at 13 43 39" src="https://github.com/narek-sv/KeyValueStorage/assets/23353201/992873cd-1030-4c95-87cb-e3788c09e5cc">
+Xcode then suggests every entry of the extension when you put a dot, as in `fetch(.launches)` above.
 
 ---
 ## Keychain
 
 The scope's `protection` sets when its items can be read. By default `.whenUnlocked` is used: the items can be read only while the device is unlocked, one of the most restrictive options with good data protection.
 
-Use `.afterFirstUnlock` if your app needs the items while in the background. Note that it is less secure than `.whenUnlocked`. Changing an existing key's protection moves it to a new place, so move its items with `move(_:from:)` (see [Moving values between scopes](#moving-values-between-scopes)), or users lose them, such as a signed-in session.
+Use `.afterFirstUnlock` if your app needs the items while in the background. Note that it is less secure than `.whenUnlocked`. Changing an existing entry's protection moves it to a new place, so move its items with `move(_:from:)` (see [Moving values between scopes](#moving-values-between-scopes)), or users lose them, such as a signed-in session.
 
 Here are all the protection levels:
 * `afterFirstUnlock` (`kSecAttrAccessibleAfterFirstUnlock`)
@@ -450,17 +451,17 @@ Here are all the protection levels:
 The protection is part of the scope, so scopes that differ only in protection keep separate items.
 
 ```swift
-let key = KeychainKey<String>(key: "token", scope: .own(protection: .afterFirstUnlock, namespace: "auth"))
+let token = KeychainStorage.Entry<String>(key: "token", scope: .own(protection: .afterFirstUnlock, namespace: "auth"))
 ```
 
 To share items with your other apps and extensions, use an App Group they all belong to, or a Keychain Sharing group with your team ID prefix. Set up the capability first, see [Setup](#setup):
 
 ```swift
 // An App Group, written as in the App Groups capability
-let key = KeychainKey<String>(key: "token", scope: .appGroup(id: "group.com.company.app", namespace: "auth"))
+let token = KeychainStorage.Entry<String>(key: "token", scope: .appGroup(id: "group.com.company.app", namespace: "auth"))
 
 // A Keychain Sharing group, prefixed with your team ID
-let otherKey = KeychainKey<String>(key: "token", scope: .appGroup(id: "ABCDE12345.com.company.shared", namespace: "auth"))
+let sharedToken = KeychainStorage.Entry<String>(key: "token", scope: .appGroup(id: "ABCDE12345.com.company.shared", namespace: "auth"))
 ```
 
 To sync items through iCloud Keychain, use the `.iCloud` scope, see [iCloud Keychain](#icloud-keychain). To read items that other code saved under its own service, use a custom `KeychainLocator` (see [Custom Locators](#custom-locators)).
@@ -489,7 +490,7 @@ let storage = UnifiedStorage(factory: AppStorageFactory())
 
 A factory implements only what it changes: `dataStorage(for:)` creates each storage, `coder(for:)` picks its coder, and `codingStorage(for:)` puts them together. `DefaultUnifiedStorageFactory` uses every default, `RawDataCoder` included.
 
-***NOTE***! The value type comes from the key, it isn't saved with the value. Changing the value type of an existing key can make its stored value undecodable, or, for `Data` and `String`, be read without an error.
+***NOTE***! The value type comes from the entry, it isn't saved with the value. Changing the value type of an existing entry can make its stored value undecodable, or, for `Data` and `String`, be read without an error.
 
 ---
 ## Observation
@@ -509,12 +510,12 @@ struct AppStorageFactory: UnifiedStorageFactory {
 
 `ObservableStorage` is an `open` class, so a subclass can change how it saves, deletes or publishes, and call `super` for the rest.
 
-Publishers and streams start with the stored value, or `nil` if there's none, followed by every change. Each call to `publisher(forKey:)` or `stream(forKey:)` reads the value itself, so it's current even if it was changed in a way observers don't see; a change published after the read wins over it. Pass `includingCurrentValue: false` to get only the changes.
+Publishers and streams start with the stored value, or `nil` if there's none, followed by every change. Each call to `publisher(for:)` or `stream(for:)` reads the value itself, so it's current even if it was changed in a way observers don't see; a change published after the read wins over it. Pass `includingCurrentValue: false` to get only the changes.
 
 Combine style publishers:
 ```swift
-let key = InMemoryKey<String>(key: "key")
-guard let publisher = try await storage.publisher(forKey: key) else {
+let status = InMemoryStorage.Entry<String>(key: "status")
+guard let publisher = try await storage.publisher(for: status) else {
     // The factory doesn't make this storage observable
     return
 }
@@ -528,7 +529,7 @@ let subscription = publisher
 
 Concurrency style async streams:
 ```swift
-guard let stream = try await storage.stream(forKey: key) else {
+guard let stream = try await storage.stream(for: status) else {
     // The factory doesn't make this storage observable
     return
 }
@@ -541,7 +542,7 @@ for await value in stream {
 A stream keeps every change its consumer hasn't read yet, so a consumer slower than the changes falls behind and holds them all in memory. To get only the current value, keep only the latest:
 
 ```swift
-let latest = try await storage.stream(forKey: key, bufferingPolicy: .bufferingNewest(1))
+let latest = try await storage.stream(for: status, bufferingPolicy: .bufferingNewest(1))
 ```
 
 Without `UnifiedStorage`, wrap a coding storage in `ObservableStorage`, which saves, fetches and deletes like it and adds `publisher` and `stream`:
@@ -564,7 +565,7 @@ However, it's important to note that only the changes made through observable st
 
 `UnifiedStorage`, `CodingStorage` and `AsyncCodingStorage` throw `CodingStorageError<Storage>`:
 * `.storage(error)` - the storage failed; `error` is the storage's own `Error`, listed below.
-* `.coding(error)` - the coder couldn't encode or decode the value, for example a `DecodingError` after the type of an existing key changed.
+* `.coding(error)` - the coder couldn't encode or decode the value, for example a `DecodingError` after a value's type changed.
 
 Even with a correct setup, some errors can't be avoided and are worth handling:
 * `.protectedDataUnavailable` (`FileStorage`, `KeychainStorage`) - the value is protected while the device is locked; try again once it's unlocked. `FileStorage` also throws it when the sandbox denies access, which unlocking doesn't fix, so don't retry it forever.
@@ -600,21 +601,21 @@ let storage = try FileStorage(scope: .default)
 Task.detached { try storage.save(data, forKey: "avatar") }   // fine: FileStorage is Sendable
 ```
 
-**`UnifiedStorage` takes only `Sendable` storages.** It's safe to call from any thread, task or actor, and calls on storages of different types or scopes, such as a User Defaults fetch and a file write, never wait for each other. Only `move(_:from:)`, `update(forKey:_:)` and `close(storage:forScope:)` hold their scopes: calls in them wait until they're done, and they wait for those already running. For your own storages, thread safety is your responsibility: one that's `Sendable`, such as an actor or a class behind a lock, works as it is, and one that isn't doesn't compile as a key.
+**`UnifiedStorage` takes only `Sendable` storages.** It's safe to call from any thread, task or actor, and calls on storages of different types or scopes, such as a User Defaults fetch and a file write, never wait for each other. Only `move(_:from:)`, `update(_:_:)` and `close(storage:forScope:)` hold their scopes: calls in them wait until they're done, and they wait for those already running. For your own storages, thread safety is your responsibility: one that's `Sendable`, such as an actor or a class behind a lock, works as it is, and one that isn't doesn't compile in an entry.
 
-**Use one `UnifiedStorage` for your app.** An instance coordinates only its own calls: `move(_:from:)`, `update(forKey:_:)` and `close(storage:forScope:)` hold their scopes against calls through the same instance, not through another. Several instances never break a value, since every storage they create is thread-safe, but a call through one can see another's move or update half done. So:
+**Use one `UnifiedStorage` for your app.** An instance coordinates only its own calls: `move(_:from:)`, `update(_:_:)` and `close(storage:forScope:)` hold their scopes against calls through the same instance, not through another. Several instances never break a value, since every storage they create is thread-safe, but a call through one can see another's move or update half done. So:
 * Create one `UnifiedStorage` and share it, for example as a static property or through dependency injection.
 * If you need more than one, such as one with observation and one without, give each its own scopes.
-* Nothing coordinates with your app extensions, other processes, or storages you use directly: move values before they use the key, for example at launch, and don't count on `update` against their writes.
+* Nothing coordinates with your app extensions, other processes, or storages you use directly: move values before they use them, for example at launch, and don't count on `update` against their writes.
 * Don't call a `UnifiedStorage` from inside its own storages, coders, factory or `ObservableStorage` subclasses: such a call can wait for a move or an update that waits for the call it's made in, and never return.
 
-Even through one instance, a sequence of calls, such as a fetch followed by a save, isn't atomic: another task can save in between. Use `update(forKey:_:)` to read and write a value as one step.
+Even through one instance, a sequence of calls, such as a fetch followed by a save, isn't atomic: another task can save in between. Use `update(_:_:)` to read and write a value as one step.
 
 **`IsolatedDataStorage` makes the rest easy.** It's an actor around any synchronous storage, `Sendable` and an `AsyncDataStorage` itself, that runs the storage's operations one at a time:
 
 ```swift
 // Make your own storage usable in UnifiedStorage, however simple it is
-typealias NotesKey<Value: CodingValue> = UnifiedStorageKey<IsolatedDataStorage<NotesStorage>, Value>
+let draft = IsolatedDataStorage<NotesStorage>.Entry<String>(key: "draft")
 ```
 
 ***NOTE***! Calls on one `SQLiteStorage` wait for each other behind its lock, blocking their threads meanwhile. An app that drives one SQLite scope from many tasks at once can wrap it in `IsolatedDataStorage`, so that waiting callers suspend instead of blocking their threads; the call that runs still blocks one.

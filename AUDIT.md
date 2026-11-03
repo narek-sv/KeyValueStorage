@@ -180,7 +180,7 @@ To do: §2's Ubiquitous check on the oldest supported systems; only if one crash
 Once every other item is addressed (rule 1):
 - README: "Migrating from 2.x" points to the 3.0.0 CHANGELOG's migration code, which is written for the 3.x API.
 - DocC rewrite: the scopes table, the isolation guide, observation limits.
-- Date the CHANGELOG's 4.0.0 entry, re-measure the coverage badge (96% of lines on 2026-11-02), and tag 4.0.0.
+- Date the CHANGELOG's 4.0.0 section, re-measure the coverage badge (96% of lines on 2026-11-02), and tag 4.0.0.
 
 ---
 
@@ -208,7 +208,7 @@ Keychain's `errSecInteractionNotAllowed` is mapped to `.protectedDataUnavailable
 ## 3. Assessment
 
 The core is solid: scope isolation holds for all six storages, no data race was found, errors are typed end to end, and
-the suite (421 tests, no warnings) covers every compound condition.
+the suite (422 tests, no warnings) covers every compound condition.
 
 ### 3.1 Architecture — A−
 
@@ -282,7 +282,7 @@ launch arguments and registered defaults; storages of one type and scope with di
 - **Crashes:** none in the library; the Ubiquitous key limit still needs a check on the oldest systems (item 9). A `sink`
   written in `@MainActor` code crashes in the Swift 6 language mode when a save off the main actor calls it (confirmed
   with a probe); that's the documented delivery thread meeting the language's isolation checks, warned about in
-  `ObservableStorage`, `UnifiedStorage.publisher` and the README. Lock re-entry (the registry is never re-entered from an
+  `ObservableStorage`, `UnifiedStorage.publisher` and the README. Lock reentrancy (the registry is never re-entered from an
   observation's release), statement lifetimes and every error path check out.
 - **Hangs:** none in the library. Calling a `UnifiedStorage` from inside its own storages, coders, factory or
   `ObservableStorage` subclasses can wait forever for a move or update that waits for the outer call, and a subscriber

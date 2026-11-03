@@ -21,7 +21,7 @@ final class UserDefaultsBackingStoreMock: UserDefaultsBackingStore, @unchecked S
 }
 
 /// A suite in memory that holds any property-list value, as `UserDefaults` does; records every call.
-/// - Note: Its keys compare with Swift's `==`, so keys the real suite tells apart by bytes can share an entry.
+/// - Note: Its keys compare with Swift's `==`, so keys the real suite tells apart by bytes can share a value.
 /// Unchecked: used from one test at a time.
 final class UserDefaultsSuiteMock: UserDefaultsSuite, @unchecked Sendable {
     enum Call: Equatable {

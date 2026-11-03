@@ -7,11 +7,11 @@
 
 // MARK: - UnifiedStorage
 
-/// One entry point for every storage, keyed by typed keys.
+/// One API for every storage, which reaches each value through its `Entry`: its storage type, scope and key.
 ///
 /// - It's safe to call from any thread, task or actor, and calls on storages of different types or scopes never wait for
 ///   each other; only `move`, `update` and `close` hold their scopes, and calls in them wait until they're done. Only
-///   `Sendable` storages compile as keys (`UnifiedStorable`): the built-in storages are thread-safe, and
+///   `Sendable` storages compile in entries (`UnifiedStorable`): the built-in storages are thread-safe, and
 ///   `IsolatedDataStorage` makes any other one shareable.
 /// - It creates one storage per storage type and scope, on first use, through its factory, and keeps it until
 ///   `close(storage:forScope:)` lets go of it, or until it's deallocated: close a scope the app is done with, such as a
@@ -24,10 +24,6 @@
 /// - Warning: Don't call it from inside its own storages, coders, factory or `ObservableStorage` subclasses: such a call can
 ///   wait for a `move` or an `update` that waits for the call it's made in, and never return.
 public final class UnifiedStorage: @unchecked Sendable {
-
-    // MARK: Type Aliases
-
-    public typealias Key = UnifiedStorageKey
 
     // MARK: Properties
 
@@ -51,59 +47,59 @@ public final class UnifiedStorage: @unchecked Sendable {
 
     // MARK: Main Functionality
 
-    public func fetch<Storage: UnifiedStorable, Value: CodingValue>(forKey key: Key<Storage, Value>) async throws(CodingStorageError<Storage>) -> Value? {
-        try await withScope(key.scope) { (entry: Entry<Storage>) throws(CodingStorageError<Storage>) in
-            try await entry.fetch(forKey: .init(key: key.key))
+    public func fetch<Storage: UnifiedStorable, Value: CodingValue>(_ entry: Entry<Storage, Value>) async throws(CodingStorageError<Storage>) -> Value? {
+        try await withScope(entry.scope) { (storage: ScopeStorage<Storage>) throws(CodingStorageError<Storage>) in
+            try await storage.fetch(forKey: .init(key: entry.key))
         }
     }
 
-    public func save<Storage: UnifiedStorable, Value: CodingValue>(_ value: Value, forKey key: Key<Storage, Value>) async throws(CodingStorageError<Storage>) {
-        try await withScope(key.scope) { (entry: Entry<Storage>) throws(CodingStorageError<Storage>) in
-            try await entry.save(value, forKey: .init(key: key.key))
+    public func save<Storage: UnifiedStorable, Value: CodingValue>(_ value: Value, to entry: Entry<Storage, Value>) async throws(CodingStorageError<Storage>) {
+        try await withScope(entry.scope) { (storage: ScopeStorage<Storage>) throws(CodingStorageError<Storage>) in
+            try await storage.save(value, forKey: .init(key: entry.key))
         }
     }
 
-    public func set<Storage: UnifiedStorable, Value: CodingValue>(_ value: Value?, forKey key: Key<Storage, Value>) async throws(CodingStorageError<Storage>) {
+    public func set<Storage: UnifiedStorable, Value: CodingValue>(_ value: Value?, to entry: Entry<Storage, Value>) async throws(CodingStorageError<Storage>) {
         if let value {
-            try await save(value, forKey: key)
+            try await save(value, to: entry)
         } else {
-            try await delete(forKey: key)
+            try await delete(entry)
         }
     }
 
-    public func delete<Storage: UnifiedStorable, Value: CodingValue>(forKey key: Key<Storage, Value>) async throws(CodingStorageError<Storage>) {
-        try await withScope(key.scope) { (entry: Entry<Storage>) throws(CodingStorageError<Storage>) in
-            try await entry.delete(forKey: CodingStorageKey<Storage, Value>(key: key.key))
+    public func delete<Storage: UnifiedStorable, Value: CodingValue>(_ entry: Entry<Storage, Value>) async throws(CodingStorageError<Storage>) {
+        try await withScope(entry.scope) { (storage: ScopeStorage<Storage>) throws(CodingStorageError<Storage>) in
+            try await storage.delete(forKey: CodingStorageKey<Storage, Value>(key: entry.key))
         }
     }
 
     /// Removes every value of the storage type's scope.
-    public func clear<Storage: UnifiedStorable>(storage: Storage.Type, forScope scope: Storage.Scope = .default) async throws(CodingStorageError<Storage>) {
-        try await withScope(scope) { (entry: Entry<Storage>) throws(CodingStorageError<Storage>) in
-            try await entry.clear()
+    public func clear<Storage: UnifiedStorable>(storage _: Storage.Type, forScope scope: Storage.Scope = .default) async throws(CodingStorageError<Storage>) {
+        try await withScope(scope) { (storage: ScopeStorage<Storage>) throws(CodingStorageError<Storage>) in
+            try await storage.clear()
         }
     }
 
-    /// Moves the key's value from `scope` into the key's own scope, such as when a scope's protection or namespace changes:
-    /// saves it there, unless a value is there already, then removes it from `scope`.
+    /// Moves the value at the entry's key from `scope` into the entry's own scope, such as when a scope's protection or
+    /// namespace changes: saves it there, unless a value is there already, then removes it from `scope`.
     ///
     /// - Calls through this `UnifiedStorage` in either scope wait until the move is done, and the move waits for those
     ///   already running, so none of them sees it half done.
     /// - The value is never lost: it's removed from `scope` only once it's saved, and a failed or interrupted move is
     ///   finished by calling it again.
     /// - Warning: Other `UnifiedStorage` instances, storages used directly and other processes, such as app extensions,
-    ///   don't wait: move values before they use the key, for example at launch.
+    ///   don't wait: move values before they use them, for example at launch.
     /// - Warning: Scopes that resolve to one place, such as File or SQLite App Group ids that differ only in case on macOS, or
     ///   two scopes a custom locator maps to one place, aren't two copies: the move takes the value for one already in the
     ///   target, and deletes it.
-    public func move<Storage: UnifiedStorable, Value: CodingValue>(_ key: Key<Storage, Value>, from scope: Storage.Scope) async throws(CodingStorageError<Storage>) {
-        guard scope != key.scope else {
+    public func move<Storage: UnifiedStorable, Value: CodingValue>(_ entry: Entry<Storage, Value>, from scope: Storage.Scope) async throws(CodingStorageError<Storage>) {
+        guard scope != entry.scope else {
             return
         }
 
-        try await withHeldScopes([scope, key.scope]) { (entries: [Entry<Storage>]) throws(CodingStorageError<Storage>) in
-            let (source, target) = (entries[0], entries[1])
-            let codingKey = CodingStorageKey<Storage, Value>(key: key.key)
+        try await withHeldScopes([scope, entry.scope]) { (storages: [ScopeStorage<Storage>]) throws(CodingStorageError<Storage>) in
+            let (source, target) = (storages[0], storages[1])
+            let codingKey = CodingStorageKey<Storage, Value>(key: entry.key)
             guard let value = try await source.fetch(forKey: codingKey) else {
                 return
             }
@@ -117,8 +113,8 @@ public final class UnifiedStorage: @unchecked Sendable {
         }
     }
 
-    /// Saves what `transform` makes of the key's value, or deletes the value for `nil`, as one step, such as to count:
-    /// calls through this `UnifiedStorage` in the key's scope wait until it's done, and it waits for those already running.
+    /// Saves what `transform` makes of the entry's value, or deletes the value for `nil`, as one step, such as to count:
+    /// calls through this `UnifiedStorage` in the entry's scope wait until it's done, and it waits for those already running.
     /// - Parameter transform: Gets the stored value, or `nil` if there's none. It can't `await` or throw, so it never waits
     ///   for this storage; work out what can fail before updating.
     /// - Returns: The value `transform` made, now stored.
@@ -128,16 +124,16 @@ public final class UnifiedStorage: @unchecked Sendable {
     ///   a restart: don't update its values then, or the result can replace the value it couldn't read.
     @discardableResult
     public func update<Storage: UnifiedStorable, Value: CodingValue>(
-        forKey key: Key<Storage, Value>,
+        _ entry: Entry<Storage, Value>,
         _ transform: (Value?) -> Value?
     ) async throws(CodingStorageError<Storage>) -> Value? {
-        try await withHeldScopes([key.scope]) { (entries: [Entry<Storage>]) throws(CodingStorageError<Storage>) in
-            let codingKey = CodingStorageKey<Storage, Value>(key: key.key)
-            let updated = transform(try await entries[0].fetch(forKey: codingKey))
+        try await withHeldScopes([entry.scope]) { (storages: [ScopeStorage<Storage>]) throws(CodingStorageError<Storage>) in
+            let codingKey = CodingStorageKey<Storage, Value>(key: entry.key)
+            let updated = transform(try await storages[0].fetch(forKey: codingKey))
             if let updated {
-                try await entries[0].save(updated, forKey: codingKey)
+                try await storages[0].save(updated, forKey: codingKey)
             } else {
-                try await entries[0].delete(forKey: codingKey)
+                try await storages[0].delete(forKey: codingKey)
             }
 
             return updated
@@ -171,13 +167,13 @@ public final class UnifiedStorage: @unchecked Sendable {
     /// Changes are delivered on the thread that makes them; see `ObservableStorage`.
     /// - Parameter includingCurrentValue: Whether the publisher first emits the stored value, or `nil` if there's none: the
     ///   value this call reads, or a change published since.
-    /// - Returns: `nil` if the factory doesn't make the key's storage observable.
+    /// - Returns: `nil` if the factory doesn't make the entry's storage observable.
     /// - Warning: In the Swift 6 language mode, a `sink` written in `@MainActor` code crashes when a save made off the main
     ///   actor calls it: put `receive(on: DispatchQueue.main)` before it.
-    public func publisher<Storage: UnifiedStorable, Value: CodingValue>(forKey key: Key<Storage, Value>, includingCurrentValue: Bool = true)
+    public func publisher<Storage: UnifiedStorable, Value: CodingValue>(for entry: Entry<Storage, Value>, includingCurrentValue: Bool = true)
     async throws(CodingStorageError<Storage>) -> ValuePublisher<Value?>? {
-        try await withScope(key.scope) { (entry: Entry<Storage>) throws(CodingStorageError<Storage>) in
-            try await entry.observable?.publisher(forKey: .init(key: key.key), includingCurrentValue: includingCurrentValue)
+        try await withScope(entry.scope) { (storage: ScopeStorage<Storage>) throws(CodingStorageError<Storage>) in
+            try await storage.observable?.publisher(forKey: .init(key: entry.key), includingCurrentValue: includingCurrentValue)
         }
     }
 
@@ -186,15 +182,15 @@ public final class UnifiedStorage: @unchecked Sendable {
     ///   value this call reads, or a change published since.
     /// - Parameter bufferingPolicy: What the stream keeps of the values its consumer hasn't read yet: every one with
     ///   `.unbounded`, held in memory while the consumer falls behind, or only the latest with `.bufferingNewest(1)`.
-    /// - Returns: `nil` if the factory doesn't make the key's storage observable.
+    /// - Returns: `nil` if the factory doesn't make the entry's storage observable.
     public func stream<Storage: UnifiedStorable, Value: CodingValue>(
-        forKey key: Key<Storage, Value>,
+        for entry: Entry<Storage, Value>,
         includingCurrentValue: Bool = true,
         bufferingPolicy: AsyncStream<Value?>.Continuation.BufferingPolicy = .unbounded
     ) async throws(CodingStorageError<Storage>) -> AsyncStream<Value?>? {
-        try await withScope(key.scope) { (entry: Entry<Storage>) throws(CodingStorageError<Storage>) in
-            try await entry.observable?.stream(forKey: .init(key: key.key), includingCurrentValue: includingCurrentValue,
-                                               bufferingPolicy: bufferingPolicy)
+        try await withScope(entry.scope) { (storage: ScopeStorage<Storage>) throws(CodingStorageError<Storage>) in
+            try await storage.observable?.stream(forKey: .init(key: entry.key), includingCurrentValue: includingCurrentValue,
+                                                 bufferingPolicy: bufferingPolicy)
         }
     }
 
@@ -203,7 +199,7 @@ public final class UnifiedStorage: @unchecked Sendable {
     /// Runs `body` with the scope's storage, once no move, update or close holds or waits for the scope.
     private func withScope<Storage: UnifiedStorable, T>(
         _ scope: Storage.Scope,
-        _ body: (Entry<Storage>) async throws(CodingStorageError<Storage>) -> T
+        _ body: (ScopeStorage<Storage>) async throws(CodingStorageError<Storage>) -> T
     ) async throws(CodingStorageError<Storage>) -> T {
         let (slot, creation) = await enterCall(scope, of: Storage.self)
         defer {
@@ -211,13 +207,13 @@ public final class UnifiedStorage: @unchecked Sendable {
         }
 
         // Consumed, so the call lets go of the storage before it leaves the scope: a close let in next releases it at once
-        return try await body(entry(in: slot, from: consume creation))
+        return try await body(storage(in: slot, from: consume creation))
     }
 
     /// Runs `body` with the scopes' storages, all created first, once no call runs in any of them; calls in them wait meanwhile.
     private func withHeldScopes<Storage: UnifiedStorable, T>(
         _ scopes: [Storage.Scope],
-        _ body: ([Entry<Storage>]) async throws(CodingStorageError<Storage>) -> T
+        _ body: ([ScopeStorage<Storage>]) async throws(CodingStorageError<Storage>) -> T
     ) async throws(CodingStorageError<Storage>) -> T {
         let slots = lock.withLock {
             scopes.map { slot(for: $0, of: Storage.self) }
@@ -228,13 +224,13 @@ public final class UnifiedStorage: @unchecked Sendable {
             leaveHold(slots)
         }
 
-        var entries = [Entry<Storage>]()
+        var storages = [ScopeStorage<Storage>]()
         for (slot, scope) in zip(slots, scopes) {
             let creation = lock.withLock { self.creation(in: slot, for: scope) }
-            entries.append(try await entry(in: slot, from: creation))
+            storages.append(try await storage(in: slot, from: creation))
         }
 
-        return try await body(entries)
+        return try await body(storages)
     }
 
     /// Under the lock: the scope's slot, made on first use, in its storage type's table.
@@ -374,7 +370,7 @@ public final class UnifiedStorage: @unchecked Sendable {
             do throws(Storage.Error) {
                 let dataStorage: Storage = try await factory.dataStorage(for: scope)
                 let coding = await factory.codingStorage(for: dataStorage)
-                return .success(Entry(coding: coding, observable: await factory.observableStorage(for: coding)))
+                return .success(ScopeStorage(coding: coding, observable: await factory.observableStorage(for: coding)))
             } catch {
                 return .failure(error)
             }
@@ -385,13 +381,13 @@ public final class UnifiedStorage: @unchecked Sendable {
     }
 
     /// The created storage; a failure isn't kept, so a later call can retry.
-    private func entry<Storage: UnifiedStorable>(
+    private func storage<Storage: UnifiedStorable>(
         in slot: StorageSlot<Storage>,
         from creation: CreationTask<Storage>
-    ) async throws(CodingStorageError<Storage>) -> Entry<Storage> {
+    ) async throws(CodingStorageError<Storage>) -> ScopeStorage<Storage> {
         switch await creation.value {
-        case let .success(entry):
-            return entry
+        case let .success(storage):
+            return storage
         case let .failure(error):
             lock.withLock {
                 if slot.creation == creation {
@@ -404,7 +400,7 @@ public final class UnifiedStorage: @unchecked Sendable {
     }
 
     /// Creation can't fail with a typed error inside a `Task`, so the task returns its outcome instead.
-    private typealias CreationTask<Storage: UnifiedStorable> = Task<Result<Entry<Storage>, Storage.Error>, Never>
+    private typealias CreationTask<Storage: UnifiedStorable> = Task<Result<ScopeStorage<Storage>, Storage.Error>, Never>
 }
 
 // MARK: - UnifiedStorage + Slot
@@ -472,11 +468,11 @@ extension UnifiedStorage {
     }
 }
 
-// MARK: - UnifiedStorage + Entry
+// MARK: - UnifiedStorage + ScopeStorage
 
 extension UnifiedStorage {
     /// A storage type and scope's coding storage, and the factory's observable one; every call goes through the observable one when there is one.
-    private struct Entry<Storage: UnifiedStorable>: Sendable {
+    private struct ScopeStorage<Storage: UnifiedStorable>: Sendable {
         let coding: AsyncCodingStorage<Storage>
         let observable: ObservableStorage<Storage>?
 

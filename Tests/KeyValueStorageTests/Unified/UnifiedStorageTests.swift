@@ -10,7 +10,7 @@ import Foundation
 @testable import KeyValueStorage
 
 final class UnifiedStorageTests: XCTestCase {
-    private typealias Key<Value: CodingValue> = UnifiedStorageKey<AsyncDataStorageMock, Value>
+    private typealias Entry<Value: CodingValue> = AsyncDataStorageMock.Entry<Value>
 
     private let error = MockError(id: 1)
 
@@ -22,9 +22,9 @@ final class UnifiedStorageTests: XCTestCase {
         let storage = UnifiedStorage(factory: factory)
 
         // When: repeated operations, and the default scope given and omitted
-        try await storage.save(1, forKey: Key<Int>(key: "a"))
-        _ = try await storage.fetch(forKey: Key<Int>(key: "a", scope: .default))
-        try await storage.delete(forKey: Key<Int>(key: "b"))
+        try await storage.save(1, to: Entry<Int>(key: "a"))
+        _ = try await storage.fetch(Entry<Int>(key: "a", scope: .default))
+        try await storage.delete(Entry<Int>(key: "b"))
         try await storage.clear(storage: AsyncDataStorageMock.self)
 
         // Then
@@ -38,14 +38,14 @@ final class UnifiedStorageTests: XCTestCase {
         let storage = UnifiedStorage(factory: factory)
 
         // When
-        try await storage.save(1, forKey: Key<Int>(key: "key", scope: .init(name: "first")))
-        try await storage.save(2, forKey: Key<Int>(key: "key", scope: .init(name: "second")))
-        try await storage.save(3, forKey: UnifiedStorageKey<GatedStorage, Int>(key: "key"))
+        try await storage.save(1, to: Entry<Int>(key: "key", scope: .init(name: "first")))
+        try await storage.save(2, to: Entry<Int>(key: "key", scope: .init(name: "second")))
+        try await storage.save(3, to: GatedStorage.Entry<Int>(key: "key"))
 
         // Then
         XCTAssertEqual(factory.dataStorageCalls, 3)
-        let first = try await storage.fetch(forKey: Key<Int>(key: "key", scope: .init(name: "first")))
-        let second = try await storage.fetch(forKey: Key<Int>(key: "key", scope: .init(name: "second")))
+        let first = try await storage.fetch(Entry<Int>(key: "key", scope: .init(name: "first")))
+        let second = try await storage.fetch(Entry<Int>(key: "key", scope: .init(name: "second")))
         XCTAssertEqual(first, 1)
         XCTAssertEqual(second, 2)
     }
@@ -60,7 +60,7 @@ final class UnifiedStorageTests: XCTestCase {
             try await withThrowingTaskGroup(of: Void.self) { group in
                 for index in 0..<100 {
                     group.addTask {
-                        try await storage.save(index, forKey: Key<Int>(key: .init("key\(index)")))
+                        try await storage.save(index, to: Entry<Int>(key: .init("key\(index)")))
                     }
                 }
                 try await group.waitForAll()
@@ -78,14 +78,14 @@ final class UnifiedStorageTests: XCTestCase {
         // Given
         let factory = RecordingFactory(failures: 1)
         let storage = UnifiedStorage(factory: factory)
-        let key = Key<Int>(key: "key")
+        let entry = Entry<Int>(key: "key")
 
         // When - Then
         await assertThrows(CodingStorageError<AsyncDataStorageMock>.storage(RecordingFactory.creationError)) {
-            try await storage.save(1, forKey: key)
+            try await storage.save(1, to: entry)
         }
-        try await storage.save(1, forKey: key)
-        let value = try await storage.fetch(forKey: key)
+        try await storage.save(1, to: entry)
+        let value = try await storage.fetch(entry)
         XCTAssertEqual(value, 1)
         XCTAssertEqual(factory.dataStorageCalls, 2)
     }
@@ -95,12 +95,12 @@ final class UnifiedStorageTests: XCTestCase {
         let gate = Gate()
         let factory = GatedCreationFactory(gate: gate)
         let storage = UnifiedStorage(factory: factory)
-        let key = Key<Int>(key: "key", scope: .init(name: "cancelled-\(UUID().uuidString)"))
-        let cancelled = Task { try await storage.save(1, forKey: key) }
+        let entry = Entry<Int>(key: "key", scope: .init(name: "cancelled-\(UUID().uuidString)"))
+        let cancelled = Task { try await storage.save(1, to: entry) }
         try await waitUntil { gate.isWaiting }
-        let other = Task { try await storage.save(2, forKey: key) }
+        let other = Task { try await storage.save(2, to: entry) }
         // Both calls are in the scope, so the second got the creation the first started
-        try await waitUntil { storage.state(of: key.scope, in: AsyncDataStorageMock.self).runningCalls == 2 }
+        try await waitUntil { storage.state(of: entry.scope, in: AsyncDataStorageMock.self).runningCalls == 2 }
 
         // When
         cancelled.cancel()
@@ -110,7 +110,7 @@ final class UnifiedStorageTests: XCTestCase {
         try await waitForValue(of: cancelled)
         try await waitForValue(of: other)
         XCTAssertEqual(factory.creations, 1)
-        let value = try await storage.fetch(forKey: key)
+        let value = try await storage.fetch(entry)
         XCTAssertNotNil(value)
     }
 
@@ -118,7 +118,7 @@ final class UnifiedStorageTests: XCTestCase {
         // Given
         let factory = RecordingFactory(failures: 1)
         let storage = UnifiedStorage(factory: factory)
-        let key = Key<Int>(key: "key", scope: .init(name: "shared-failure"))
+        let entry = Entry<Int>(key: "key", scope: .init(name: "shared-failure"))
 
         // When: every waiting call gets the one failure, and each removes the failed creation only once
         let saves = Task {
@@ -126,7 +126,7 @@ final class UnifiedStorageTests: XCTestCase {
                 for _ in 0..<50 {
                     group.addTask {
                         do {
-                            try await storage.save(1, forKey: key)
+                            try await storage.save(1, to: entry)
                             return false
                         } catch {
                             return true
@@ -139,10 +139,10 @@ final class UnifiedStorageTests: XCTestCase {
         }
 
         let failures = try await waitForValue(of: saves)
-        try await storage.save(2, forKey: key)
+        try await storage.save(2, to: entry)
 
         // Then: the calls that waited for the failed creation failed, and the retry created the storage once more
-        let value = try await storage.fetch(forKey: key)
+        let value = try await storage.fetch(entry)
         XCTAssertGreaterThan(failures, 0)
         XCTAssertEqual(value, 2)
         XCTAssertEqual(factory.dataStorageCalls, 2)
@@ -150,48 +150,48 @@ final class UnifiedStorageTests: XCTestCase {
 
     // MARK: Operations
 
-    func testEachOperationReachesTheKeysStorage() async throws {
+    func testEachOperationReachesTheEntrysStorage() async throws {
         // Given
         let storage = UnifiedStorage(factory: RecordingFactory())
-        let key = Key<String>(key: "key", scope: .init(name: "operations"))
+        let entry = Entry<String>(key: "key", scope: .init(name: "operations"))
 
         // When - Then
-        let initial = try await storage.fetch(forKey: key)
+        let initial = try await storage.fetch(entry)
         XCTAssertNil(initial)
-        try await storage.save("saved", forKey: key)
-        let saved = try await storage.fetch(forKey: key)
+        try await storage.save("saved", to: entry)
+        let saved = try await storage.fetch(entry)
         XCTAssertEqual(saved, "saved")
-        try await storage.set("set", forKey: key)
-        let set = try await storage.fetch(forKey: key)
+        try await storage.set("set", to: entry)
+        let set = try await storage.fetch(entry)
         XCTAssertEqual(set, "set")
-        try await storage.set(nil, forKey: key)
-        let unset = try await storage.fetch(forKey: key)
+        try await storage.set(nil, to: entry)
+        let unset = try await storage.fetch(entry)
         XCTAssertNil(unset)
-        try await storage.save("saved again", forKey: key)
-        try await storage.delete(forKey: key)
-        let deleted = try await storage.fetch(forKey: key)
+        try await storage.save("saved again", to: entry)
+        try await storage.delete(entry)
+        let deleted = try await storage.fetch(entry)
         XCTAssertNil(deleted)
     }
 
     func testClearEmptiesOnlyTheGivenStorageTypeAndScope() async throws {
         // Given: two scopes of a real storage, and another storage type with the same key
         let storage = UnifiedStorage()
-        let first = InMemoryKey<String>(key: "key", scope: .own(namespace: "unified-first"))
-        let second = InMemoryKey<String>(key: "key", scope: .own(namespace: "unified-second"))
-        let other = Key<String>(key: "key", scope: .init(name: "unified-first"))
-        try await storage.save("first", forKey: first)
-        try await storage.save("first, other key", forKey: InMemoryKey<String>(key: "other", scope: first.scope))
-        try await storage.save("second", forKey: second)
-        try await storage.save("other type", forKey: other)
+        let first = InMemoryStorage.Entry<String>(key: "key", scope: .own(namespace: "unified-first"))
+        let second = InMemoryStorage.Entry<String>(key: "key", scope: .own(namespace: "unified-second"))
+        let other = Entry<String>(key: "key", scope: .init(name: "unified-first"))
+        try await storage.save("first", to: first)
+        try await storage.save("first, other key", to: InMemoryStorage.Entry<String>(key: "other", scope: first.scope))
+        try await storage.save("second", to: second)
+        try await storage.save("other type", to: other)
 
         // When
         try await storage.clear(storage: InMemoryStorage.self, forScope: first.scope)
 
         // Then
-        let cleared = try await storage.fetch(forKey: first)
-        let clearedOther = try await storage.fetch(forKey: InMemoryKey<String>(key: "other", scope: first.scope))
-        let kept = try await storage.fetch(forKey: second)
-        let keptType = try await storage.fetch(forKey: other)
+        let cleared = try await storage.fetch(first)
+        let clearedOther = try await storage.fetch(InMemoryStorage.Entry<String>(key: "other", scope: first.scope))
+        let kept = try await storage.fetch(second)
+        let keptType = try await storage.fetch(other)
         XCTAssertNil(cleared)
         XCTAssertNil(clearedOther)
         XCTAssertEqual(kept, "second")
@@ -201,15 +201,15 @@ final class UnifiedStorageTests: XCTestCase {
 
     func testInstancesShareTheStoragesValues() async throws {
         // Given
-        let key = InMemoryKey<Int>(key: "key", scope: .own(namespace: "unified-instances"))
-        try await UnifiedStorage().save(1, forKey: key)
+        let entry = InMemoryStorage.Entry<Int>(key: "key", scope: .own(namespace: "unified-instances"))
+        try await UnifiedStorage().save(1, to: entry)
 
         // When: a fresh instance clears what another one saved
-        let fetched = try await UnifiedStorage().fetch(forKey: key)
-        try await UnifiedStorage().clear(storage: InMemoryStorage.self, forScope: key.scope)
+        let fetched = try await UnifiedStorage().fetch(entry)
+        try await UnifiedStorage().clear(storage: InMemoryStorage.self, forScope: entry.scope)
 
         // Then
-        let cleared = try await UnifiedStorage().fetch(forKey: key)
+        let cleared = try await UnifiedStorage().fetch(entry)
         XCTAssertEqual(fetched, 1)
         XCTAssertNil(cleared)
     }
@@ -217,15 +217,15 @@ final class UnifiedStorageTests: XCTestCase {
     func testTheDefaultScopeIsClearedWhenNoneIsGiven() async throws {
         // Given
         let storage = UnifiedStorage(factory: RecordingFactory())
-        try await storage.save(1, forKey: Key<Int>(key: "key"))
-        try await storage.save(2, forKey: Key<Int>(key: "key", scope: .init(name: "kept")))
+        try await storage.save(1, to: Entry<Int>(key: "key"))
+        try await storage.save(2, to: Entry<Int>(key: "key", scope: .init(name: "kept")))
 
         // When
         try await storage.clear(storage: AsyncDataStorageMock.self)
 
         // Then
-        let cleared = try await storage.fetch(forKey: Key<Int>(key: "key", scope: .default))
-        let kept = try await storage.fetch(forKey: Key<Int>(key: "key", scope: .init(name: "kept")))
+        let cleared = try await storage.fetch(Entry<Int>(key: "key", scope: .default))
+        let kept = try await storage.fetch(Entry<Int>(key: "key", scope: .init(name: "kept")))
         XCTAssertNil(cleared)
         XCTAssertEqual(kept, 2)
     }
@@ -237,14 +237,14 @@ final class UnifiedStorageTests: XCTestCase {
         let storage = UnifiedStorage()
         GatedStorage.gate.reset()
         let waiting = Task {
-            try await storage.fetch(forKey: UnifiedStorageKey<GatedStorage, Int>(key: "key"))
+            try await storage.fetch(GatedStorage.Entry<Int>(key: "key"))
         }
 
         try await waitUntil { GatedStorage.gate.isWaiting }
 
         // When: another storage, while the first one waits
-        try await storage.save(1, forKey: Key<Int>(key: "key"))
-        let other = try await storage.fetch(forKey: Key<Int>(key: "key"))
+        try await storage.save(1, to: Entry<Int>(key: "key"))
+        let other = try await storage.fetch(Entry<Int>(key: "key"))
 
         // Then
         XCTAssertEqual(other, 1)
@@ -259,10 +259,10 @@ final class UnifiedStorageTests: XCTestCase {
     func testStorageAndCoderFailuresKeepTheirCase() async throws {
         // Given
         let storage = UnifiedStorage(factory: RecordingFactory(coder: DataCoderMock(encodeError: error)))
-        let key = Key<Int>(key: "key", scope: .init(name: "errors"))
+        let entry = Entry<Int>(key: "key", scope: .init(name: "errors"))
 
         // When - Then
-        await assertThrows(CodingStorageError<AsyncDataStorageMock>.coding(error)) { try await storage.save(1, forKey: key) }
+        await assertThrows(CodingStorageError<AsyncDataStorageMock>.coding(error)) { try await storage.save(1, to: entry) }
         await assertThrows(CodingStorageError<GatedStorage>.storage(GatedStorage.failure)) {
             try await storage.clear(storage: GatedStorage.self)
         }
@@ -273,13 +273,13 @@ final class UnifiedStorageTests: XCTestCase {
     func testAFactoryCanObserveThroughItsOwnSubclass() async throws {
         // Given: a factory that returns a subclass, which counts the saves it publishes
         let storage = UnifiedStorage(factory: CountingObservableFactory())
-        let key = Key<Int>(key: "key", scope: .init(name: "subclass"))
+        let entry = Entry<Int>(key: "key", scope: .init(name: "subclass"))
         let values = Values<Int?>()
-        let subscription = try await storage.publisher(forKey: key, includingCurrentValue: false)?.sink { values.append($0) }
+        let subscription = try await storage.publisher(for: entry, includingCurrentValue: false)?.sink { values.append($0) }
 
         // When
-        try await storage.save(1, forKey: key)
-        try await storage.save(2, forKey: key)
+        try await storage.save(1, to: entry)
+        try await storage.save(2, to: entry)
 
         // Then
         XCTAssertEqual(values.all, [1, 2])
@@ -289,12 +289,12 @@ final class UnifiedStorageTests: XCTestCase {
 
     func testOnlyAnObservableStoragePublishes() async throws {
         // Given
-        let key = Key<Int>(key: "key", scope: .init(name: "observation"))
+        let entry = Entry<Int>(key: "key", scope: .init(name: "observation"))
 
         // When
-        let unobserved = try await UnifiedStorage().publisher(forKey: key)
-        let observed = try await UnifiedStorage(factory: ObservableUnifiedStorageFactory()).publisher(forKey: key)
-        let streamed = try await UnifiedStorage(factory: ObservableUnifiedStorageFactory()).stream(forKey: key)
+        let unobserved = try await UnifiedStorage().publisher(for: entry)
+        let observed = try await UnifiedStorage(factory: ObservableUnifiedStorageFactory()).publisher(for: entry)
+        let streamed = try await UnifiedStorage(factory: ObservableUnifiedStorageFactory()).stream(for: entry)
 
         // Then
         XCTAssertNil(unobserved)
@@ -305,13 +305,13 @@ final class UnifiedStorageTests: XCTestCase {
     func testAStreamGetsTheBufferingPolicyItsCallerGives() async throws {
         // Given
         let storage = UnifiedStorage(observable: true)
-        let key = Key<Int>(key: "key", scope: .init(name: "buffering-\(UUID().uuidString)"))
-        let made = try await storage.stream(forKey: key, includingCurrentValue: false, bufferingPolicy: .bufferingNewest(1))
+        let entry = Entry<Int>(key: "key", scope: .init(name: "buffering-\(UUID().uuidString)"))
+        let made = try await storage.stream(for: entry, includingCurrentValue: false, bufferingPolicy: .bufferingNewest(1))
         let stream = try XCTUnwrap(made)
 
         // When: changes before the consumer reads any
-        try await storage.save(1, forKey: key)
-        try await storage.save(2, forKey: key)
+        try await storage.save(1, to: entry)
+        try await storage.save(2, to: entry)
 
         // Then: only the latest was kept
         var iterator = stream.makeAsyncIterator()
@@ -321,16 +321,16 @@ final class UnifiedStorageTests: XCTestCase {
 
     func testTheObservableFlagChoosesWhetherChangesArePublished() async throws {
         // Given
-        let key = InMemoryKey<Int>(key: "key", scope: .own(namespace: "unified-flag"))
+        let entry = InMemoryStorage.Entry<Int>(key: "key", scope: .own(namespace: "unified-flag"))
         let values = Values<Int?>()
 
         // When
-        let unobserved = try await UnifiedStorage(observable: false).publisher(forKey: key)
-        let unstreamed = try await UnifiedStorage().stream(forKey: key)
+        let unobserved = try await UnifiedStorage(observable: false).publisher(for: entry)
+        let unstreamed = try await UnifiedStorage().stream(for: entry)
         let storage = UnifiedStorage(observable: true)
-        let subscription = try await storage.publisher(forKey: key)?.sink { values.append($0) }
-        try await storage.save(1, forKey: key)
-        try await storage.clear(storage: InMemoryStorage.self, forScope: key.scope)
+        let subscription = try await storage.publisher(for: entry)?.sink { values.append($0) }
+        try await storage.save(1, to: entry)
+        try await storage.clear(storage: InMemoryStorage.self, forScope: entry.scope)
 
         // Then
         XCTAssertNil(unobserved)
@@ -342,16 +342,16 @@ final class UnifiedStorageTests: XCTestCase {
     func testAnObservableStoragePublishesItsWrites() async throws {
         // Given
         let storage = UnifiedStorage(factory: RecordingFactory(observable: true))
-        let key = Key<Int>(key: "key", scope: .init(name: "published"))
+        let entry = Entry<Int>(key: "key", scope: .init(name: "published"))
         let values = Values<Int?>()
-        let subscription = try await storage.publisher(forKey: key, includingCurrentValue: false)?.sink { values.append($0) }
+        let subscription = try await storage.publisher(for: entry, includingCurrentValue: false)?.sink { values.append($0) }
 
         // When
-        try await storage.save(1, forKey: key)
-        try await storage.set(2, forKey: key)
-        try await storage.delete(forKey: key)
-        try await storage.save(3, forKey: key)
-        try await storage.clear(storage: AsyncDataStorageMock.self, forScope: key.scope)
+        try await storage.save(1, to: entry)
+        try await storage.set(2, to: entry)
+        try await storage.delete(entry)
+        try await storage.save(3, to: entry)
+        try await storage.clear(storage: AsyncDataStorageMock.self, forScope: entry.scope)
 
         // Then
         XCTAssertEqual(values.all, [1, 2, nil, 3, nil])

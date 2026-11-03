@@ -23,7 +23,7 @@ public extension SQLiteStorage {
 
     /// Applies to the database and its `-wal` and `-shm` files.
     /// - Note: Part of the place: scopes that differ only in protection never share values.
-    /// - Warning: So a key whose protection changes, such as in an app update, finds none of the values saved with the old
+    /// - Warning: So an entry whose protection changes, such as in an app update, finds none of the values saved with the old
     ///   one: move them with `UnifiedStorage.move(_:from:)`.
     enum Protection: Hashable, Sendable {
         /// No explicit class: the files get their folder's class or the app's default.

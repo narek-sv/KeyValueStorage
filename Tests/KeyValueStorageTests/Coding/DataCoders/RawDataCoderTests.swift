@@ -107,8 +107,8 @@ final class RawDataCoderTests: XCTestCase {
         let storage = UnifiedStorage()
         
         // When
-        let token = try await storage.fetch(forKey: UserDefaultsKey<Data>(key: "token", scope: scope))
-        let name = try await storage.fetch(forKey: UserDefaultsKey<String>(key: "name", scope: scope))
+        let token = try await storage.fetch(UserDefaultsStorage.Entry<Data>(key: "token", scope: scope))
+        let name = try await storage.fetch(UserDefaultsStorage.Entry<String>(key: "name", scope: scope))
         
         // Then
         XCTAssertEqual(token, Data([0x01, 0x02, 0x03]))

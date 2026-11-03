@@ -30,7 +30,7 @@ public protocol UbiquitousLocator: Sendable {
 @available(watchOS 9.0, *)
 open class DefaultUbiquitousLocator: UbiquitousLocator, @unchecked Sendable {
     private static let maximumKeyLength = 128
-    /// Ends the namespace, and marks the library's entries in a store other code also writes to.
+    /// Ends the namespace, and marks the library's stored keys in a store other code also writes to.
     /// The escaped namespace has no `/`, so the first `/` always ends it.
     private static let namespaceMark = "!/"
     /// NUL, which the system drops when it writes its property list, so its values are lost on relaunch,
