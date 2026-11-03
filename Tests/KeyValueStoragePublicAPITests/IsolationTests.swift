@@ -77,7 +77,7 @@ private func exerciseAPI(context: String, isolation: isolated (any Actor)? = #is
     XCTAssertEqual(isolated.scope, .own(namespace: .init("\(id)-isolated")), "IsolatedDataStorage scope from \(context)")
 
     // Unified storage
-    let storage = UnifiedStorage(factory: ObservableUnifiedStorageFactory())
+    let storage = UnifiedStorage(factory: .default.observable())
     let entry = InMemoryStorage.Entry<Int>(key: "unified", scope: .own(namespace: .init(id)))
     let published = Values<Int?>()
     let subscription = try await storage.publisher(for: entry)?.sink { published.append($0) }

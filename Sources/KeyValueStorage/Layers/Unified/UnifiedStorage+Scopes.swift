@@ -14,7 +14,7 @@ extension UnifiedStorage {
 
         // MARK: Properties
 
-        private let factory: any UnifiedStorageFactory
+        private let factory: UnifiedStorage.Factory
         /// Guards the slots and the waiting holds; held only to look up or change them, never across an `await`.
         private let lock = Lock()
         /// Each storage type's `SlotTable`, made on first use and kept: typed tables hash scopes without boxing them.
@@ -24,7 +24,7 @@ extension UnifiedStorage {
 
         // MARK: Initializers
 
-        init(factory: any UnifiedStorageFactory) {
+        init(factory: UnifiedStorage.Factory) {
             self.factory = factory
         }
 
@@ -251,9 +251,9 @@ extension UnifiedStorage {
             let factory = factory
             let creation = CreationTask<Storage> {
                 do throws(Storage.Error) {
-                    let dataStorage: Storage = try await factory.dataStorage(for: scope)
-                    let coding = await factory.codingStorage(for: dataStorage)
-                    return .success(ScopeStorage(coding: coding, observable: await factory.observableStorage(for: coding)))
+                    let dataStorage: Storage = try await factory.makeDataStorage(for: scope)
+                    let coding = await factory.makeCodingStorage(for: dataStorage, coder: factory.makeCoder(for: dataStorage))
+                    return .success(ScopeStorage(coding: coding, observable: await factory.makeObservableStorage(for: coding)))
                 } catch {
                     return .failure(error)
                 }

@@ -154,12 +154,12 @@ final class UnifiedStorageUpdateTests: XCTestCase {
 
     func testAScopeWhoseStorageCantBeCreatedNeverTransforms() async throws {
         // Given
-        let storage = UnifiedStorage(factory: UnavailableFactory())
+        let storage = UnifiedStorage(factory: .default.modifier(UnavailableScope()))
         let read = Read()
 
         // When - Then
-        await assertThrows(CodingStorageError<PlaceStorage>.storage(UnavailableFactory.error)) {
-            try await storage.update(Entry(key: "key", scope: MockScope(name: UnavailableFactory.scopeName))) { value in
+        await assertThrows(CodingStorageError<PlaceStorage>.storage(UnavailableScope.error)) {
+            try await storage.update(Entry(key: "key", scope: MockScope(name: UnavailableScope.name))) { value in
                 read.called = true
                 return value
             }

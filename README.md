@@ -316,6 +316,81 @@ try await storage.save(/* accepts only MyType*/, to: entry)
 ```
 
 ---
+## Factory
+
+`UnifiedStorage` creates each storage type and scope's storage through its factory, on first use, and again after a [close](#closing-storages) or a failed creation. The default factory, `.default`, does it in four steps:
+1. Creates the storage with its `init(scope:)`.
+2. Picks its coder, `RawDataCoder`.
+3. Wraps both in an `AsyncCodingStorage`.
+4. Doesn't observe it.
+
+To change a step, add a modifier, for every storage type or for one. Each modifier returns a new factory, so they chain:
+
+```swift
+let storage = UnifiedStorage(factory: .default
+    .observable()                                           // Every storage publishes its changes,
+    .observable(false, for: KeychainStorage.self)           // but the keychain's
+    .coder(JSONDataCoder())                                 // Every storage codes with JSON,
+    .coder(PropertyListDataCoder(), for: FileStorage.self)  // but files with property lists
+    .dataStorage(for: FileStorage.self) { scope throws(FileStorage.Error) in
+        try FileStorage(scope: scope, locator: FolderFileLocator(folder: folder)) // in a folder of yours
+    })
+```
+
+| Step | For every storage type | For one storage type |
+| --- | --- | --- |
+| Create the storage | | `dataStorage(for:_:)`, such as with a [custom locator](#custom-locators) or [more than its scope](#custom-storages) |
+| Pick its coder | `coder(_:)` | `coder(_:for:)` |
+| Wrap it for coding | | `codingStorage(for:_:)`, such as for [your own subclass](#coding) |
+| Observe it | `observable(_:)` | `observable(_:for:)`, or `observableStorage(for:_:)` for [your own subclass](#observation) |
+
+**The last modifier decides.** Each one gets what the modifiers before it make, and returns it as is, changed or replaced. So add the modifiers for every storage type first, and the ones for a type after them: with `.coder(PropertyListDataCoder(), for: FileStorage.self).coder(JSONDataCoder())`, files are coded with JSON too.
+
+**A modifier for a type changes only that exact type.** `IsolatedDataStorage<FileStorage>` has the same scopes as `FileStorage`, but it's a type of its own, which `FileStorage`'s modifiers don't change.
+
+`UnifiedStorage()` uses `.default`, and `UnifiedStorage(observable: true)` uses `.default.observable()`.
+
+***NOTE***! Swift doesn't infer a closure's typed `throws`: spell out the storage's error type in `dataStorage(for:_:)`'s closure, as in `{ scope throws(FileStorage.Error) in … }`, even if the closure can't fail.
+
+### Your own modifiers
+
+For a change to every storage type that the modifiers above don't make, such as logging each creation or observing every storage through your own `ObservableStorage` subclass, write a modifier of your own: conform to `UnifiedStorage.Factory.Modifier` and add it with `modifier(_:)`. It has a method for each step, generic over the storage type:
+* `dataStorage(for:previous:)` creates the storage.
+* `coder(for:previous:)` picks its coder.
+* `codingStorage(for:coder:previous:)` wraps both for coding.
+* `observableStorage(for:previous:)` observes it, or returns `nil` for none.
+
+Implement only the steps you change. Each gets `previous`, what the modifiers before it make, and returns it as is, changed or replaced; the steps you don't implement return it:
+
+```swift
+/// Logs each storage it creates
+struct LogCreations: UnifiedStorage.Factory.Modifier {
+    func dataStorage<Storage: UnifiedStorable>(
+        for scope: Storage.Scope,
+        previous: () async throws(Storage.Error) -> Storage
+    ) async throws(Storage.Error) -> Storage {
+        let storage = try await previous()
+        print("Created \(Storage.self) for \(scope)")
+        return storage
+    }
+}
+
+/// Observes every storage through `LoggingObservableStorage`, see Observation
+struct LogChanges: UnifiedStorage.Factory.Modifier {
+    func observableStorage<Storage: UnifiedStorable>(
+        for coding: AsyncCodingStorage<Storage>,
+        previous: () async -> ObservableStorage<Storage>?
+    ) async -> ObservableStorage<Storage>? {
+        LoggingObservableStorage(coding)
+    }
+}
+
+let storage = UnifiedStorage(factory: .default.modifier(LogCreations()).modifier(LogChanges()))
+```
+
+Let Xcode complete each method: one that differs in any way, even in an argument label, compiles but is never called. Each call to `previous` makes anew what the modifiers before it make, such as another database connection, so call it at most once.
+
+---
 ## Custom Storages
 
 You can define your own storage, synchronous or asynchronous, and it works with `UnifiedStorage` and the coding storages out of the box:
@@ -365,11 +440,19 @@ let coding = CodingStorage(storage: try NewStorage(scope: .default))
 try coding.save(UUID(), forKey: CodingStorageKey<NewStorage, UUID>(key: "id"))
 ```
 
+`UnifiedStorage` creates each storage with its `init(scope:)`. To give yours more, such as a token, create it in the factory's `dataStorage(for:_:)` (see [Factory](#factory)); its error reaches the calls as your storage's own:
+
+```swift
+let storage = UnifiedStorage(factory: .default.dataStorage(for: RemoteStorage.self) { scope throws(URLError) in
+    try await RemoteStorage(scope: scope, token: session.token)
+})
+```
+
 ***NOTE***! In `async` generic code, calls on a `DataStorage` resolve to the `async` requirements and need `await`; synchronous generic code calls the synchronous ones. Outside `UnifiedStorage`, your storage's thread safety is up to you.
 
 ### Custom Locators
 
-Each built-in storage takes its names from a locator: the folder and file names, the suite and its keys, the keychain service and account, or the database's file. To change some of them, such as to keep a test's files in a folder of its own, subclass the default locator and pass it to the storage. For `UnifiedStorage`, a factory creates that storage type with your locator, and every other one as usual:
+Each built-in storage takes its names from a locator: the folder and file names, the suite and its keys, the keychain service and account, or the database's file. To change some of them, such as to keep a test's files in a folder of its own, subclass the default locator and pass it to the storage. For `UnifiedStorage`, create that storage type with your locator in the factory's `dataStorage(for:_:)` (see [Factory](#factory)); every other storage type is created as before:
 
 ```swift
 /// Keeps every file scope in a folder of your choice, such as a test's own
@@ -390,25 +473,12 @@ final class FolderFileLocator: DefaultFileLocator, @unchecked Sendable {
     }
 }
 
-struct TestStorageFactory: UnifiedStorageFactory {
-    let folder: URL
-
-    func dataStorage<Storage: UnifiedStorable>(for scope: Storage.Scope) async throws(Storage.Error) -> Storage {
-        // The type itself: `IsolatedDataStorage<FileStorage>` has the same scopes
-        guard Storage.self == FileStorage.self, let scope = scope as? FileStorage.Scope else {
-            return try await Storage(scope: scope)
-        }
-
-        do {
-            return try FileStorage(scope: scope, backingStore: DefaultFileBackingStoreWrapper(), locator: FolderFileLocator(folder: folder)) as! Storage
-        } catch {
-            throw error as! Storage.Error // `FileStorage.Error`, since `Storage` is `FileStorage`
-        }
-    }
-}
-
-let storage = UnifiedStorage(factory: TestStorageFactory(folder: testFolder))
+let storage = UnifiedStorage(factory: .default.dataStorage(for: FileStorage.self) { scope throws(FileStorage.Error) in
+    try FileStorage(scope: scope, locator: FolderFileLocator(folder: testFolder))
+})
 ```
+
+Each storage's `init(scope:backingStore:locator:)` defaults both, so pass only the one you change. A custom backing store, which replaces the system calls, such as in tests, goes in the same way, as `backingStore:`.
 
 A locator must give every scope and key names of their own, and decode exactly the names it encodes, or values get shared, or `clear()` leaves them behind; each locator protocol lists its rules. A subclass of a default locator or backing store restates `@unchecked Sendable`, and its own state must be thread-safe too.
 
@@ -483,39 +553,64 @@ There are 3 built-in coders:
 * `JSONDataCoder` - JSON for every type.
 * `PropertyListDataCoder` - Binary property lists for every type. Pass a `PropertyListEncoder` with the `.xml` output format to get XML.
 
-Coders are synchronous. Pass the coder to a coding storage, or conform your own type to `DataCoder`. For `UnifiedStorage`, a factory picks the coder of each storage, so different storages can use different coders:
+Coders are synchronous. Pass the coder to a coding storage, or conform your own type to `DataCoder`. For `UnifiedStorage`, the factory picks each storage's coder (see [Factory](#factory)), so different storages can use different coders:
 
 ```swift
-struct AppStorageFactory: UnifiedStorageFactory {
-    func coder<Storage: UnifiedStorable>(for storage: Storage) -> any DataCoder {
-        storage is FileStorage ? PropertyListDataCoder() : RawDataCoder()
+// JSON for every storage, and property lists for files
+let storage = UnifiedStorage(factory: .default
+    .coder(JSONDataCoder())
+    .coder(PropertyListDataCoder(), for: FileStorage.self))
+```
+
+`CodingStorage` and `AsyncCodingStorage` are `open` classes, so a subclass can change how they fetch, save, set, delete or clear, and call `super` for the rest. For `UnifiedStorage`, the factory's `codingStorage(for:_:)` codes a storage type through yours:
+
+```swift
+/// Logs each fetch, then fetches as `AsyncCodingStorage` does
+final class LoggingCodingStorage<Storage: AsyncDataStorage>: AsyncCodingStorage<Storage>, @unchecked Sendable {
+    override func fetch<Value: CodingValue>(forKey key: CodingStorageKey<Storage, Value>) async throws(Error) -> Value? {
+        print("Fetching \(key.key)")
+        return try await super.fetch(forKey: key)
     }
 }
 
-let storage = UnifiedStorage(factory: AppStorageFactory())
+let storage = UnifiedStorage(factory: .default.codingStorage(for: SQLiteStorage.self) { storage, coder in
+    LoggingCodingStorage(storage: storage, coder: coder)
+})
 ```
 
-A factory implements only what it changes: `dataStorage(for:)` creates each storage, `coder(for:)` picks its coder, and `codingStorage(for:)` puts them together. `DefaultUnifiedStorageFactory` uses every default, `RawDataCoder` included.
+Their `set`, which saves a value or deletes it for `nil`, doesn't call `save` or `delete`, so a subclass that changes those changes `set` too; the same goes for `ObservableStorage`.
 
 ***NOTE***! The value type comes from the entry, it isn't saved with the value. Changing the value type of an existing entry can make its stored value undecodable, or, for `Data` and `String`, be read without an error.
 
 ---
 ## Observation
 
-Observation is opt-in, through the factory: its `observableStorage(for:)` returns the `ObservableStorage` of each storage, or `nil` for one whose changes aren't published, which is the default. `ObservableUnifiedStorageFactory` makes every storage observable:
+Observation is opt-in, through the factory (see [Factory](#factory)). `UnifiedStorage(observable: true)` makes every storage observable, and so does the factory's `observable()`, which you can follow with `observable(_:for:)` to decide for a storage type:
 
 ```swift
-let storage = UnifiedStorage(factory: ObservableUnifiedStorageFactory())
+let storage = UnifiedStorage(observable: true)
 
-// Or decide per storage, and observe through your own subclass
-struct AppStorageFactory: UnifiedStorageFactory {
-    func observableStorage<Storage: UnifiedStorable>(for storage: AsyncCodingStorage<Storage>) async -> ObservableStorage<Storage>? {
-        storage is AsyncCodingStorage<KeychainStorage> ? nil : LoggingObservableStorage(storage)
-    }
-}
+// Every storage but the keychain's
+let storage = UnifiedStorage(factory: .default
+    .observable()
+    .observable(false, for: KeychainStorage.self))
 ```
 
-`ObservableStorage` is an `open` class, so a subclass can change how it saves, deletes or publishes, and call `super` for the rest.
+`ObservableStorage` is an `open` class, so a subclass can change how it saves, deletes or publishes, and call `super` for the rest. Observe a storage type through yours with the factory's `observableStorage(for:_:)`, whose closure can also return `nil` for none, or every storage type with [a modifier of your own](#your-own-modifiers):
+
+```swift
+/// Logs each save, then saves and publishes as `ObservableStorage` does
+final class LoggingObservableStorage<Storage: UnifiedStorable>: ObservableStorage<Storage>, @unchecked Sendable {
+    override func save<Value: CodingValue>(_ value: Value, forKey key: CodingStorageKey<Storage, Value>) async throws(Error) {
+        print("Saving \(key.key)")
+        try await super.save(value, forKey: key)
+    }
+}
+
+let storage = UnifiedStorage(factory: .default.observableStorage(for: FileStorage.self) { coding in
+    LoggingObservableStorage(coding)
+})
+```
 
 Publishers and streams start with the stored value, or `nil` if there's none, followed by every change. Each call to `publisher(for:)` or `stream(for:)` reads the value itself, so it's current even if it was changed in a way observers don't see; a change published after the read wins over it. Pass `includingCurrentValue: false` to get only the changes.
 

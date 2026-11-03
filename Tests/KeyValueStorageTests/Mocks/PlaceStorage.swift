@@ -164,19 +164,22 @@ final class Place: @unchecked Sendable {
     }
 }
 
-// MARK: - UnavailableFactory
+// MARK: - UnavailableScope
 
-/// Fails to create the storage of the scope named `scopeName`, and creates every other one.
-struct UnavailableFactory: UnifiedStorageFactory {
-    static let scopeName = "unavailable"
+/// Fails to create the storage of the scope named `name`, and creates every other one.
+struct UnavailableScope: UnifiedStorage.Factory.Modifier {
+    static let name = "unavailable"
     static let error = MockError(id: 7)
 
-    func dataStorage<Storage: UnifiedStorable>(for scope: Storage.Scope) async throws(Storage.Error) -> Storage {
-        if (scope as? MockScope)?.name == Self.scopeName, let error = Self.error as? Storage.Error {
+    func dataStorage<Storage: UnifiedStorable>(
+        for scope: Storage.Scope,
+        previous: () async throws(Storage.Error) -> Storage
+    ) async throws(Storage.Error) -> Storage {
+        if (scope as? MockScope)?.name == Self.name, let error = Self.error as? Storage.Error {
             throw error
         }
 
-        return try await Storage(scope: scope)
+        return try await previous()
     }
 }
 

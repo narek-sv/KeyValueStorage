@@ -32,12 +32,12 @@ public final class UnifiedStorage: Sendable {
 
     // MARK: Initializers
 
-    public init(factory: any UnifiedStorageFactory) {
+    public init(factory: Factory) {
         scopes = Scopes(factory: factory)
     }
 
     public init(observable: Bool = false) {
-        scopes = Scopes(factory: observable ? ObservableUnifiedStorageFactory() : DefaultUnifiedStorageFactory())
+        scopes = Scopes(factory: .default.observable(observable))
     }
 
     // MARK: Main Functionality

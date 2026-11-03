@@ -15,13 +15,31 @@ import KeyValueStorage // not @testable: the real storages through the public AP
 final class UnifiedIntegrationTests: XCTestCase {
     private static let suiteBundleIdentifier = "UnifiedIntegrationTests"
 
-    private var factory: TestStorageFactory!
+    private var fileLocator: TestFileLocator!
+    private var sqliteLocator: TestSQLiteLocator!
+    /// File, SQLite and UserDefaults at the test's places; every other storage as the default factory makes it.
+    private var factory = UnifiedStorage.Factory.default
 
     override func setUpWithError() throws {
         let base = FileManager.default.temporaryDirectory.appendingPathComponent("UnifiedIntegrationTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-        factory = TestStorageFactory(base: base, suiteBundleIdentifier: Self.suiteBundleIdentifier)
-        let suiteName = try TestUserDefaultsLocator(bundleIdentifier: Self.suiteBundleIdentifier).suiteName(for: .own(namespace: "ns"))
+        let fileLocator = TestFileLocator(base: base)
+        let sqliteLocator = TestSQLiteLocator(base: base)
+        let userDefaultsLocator = TestUserDefaultsLocator(bundleIdentifier: Self.suiteBundleIdentifier)
+        self.fileLocator = fileLocator
+        self.sqliteLocator = sqliteLocator
+        factory = .default
+            .dataStorage(for: FileStorage.self) { scope throws(FileStorage.Error) in
+                try FileStorage(scope: scope, locator: fileLocator)
+            }
+            .dataStorage(for: SQLiteStorage.self) { scope throws(SQLiteStorage.Error) in
+                try SQLiteStorage(scope: scope, locator: sqliteLocator)
+            }
+            .dataStorage(for: UserDefaultsStorage.self) { scope throws(UserDefaultsStorage.Error) in
+                try UserDefaultsStorage(scope: scope, locator: userDefaultsLocator)
+            }
+
+        let suiteName = try userDefaultsLocator.suiteName(for: .own(namespace: "ns"))
         addTeardownBlock {
             try? FileManager.default.removeItem(at: base)
             UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
@@ -89,7 +107,7 @@ final class UnifiedIntegrationTests: XCTestCase {
         let storage = UnifiedStorage(factory: factory)
         let entry = SQLiteStorage.Entry<Int>(key: "key", scope: .own(namespace: "closed"))
         try await storage.save(1, to: entry)
-        let database = try factory.sqliteLocator.databaseURL(for: entry.scope)
+        let database = try sqliteLocator.databaseURL(for: entry.scope)
 
         // When: closed, then its files deleted, as for a damaged database; not awaited by the test, so a close or a call
         // that waits forever fails at the timeout instead of hanging
@@ -114,7 +132,7 @@ final class UnifiedIntegrationTests: XCTestCase {
         // the deleted file and its value
         let fetched = try await calls.value
         XCTAssertNil(fetched)
-        let other = try SQLiteStorage(scope: entry.scope, backingStore: DefaultSQLiteBackingStoreWrapper(), locator: factory.sqliteLocator)
+        let other = try SQLiteStorage(scope: entry.scope, locator: sqliteLocator)
         XCTAssertEqual(try other.fetch(forKey: "key"), Data("2".utf8))
     }
 
@@ -132,7 +150,7 @@ final class UnifiedIntegrationTests: XCTestCase {
         try await storage.save("ключ 🔑", to: FileStorage.Entry<String>(key: "string", scope: .own(namespace: "ns")))
 
         // Then: raw bytes, as the default coder stores them
-        let file = try FileStorage(scope: .own(namespace: "ns"), backingStore: DefaultFileBackingStoreWrapper(), locator: factory.fileLocator)
+        let file = try FileStorage(scope: .own(namespace: "ns"), locator: fileLocator)
         XCTAssertEqual(try file.fetch(forKey: "data"), data)
         XCTAssertEqual(try file.fetch(forKey: "string"), Data("ключ 🔑".utf8))
         let fetchedSQLite = try await storage.fetch(SQLiteStorage.Entry<Data>(key: "data", scope: .own(namespace: "ns")))
@@ -189,54 +207,6 @@ final class UnifiedIntegrationTests: XCTestCase {
             }
 
             try await storage.clear(storage: Storage.self, forScope: scope)
-        }
-    }
-}
-
-// MARK: - TestStorageFactory
-
-/// File, SQLite and UserDefaults at the test's places; every other storage as the default factory makes it.
-private struct TestStorageFactory: UnifiedStorageFactory {
-    let fileLocator: TestFileLocator
-    let sqliteLocator: TestSQLiteLocator
-    let userDefaultsLocator: TestUserDefaultsLocator
-
-    init(base: URL, suiteBundleIdentifier: String) {
-        fileLocator = TestFileLocator(base: base)
-        sqliteLocator = TestSQLiteLocator(base: base)
-        userDefaultsLocator = TestUserDefaultsLocator(bundleIdentifier: suiteBundleIdentifier)
-    }
-
-    func dataStorage<Storage: UnifiedStorable>(for scope: Storage.Scope) async throws(Storage.Error) -> Storage {
-        if let scope = scope as? FileStorage.Scope, let made: Storage = try made({
-            try FileStorage(scope: scope, backingStore: DefaultFileBackingStoreWrapper(), locator: fileLocator)
-        }) {
-            return made
-        }
-
-        if let scope = scope as? SQLiteStorage.Scope, let made: Storage = try made({
-            try SQLiteStorage(scope: scope, backingStore: DefaultSQLiteBackingStoreWrapper(), locator: sqliteLocator)
-        }) {
-            return made
-        }
-
-        if let scope = scope as? UserDefaultsStorage.Scope, let made: Storage = try made({
-            try UserDefaultsStorage(scope: scope, backingStore: DefaultUserDefaultsBackingStoreWrapper(), locator: userDefaultsLocator)
-        }) {
-            return made
-        }
-
-        return try await Storage(scope: scope)
-    }
-
-    /// The storage `body` makes, if it's a `Storage`; its error, which is then `Storage.Error`, is thrown as is.
-    private func made<Storage: UnifiedStorable>(_ body: () throws -> any Sendable) throws(Storage.Error) -> Storage? {
-        do {
-            return try body() as? Storage
-        } catch let error as Storage.Error {
-            throw error
-        } catch {
-            return nil
         }
     }
 }

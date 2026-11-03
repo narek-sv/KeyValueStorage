@@ -34,7 +34,7 @@ open class AsyncCodingStorage<Storage: AsyncDataStorage> {
     
     // MARK: Main Functionality
     
-    public func fetch<Value: CodingValue>(forKey key: CodingStorageKey<Storage, Value>) async throws(Error) -> Value? {
+    open func fetch<Value: CodingValue>(forKey key: CodingStorageKey<Storage, Value>) async throws(Error) -> Value? {
         let data: Data?
         do throws(Storage.Error) {
             data = try await storage.fetch(forKey: key.key)
@@ -49,7 +49,7 @@ open class AsyncCodingStorage<Storage: AsyncDataStorage> {
         return try coder.decoded(data, as: Value.self, for: Storage.self)
     }
 
-    public func save<Value: CodingValue>(_ value: Value, forKey key: CodingStorageKey<Storage, Value>) async throws(Error) {
+    open func save<Value: CodingValue>(_ value: Value, forKey key: CodingStorageKey<Storage, Value>) async throws(Error) {
         let encoded = try coder.encoded(value, for: Storage.self)
         do throws(Storage.Error) {
             try await storage.save(encoded, forKey: key.key)
@@ -59,7 +59,8 @@ open class AsyncCodingStorage<Storage: AsyncDataStorage> {
     }
 
     /// Saves `value`, or deletes the stored one if `nil`, through the storage's `set`.
-    public func set<Value: CodingValue>(_ value: Value?, forKey key: CodingStorageKey<Storage, Value>) async throws(Error) {
+    /// - Note: It doesn't call `save` or `delete`: a subclass that changes them changes this too.
+    open func set<Value: CodingValue>(_ value: Value?, forKey key: CodingStorageKey<Storage, Value>) async throws(Error) {
         var encoded: Data?
         if let value {
             encoded = try coder.encoded(value, for: Storage.self)
@@ -72,7 +73,7 @@ open class AsyncCodingStorage<Storage: AsyncDataStorage> {
         }
     }
 
-    public func delete<Value: CodingValue>(forKey key: CodingStorageKey<Storage, Value>) async throws(Error) {
+    open func delete<Value: CodingValue>(forKey key: CodingStorageKey<Storage, Value>) async throws(Error) {
         do throws(Storage.Error) {
             try await storage.delete(forKey: key.key)
         } catch {
@@ -80,7 +81,7 @@ open class AsyncCodingStorage<Storage: AsyncDataStorage> {
         }
     }
 
-    public func clear() async throws(Error) {
+    open func clear() async throws(Error) {
         do throws(Storage.Error) {
             try await storage.clear()
         } catch {

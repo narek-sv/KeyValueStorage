@@ -18,8 +18,8 @@ final class UnifiedStorageTests: XCTestCase {
 
     func testOneStoragePerTypeAndScope() async throws {
         // Given
-        let factory = RecordingFactory()
-        let storage = UnifiedStorage(factory: factory)
+        let recorder = Recorder()
+        let storage = UnifiedStorage(factory: .default.modifier(recorder))
 
         // When: repeated operations, and the default scope given and omitted
         try await storage.save(1, to: Entry<Int>(key: "a"))
@@ -28,14 +28,14 @@ final class UnifiedStorageTests: XCTestCase {
         try await storage.clear(storage: AsyncDataStorageMock.self)
 
         // Then
-        XCTAssertEqual(factory.dataStorageCalls, 1)
-        XCTAssertEqual(factory.codingStorageCalls, 1)
+        XCTAssertEqual(recorder.dataStorageCalls, 1)
+        XCTAssertEqual(recorder.codingStorageCalls, 1)
     }
 
     func testScopesAndStorageTypesHaveStoragesOfTheirOwn() async throws {
         // Given
-        let factory = RecordingFactory()
-        let storage = UnifiedStorage(factory: factory)
+        let recorder = Recorder()
+        let storage = UnifiedStorage(factory: .default.modifier(recorder))
 
         // When
         try await storage.save(1, to: Entry<Int>(key: "key", scope: .init(name: "first")))
@@ -43,7 +43,7 @@ final class UnifiedStorageTests: XCTestCase {
         try await storage.save(3, to: GatedStorage.Entry<Int>(key: "key"))
 
         // Then
-        XCTAssertEqual(factory.dataStorageCalls, 3)
+        XCTAssertEqual(recorder.dataStorageCalls, 3)
         let first = try await storage.fetch(Entry<Int>(key: "key", scope: .init(name: "first")))
         let second = try await storage.fetch(Entry<Int>(key: "key", scope: .init(name: "second")))
         XCTAssertEqual(first, 1)
@@ -52,8 +52,8 @@ final class UnifiedStorageTests: XCTestCase {
 
     func testConcurrentFirstCallsCreateOneStorage() async throws {
         // Given
-        let factory = RecordingFactory()
-        let storage = UnifiedStorage(factory: factory)
+        let recorder = Recorder()
+        let storage = UnifiedStorage(factory: .default.modifier(recorder))
 
         // When
         let saves = Task {
@@ -70,31 +70,31 @@ final class UnifiedStorageTests: XCTestCase {
         try await waitForValue(of: saves)
 
         // Then
-        XCTAssertEqual(factory.dataStorageCalls, 1)
-        XCTAssertEqual(factory.codingStorageCalls, 1)
+        XCTAssertEqual(recorder.dataStorageCalls, 1)
+        XCTAssertEqual(recorder.codingStorageCalls, 1)
     }
 
     func testAFailedCreationIsReportedAndRetried() async throws {
         // Given
-        let factory = RecordingFactory(failures: 1)
-        let storage = UnifiedStorage(factory: factory)
+        let recorder = Recorder(failures: 1)
+        let storage = UnifiedStorage(factory: .default.modifier(recorder))
         let entry = Entry<Int>(key: "key")
 
         // When - Then
-        await assertThrows(CodingStorageError<AsyncDataStorageMock>.storage(RecordingFactory.creationError)) {
+        await assertThrows(CodingStorageError<AsyncDataStorageMock>.storage(Recorder.creationError)) {
             try await storage.save(1, to: entry)
         }
         try await storage.save(1, to: entry)
         let value = try await storage.fetch(entry)
         XCTAssertEqual(value, 1)
-        XCTAssertEqual(factory.dataStorageCalls, 2)
+        XCTAssertEqual(recorder.dataStorageCalls, 2)
     }
 
     func testACancelledCallDoesntCancelTheCreationItShares() async throws {
         // Given: a creation that waits, and two calls waiting for it
         let gate = Gate()
-        let factory = GatedCreationFactory(gate: gate)
-        let storage = UnifiedStorage(factory: factory)
+        let gated = GatedCreation(gate: gate)
+        let storage = UnifiedStorage(factory: .default.modifier(gated))
         let entry = Entry<Int>(key: "key", scope: .init(name: "cancelled-\(UUID().uuidString)"))
         let cancelled = Task { try await storage.save(1, to: entry) }
         try await waitUntil { gate.isWaiting }
@@ -109,15 +109,15 @@ final class UnifiedStorageTests: XCTestCase {
         // Then: both calls finished with the one storage
         try await waitForValue(of: cancelled)
         try await waitForValue(of: other)
-        XCTAssertEqual(factory.creations, 1)
+        XCTAssertEqual(gated.creations, 1)
         let value = try await storage.fetch(entry)
         XCTAssertNotNil(value)
     }
 
     func testConcurrentCallsShareOneFailedCreationAndALaterCallRetries() async throws {
         // Given
-        let factory = RecordingFactory(failures: 1)
-        let storage = UnifiedStorage(factory: factory)
+        let recorder = Recorder(failures: 1)
+        let storage = UnifiedStorage(factory: .default.modifier(recorder))
         let entry = Entry<Int>(key: "key", scope: .init(name: "shared-failure"))
 
         // When: every waiting call gets the one failure, and each removes the failed creation only once
@@ -145,14 +145,14 @@ final class UnifiedStorageTests: XCTestCase {
         let value = try await storage.fetch(entry)
         XCTAssertGreaterThan(failures, 0)
         XCTAssertEqual(value, 2)
-        XCTAssertEqual(factory.dataStorageCalls, 2)
+        XCTAssertEqual(recorder.dataStorageCalls, 2)
     }
 
     // MARK: Operations
 
     func testEachOperationReachesTheEntrysStorage() async throws {
         // Given
-        let storage = UnifiedStorage(factory: RecordingFactory())
+        let storage = UnifiedStorage()
         let entry = Entry<String>(key: "key", scope: .init(name: "operations"))
 
         // When - Then
@@ -231,7 +231,7 @@ final class UnifiedStorageTests: XCTestCase {
 
     func testTheDefaultScopeIsClearedWhenNoneIsGiven() async throws {
         // Given
-        let storage = UnifiedStorage(factory: RecordingFactory())
+        let storage = UnifiedStorage()
         try await storage.save(1, to: Entry<Int>(key: "key"))
         try await storage.save(2, to: Entry<Int>(key: "key", scope: .init(name: "kept")))
 
@@ -273,7 +273,7 @@ final class UnifiedStorageTests: XCTestCase {
 
     func testStorageAndCoderFailuresKeepTheirCase() async throws {
         // Given
-        let storage = UnifiedStorage(factory: RecordingFactory(coder: DataCoderMock(encodeError: error)))
+        let storage = UnifiedStorage(factory: .default.coder(DataCoderMock(encodeError: error)))
         let entry = Entry<Int>(key: "key", scope: .init(name: "errors"))
 
         // When - Then
@@ -285,9 +285,11 @@ final class UnifiedStorageTests: XCTestCase {
 
     // MARK: Observation
 
-    func testAFactoryCanObserveThroughItsOwnSubclass() async throws {
-        // Given: a factory that returns a subclass, which counts the saves it publishes
-        let storage = UnifiedStorage(factory: CountingObservableFactory())
+    func testAFactoryCanObserveAStorageTypeThroughItsOwnSubclass() async throws {
+        // Given: a factory that observes the mock through a subclass, which counts the saves it publishes
+        let storage = UnifiedStorage(factory: .default.observableStorage(for: AsyncDataStorageMock.self) { coding in
+            CountingObservableStorage(coding)
+        })
         let entry = Entry<Int>(key: "key", scope: .init(name: "subclass"))
         let values = Values<Int?>()
         let subscription = try await storage.publisher(for: entry, includingCurrentValue: false)?.sink { values.append($0) }
@@ -308,8 +310,8 @@ final class UnifiedStorageTests: XCTestCase {
 
         // When
         let unobserved = try await UnifiedStorage().publisher(for: entry)
-        let observed = try await UnifiedStorage(factory: ObservableUnifiedStorageFactory()).publisher(for: entry)
-        let streamed = try await UnifiedStorage(factory: ObservableUnifiedStorageFactory()).stream(for: entry)
+        let observed = try await UnifiedStorage(factory: .default.observable()).publisher(for: entry)
+        let streamed = try await UnifiedStorage(factory: .default.observable()).stream(for: entry)
 
         // Then
         XCTAssertNil(unobserved)
@@ -356,7 +358,7 @@ final class UnifiedStorageTests: XCTestCase {
 
     func testAnObservableStoragePublishesItsWrites() async throws {
         // Given
-        let storage = UnifiedStorage(factory: RecordingFactory(observable: true))
+        let storage = UnifiedStorage(observable: true)
         let entry = Entry<Int>(key: "key", scope: .init(name: "published"))
         let values = Values<Int?>()
         let subscription = try await storage.publisher(for: entry, includingCurrentValue: false)?.sink { values.append($0) }
@@ -374,15 +376,13 @@ final class UnifiedStorageTests: XCTestCase {
     }
 }
 
-// MARK: - RecordingFactory
+// MARK: - Recorder
 
-/// Counts its calls, fails the first `failures` creations, and codes with `coder`.
-private final class RecordingFactory: UnifiedStorageFactory, @unchecked Sendable {
+/// Counts the storages and coding storages made through it, and fails the first `failures` creations.
+private final class Recorder: UnifiedStorage.Factory.Modifier, @unchecked Sendable {
     static let creationError = MockError(id: 9)
 
     private let lock = NSLock()
-    private let dataCoder: any DataCoder
-    private let observable: Bool
     private var failures: Int
     private var dataStorages = 0
     private var codingStorages = 0
@@ -395,13 +395,14 @@ private final class RecordingFactory: UnifiedStorageFactory, @unchecked Sendable
         lock.withLock { codingStorages }
     }
 
-    init(failures: Int = 0, coder: any DataCoder = DataCoderMock(), observable: Bool = false) {
+    init(failures: Int = 0) {
         self.failures = failures
-        self.dataCoder = coder
-        self.observable = observable
     }
 
-    func dataStorage<Storage: UnifiedStorable>(for scope: Storage.Scope) async throws(Storage.Error) -> Storage {
+    func dataStorage<Storage: UnifiedStorable>(
+        for scope: Storage.Scope,
+        previous: () async throws(Storage.Error) -> Storage
+    ) async throws(Storage.Error) -> Storage {
         let fails = lock.withLock {
             dataStorages += 1
             failures -= 1
@@ -412,27 +413,23 @@ private final class RecordingFactory: UnifiedStorageFactory, @unchecked Sendable
             throw error
         }
 
-        return try await Storage(scope: scope)
+        return try await previous()
     }
 
-    func coder<Storage: UnifiedStorable>(for storage: Storage) -> any DataCoder {
-        dataCoder
-    }
-
-    func codingStorage<Storage: UnifiedStorable>(for storage: Storage) async -> AsyncCodingStorage<Storage> {
+    func codingStorage<Storage: UnifiedStorable>(
+        for storage: Storage,
+        coder: any DataCoder,
+        previous: () async -> AsyncCodingStorage<Storage>
+    ) async -> AsyncCodingStorage<Storage> {
         lock.withLock { codingStorages += 1 }
-        return AsyncCodingStorage(storage: storage, coder: coder(for: storage))
-    }
-
-    func observableStorage<Storage: UnifiedStorable>(for storage: AsyncCodingStorage<Storage>) async -> ObservableStorage<Storage>? {
-        observable ? ObservableStorage(storage) : nil
+        return await previous()
     }
 }
 
-// MARK: - GatedCreationFactory
+// MARK: - GatedCreation
 
 /// Creates each storage once its gate opens, counting the creations; a cancelled creation fails, as a server-backed one would.
-private final class GatedCreationFactory: UnifiedStorageFactory, @unchecked Sendable {
+private final class GatedCreation: UnifiedStorage.Factory.Modifier, @unchecked Sendable {
     static let cancelled = MockError(id: 8)
 
     private let gate: Gate
@@ -447,14 +444,17 @@ private final class GatedCreationFactory: UnifiedStorageFactory, @unchecked Send
         self.gate = gate
     }
 
-    func dataStorage<Storage: UnifiedStorable>(for scope: Storage.Scope) async throws(Storage.Error) -> Storage {
+    func dataStorage<Storage: UnifiedStorable>(
+        for scope: Storage.Scope,
+        previous: () async throws(Storage.Error) -> Storage
+    ) async throws(Storage.Error) -> Storage {
         await gate.wait()
         if Task.isCancelled, let error = Self.cancelled as? Storage.Error {
             throw error
         }
 
         lock.withLock { count += 1 }
-        return try await Storage(scope: scope)
+        return try await previous()
     }
 }
 
@@ -553,19 +553,6 @@ private final class Values<Value>: @unchecked Sendable {
 
     func append(_ value: Value) {
         lock.withLock { values.append(value) }
-    }
-}
-
-// MARK: - CountingObservableFactory
-
-/// Observes through `CountingObservableStorage`.
-private struct CountingObservableFactory: UnifiedStorageFactory {
-    func coder<Storage: UnifiedStorable>(for storage: Storage) -> any DataCoder {
-        DataCoderMock()
-    }
-
-    func observableStorage<Storage: UnifiedStorable>(for storage: AsyncCodingStorage<Storage>) async -> ObservableStorage<Storage>? {
-        CountingObservableStorage(storage)
     }
 }
 

@@ -209,13 +209,13 @@ final class UnifiedStorageMoveTests: XCTestCase {
     func testAScopeWhoseStorageCantBeCreatedChangesNothingAndReleasesTheOther() async throws {
         let (source, _, destination) = places()
         // Given
-        let storage = UnifiedStorage(factory: UnavailableFactory())
-        let unavailable = MockScope(name: UnavailableFactory.scopeName)
+        let storage = UnifiedStorage(factory: .default.modifier(UnavailableScope()))
+        let unavailable = MockScope(name: UnavailableScope.name)
         source.store(1, forKey: "key")
 
         // When - Then
-        await assertThrows(CodingStorageError<PlaceStorage>.storage(UnavailableFactory.error)) { try await storage.move(Entry(key: "key", scope: unavailable), to: destination.scope) }
-        await assertThrows(CodingStorageError<PlaceStorage>.storage(UnavailableFactory.error)) {
+        await assertThrows(CodingStorageError<PlaceStorage>.storage(UnavailableScope.error)) { try await storage.move(Entry(key: "key", scope: unavailable), to: destination.scope) }
+        await assertThrows(CodingStorageError<PlaceStorage>.storage(UnavailableScope.error)) {
             try await storage.move(source.entry, to: unavailable)
         }
 
