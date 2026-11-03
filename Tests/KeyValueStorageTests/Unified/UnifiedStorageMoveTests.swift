@@ -173,8 +173,8 @@ final class UnifiedStorageMoveTests: XCTestCase {
         let fetchedSource = Task { try await storage.fetch(Entry(key: "key", scope: source.scope)) }
         let fetchedTarget = Task { try await storage.fetch(entry) }
         try await waitUntil {
-            storage.state(of: source.scope, in: PlaceStorage.self).waitingCalls == 1
-                && storage.state(of: entry.scope, in: PlaceStorage.self).waitingCalls == 1
+            storage.scopes.state(of: source.scope, in: PlaceStorage.self).waitingCalls == 1
+                && storage.scopes.state(of: entry.scope, in: PlaceStorage.self).waitingCalls == 1
         }
 
         // When
@@ -197,7 +197,7 @@ final class UnifiedStorageMoveTests: XCTestCase {
         let save = Task { try await storage.save(2, to: entry) }
         try await target.waitUntilHeld()
         let move = Task { try await storage.move(entry, from: source.scope) }
-        try await waitUntil { storage.state(of: source.scope, in: PlaceStorage.self).waitingHolds == 1 }
+        try await waitUntil { storage.scopes.state(of: source.scope, in: PlaceStorage.self).waitingHolds == 1 }
 
         // Then: the move waits, and hasn't started
         XCTAssertEqual(source.calls, [])
@@ -221,9 +221,9 @@ final class UnifiedStorageMoveTests: XCTestCase {
         let save = Task { try await storage.save(2, to: entry) }
         try await target.waitUntilHeld()
         let move = Task { try await storage.move(entry, from: source.scope) }
-        try await waitUntil { storage.state(of: source.scope, in: PlaceStorage.self).waitingHolds == 1 }
+        try await waitUntil { storage.scopes.state(of: source.scope, in: PlaceStorage.self).waitingHolds == 1 }
         let fetched = Task { try await storage.fetch(Entry(key: "key", scope: source.scope)) }
-        try await waitUntil { storage.state(of: source.scope, in: PlaceStorage.self).waitingCalls == 1 }
+        try await waitUntil { storage.scopes.state(of: source.scope, in: PlaceStorage.self).waitingCalls == 1 }
 
         // When
         target.release()
@@ -246,9 +246,9 @@ final class UnifiedStorageMoveTests: XCTestCase {
         let first = Task { try await storage.move(entry, from: source.scope) }
         try await source.waitUntilHeld()
         let second = Task { try await storage.move(Entry(key: "key", scope: third.scope), from: target.scope) }
-        try await waitUntil { storage.state(of: target.scope, in: PlaceStorage.self).waitingHolds == 1 }
+        try await waitUntil { storage.scopes.state(of: target.scope, in: PlaceStorage.self).waitingHolds == 1 }
         let fetched = Task { try await storage.fetch(entry) }
-        try await waitUntil { storage.state(of: target.scope, in: PlaceStorage.self).waitingCalls == 1 }
+        try await waitUntil { storage.scopes.state(of: target.scope, in: PlaceStorage.self).waitingCalls == 1 }
 
         // When
         source.release()
@@ -272,7 +272,7 @@ final class UnifiedStorageMoveTests: XCTestCase {
         let first = Task { try await storage.move(entry, from: source.scope) }
         try await source.waitUntilHeld()
         let fetched = Task { try await storage.fetch(entry) }
-        try await waitUntil { storage.state(of: entry.scope, in: PlaceStorage.self).waitingCalls == 1 }
+        try await waitUntil { storage.scopes.state(of: entry.scope, in: PlaceStorage.self).waitingCalls == 1 }
         target.hold(.fetch)
         source.release()
         try await waitForValue(of: first)
@@ -282,7 +282,7 @@ final class UnifiedStorageMoveTests: XCTestCase {
         let second = Task { try await storage.move(entry, from: other.scope) }
 
         // Then: it waits for the read, which still runs
-        try await waitUntil { storage.state(of: entry.scope, in: PlaceStorage.self).waitingHolds == 1 }
+        try await waitUntil { storage.scopes.state(of: entry.scope, in: PlaceStorage.self).waitingHolds == 1 }
         XCTAssertEqual(other.calls, [])
 
         // When

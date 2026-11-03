@@ -34,7 +34,7 @@ maintainers will hit), **low** (rare, cosmetic or design).
 - **System and SDK gotchas** get a doc comment on the case they affect, not a workaround, unless they'd let two scopes reach each other's values.
 - **Comments** hold only essentials, gotchas and warnings, one line where possible, describing the current behavior, never its history. API docs use `///`, `- Note:` and `- Warning:`.
 - **Tests** use XCTest, with `// Given`, `// When`, `// Then` and mocks that record their calls. Storages, layers and the facade keep 100% region and line coverage; default adapters get integration tests against the real system. Every behavior the docs state is either measured by a test or listed in §2 as to verify.
-- **Members for tests only** are internal and read-only, and only where a test can't observe a state otherwise, such as `UnifiedStorage.state(of:in:)`. Tests wait for a state with `waitUntil`, never for a fixed time.
+- **Members for tests only** are internal and read-only, and only where a test can't observe a state otherwise, such as `UnifiedStorage.Scopes.state(of:in:)`. Tests wait for a state with `waitUntil`, never for a fixed time.
 - **Condition coverage, not just lines:** Swift's coverage counts a whole condition as one region, so every compound condition (`&&`, `||`, `if`/`guard` clause lists, `where`, `??`, ternaries, patterns) needs a test for each path that short-circuiting can tell apart: `a && b && c` needs `a` false, `b` false, `c` false and all true. Limits get a test on each side of the boundary.
 - **When asked whether anything is left open,** do one complete pass, and say "none" when nothing is.
 
@@ -312,7 +312,7 @@ between the steps of a `move` or an `update`, which only calls through the same 
 
 Docs and comments: none open besides the release (item 10). Tests: none open. Every compound condition's paths are
 covered, limits are tested on both sides, edge-case keys (`""`, NUL, `é`/`e\u{301}`, `..`, `/`) run against the real
-systems, and the tests of `move`, `update` and `close` wait for the scope state they need through `UnifiedStorage.state(of:in:)`,
+systems, and the tests of `move`, `update` and `close` wait for the scope state they need through `UnifiedStorage.Scopes.state(of:in:)`,
 so they neither depend on timing nor pass without checking. Every tried mutation of the lock's admission logic
 and of `close` fails a test within seconds, none by hanging.
 

@@ -182,7 +182,7 @@ final class UnifiedStorageUpdateTests: XCTestCase {
         let update = Task { try await storage.update(entry) { ($0 ?? 0) + 1 } }
         try await place.waitUntilHeld()
         let fetched = Task { try await storage.fetch(entry) }
-        try await waitUntil { storage.state(of: entry.scope, in: PlaceStorage.self).waitingCalls == 1 }
+        try await waitUntil { storage.scopes.state(of: entry.scope, in: PlaceStorage.self).waitingCalls == 1 }
 
         // When
         place.release()
@@ -201,7 +201,7 @@ final class UnifiedStorageUpdateTests: XCTestCase {
         let save = Task { try await storage.save(10, to: entry) }
         try await place.waitUntilHeld()
         let update = Task { try await storage.update(entry) { ($0 ?? 0) + 1 } }
-        try await waitUntil { storage.state(of: entry.scope, in: PlaceStorage.self).waitingHolds == 1 }
+        try await waitUntil { storage.scopes.state(of: entry.scope, in: PlaceStorage.self).waitingHolds == 1 }
 
         // Then: the update waits, and hasn't read yet
         XCTAssertEqual(place.calls, [])

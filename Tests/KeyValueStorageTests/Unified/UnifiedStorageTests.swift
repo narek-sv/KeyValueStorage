@@ -100,7 +100,7 @@ final class UnifiedStorageTests: XCTestCase {
         try await waitUntil { gate.isWaiting }
         let other = Task { try await storage.save(2, to: entry) }
         // Both calls are in the scope, so the second got the creation the first started
-        try await waitUntil { storage.state(of: entry.scope, in: AsyncDataStorageMock.self).runningCalls == 2 }
+        try await waitUntil { storage.scopes.state(of: entry.scope, in: AsyncDataStorageMock.self).runningCalls == 2 }
 
         // When
         cancelled.cancel()

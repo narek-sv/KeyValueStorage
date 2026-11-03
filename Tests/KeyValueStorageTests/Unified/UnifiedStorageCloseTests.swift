@@ -75,7 +75,7 @@ final class UnifiedStorageCloseTests: XCTestCase {
 
         // When
         let close = Task { await storage.close(storage: CountedStorage.self, forScope: entry.scope) }
-        try await waitUntil { storage.state(of: entry.scope, in: CountedStorage.self).waitingHolds == 1 }
+        try await waitUntil { storage.scopes.state(of: entry.scope, in: CountedStorage.self).waitingHolds == 1 }
 
         // Then: the close waits, and the storage is still there
         XCTAssertEqual(CountedStorage.alive(in: entry.scope), 1)
@@ -98,9 +98,9 @@ final class UnifiedStorageCloseTests: XCTestCase {
         let save = Task { try await storage.save(1, to: entry) }
         try await place.waitUntilHeld()
         let close = Task { await storage.close(storage: CountedStorage.self, forScope: entry.scope) }
-        try await waitUntil { storage.state(of: entry.scope, in: CountedStorage.self).waitingHolds == 1 }
+        try await waitUntil { storage.scopes.state(of: entry.scope, in: CountedStorage.self).waitingHolds == 1 }
         let fetched = Task { try await storage.fetch(entry) }
-        try await waitUntil { storage.state(of: entry.scope, in: CountedStorage.self).waitingCalls == 1 }
+        try await waitUntil { storage.scopes.state(of: entry.scope, in: CountedStorage.self).waitingCalls == 1 }
 
         // When
         place.release()
@@ -124,9 +124,9 @@ final class UnifiedStorageCloseTests: XCTestCase {
         let save = Task { try await storage.save(1, to: entry) }
         try await place.waitUntilHeld()
         let close = Task { await storage.close(storage: CountedStorage.self, forScope: entry.scope) }
-        try await waitUntil { storage.state(of: entry.scope, in: CountedStorage.self).waitingHolds == 1 }
+        try await waitUntil { storage.scopes.state(of: entry.scope, in: CountedStorage.self).waitingHolds == 1 }
         let move = Task { try await storage.move(entry, from: source.scope) }
-        try await waitUntil { storage.state(of: entry.scope, in: CountedStorage.self).waitingHolds == 2 }
+        try await waitUntil { storage.scopes.state(of: entry.scope, in: CountedStorage.self).waitingHolds == 2 }
 
         // When
         place.release()
