@@ -47,6 +47,7 @@ public final class KeychainStorage: DataStorage, Sendable {
         self.init(scope: scope, backingStore: DefaultKeychainBackingStoreWrapper(), locator: DefaultKeychainLocator())
     }
 
+    /// The `default` scope's storage.
     public convenience init() {
         self.init(scope: .default)
     }

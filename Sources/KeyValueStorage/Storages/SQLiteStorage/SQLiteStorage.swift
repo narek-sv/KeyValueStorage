@@ -48,6 +48,7 @@ public final class SQLiteStorage: DataStorage, Sendable {
         try self.init(scope: scope, backingStore: DefaultSQLiteBackingStoreWrapper(), locator: DefaultSQLiteLocator())
     }
 
+    /// The `default` scope's storage.
     public convenience init() throws(Error) {
         try self.init(scope: .default)
     }

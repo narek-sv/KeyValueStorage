@@ -46,6 +46,7 @@ public final class FileStorage: DataStorage, Sendable {
         try self.init(scope: scope, backingStore: DefaultFileBackingStoreWrapper(), locator: DefaultFileLocator())
     }
 
+    /// The `default` scope's storage.
     public convenience init() throws(Error) {
         try self.init(scope: .default)
     }

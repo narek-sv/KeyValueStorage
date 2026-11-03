@@ -42,6 +42,7 @@ public final class UbiquitousStorage: DataStorage, Sendable {
         self.init(scope: scope, backingStore: DefaultUbiquitousBackingStoreWrapper(), locator: DefaultUbiquitousLocator())
     }
 
+    /// The `default` scope's storage.
     public convenience init() {
         self.init(scope: .default)
     }

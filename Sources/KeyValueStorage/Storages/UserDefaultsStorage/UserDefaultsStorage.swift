@@ -48,6 +48,7 @@ public final class UserDefaultsStorage: DataStorage, Sendable {
         try self.init(scope: scope, backingStore: DefaultUserDefaultsBackingStoreWrapper(), locator: DefaultUserDefaultsLocator())
     }
 
+    /// The `default` scope's storage.
     public convenience init() throws(Error) {
         try self.init(scope: .default)
     }
