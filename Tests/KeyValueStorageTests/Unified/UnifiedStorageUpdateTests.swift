@@ -247,7 +247,7 @@ final class UnifiedStorageUpdateTests: XCTestCase {
                 for index in 0..<50 {
                     group.addTask {
                         if index == 25 {
-                            try await storage.move(entry, from: source.scope)
+                            try await storage.move(Entry(key: "key", scope: source.scope), to: entry.scope)
                         } else {
                             try await storage.update(entry) { ($0 ?? 0) + 1 }
                         }

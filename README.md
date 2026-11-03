@@ -261,19 +261,26 @@ Clearing removes only the values the library saved in that scope. Other code's v
 
 `update` starts from `nil` when the storage reads no value, and User Defaults reads none before the device's first unlock after a restart, such as in a background launch: don't update User Defaults values then, or the result can replace the value it couldn't read.
 
-### Moving values between scopes
+### Moving values
 
-A scope is where values live, so an entry whose scope changes, such as its protection or namespace in an app update, finds none of the values saved before. Move each entry's value into its new scope, for example at launch:
+A value lives at its entry's scope and key, so an entry whose scope changes, such as its protection or namespace in an app update, or whose key is renamed, finds none of the values saved before. Move each value to its new place, for example at launch: to another scope, another key, or both at once with another entry:
 
 ```swift
 // An app update that reads the token while the device is locked changes its protection from the default `.whenUnlocked`
-let token = KeychainStorage.Entry<String>(key: "token", scope: .own(protection: .afterFirstUnlock, namespace: "auth"))
-try await storage.move(token, from: .own(protection: .whenUnlocked, namespace: "auth"))
+let token = KeychainStorage.Entry<String>(key: "token", scope: .own(protection: .whenUnlocked, namespace: "auth"))
+try await storage.move(token, to: .own(protection: .afterFirstUnlock, namespace: "auth"))
+
+// A key renamed, in the same scope
+try await storage.move(UserDefaultsStorage.Entry<Bool>(key: "onboarding"), to: "onboarded")
+
+// Both at once
+let draft = FileStorage.Entry<String>(key: "draft", scope: .own(namespace: "notes"))
+try await storage.move(draft, to: FileStorage.Entry<String>(key: "note", scope: .own(.cache, namespace: "notes")))
 ```
 
-`move` saves the value in the entry's scope, unless a value is there already, and only then removes it from the old scope, so the value is never lost; a failed or interrupted move is finished by calling it again. Calls through the same `UnifiedStorage` in either scope wait until the move is done. Other `UnifiedStorage` instances, storages used directly and other processes don't wait, so move values before they use them.
+`move` saves the value at the destination, unless a value is there already, and only then removes it from the entry, so the value is never lost; a failed or interrupted move is finished by calling it again, and moving an entry onto itself does nothing. Calls through the same `UnifiedStorage` in either scope wait until the move is done. Other `UnifiedStorage` instances, storages used directly and other processes don't wait, so move values before they use them.
 
-A move needs two places: between scopes that resolve to one, such as File or SQLite App Group ids that differ only in case on macOS, it takes the value for one already in the target, and deletes it.
+A move between scopes needs two places: between scopes that resolve to one, such as File or SQLite App Group ids that differ only in case on macOS, it takes the value for one already at the destination, and deletes it.
 
 ### Closing storages
 
@@ -439,7 +446,7 @@ Xcode then suggests every entry of the extension when you put a dot, as in `fetc
 
 The scope's `protection` sets when its items can be read. By default `.whenUnlocked` is used: the items can be read only while the device is unlocked, one of the most restrictive options with good data protection.
 
-Use `.afterFirstUnlock` if your app needs the items while in the background. Note that it is less secure than `.whenUnlocked`. Changing an existing entry's protection moves it to a new place, so move its items with `move(_:from:)` (see [Moving values between scopes](#moving-values-between-scopes)), or users lose them, such as a signed-in session.
+Use `.afterFirstUnlock` if your app needs the items while in the background. Note that it is less secure than `.whenUnlocked`. Changing an existing entry's protection moves it to a new place, so move its items with `move(_:to:)` (see [Moving values](#moving-values)), or users lose them, such as a signed-in session.
 
 Here are all the protection levels:
 * `afterFirstUnlock` (`kSecAttrAccessibleAfterFirstUnlock`)
@@ -601,9 +608,9 @@ let storage = try FileStorage(scope: .default)
 Task.detached { try storage.save(data, forKey: "avatar") }   // fine: FileStorage is Sendable
 ```
 
-**`UnifiedStorage` takes only `Sendable` storages.** It's safe to call from any thread, task or actor, and calls on storages of different types or scopes, such as a User Defaults fetch and a file write, never wait for each other. Only `move(_:from:)`, `update(_:_:)` and `close(storage:forScope:)` hold their scopes: calls in them wait until they're done, and they wait for those already running. For your own storages, thread safety is your responsibility: one that's `Sendable`, such as an actor or a class behind a lock, works as it is, and one that isn't doesn't compile in an entry.
+**`UnifiedStorage` takes only `Sendable` storages.** It's safe to call from any thread, task or actor, and calls on storages of different types or scopes, such as a User Defaults fetch and a file write, never wait for each other. Only `move(_:to:)`, `update(_:_:)` and `close(storage:forScope:)` hold their scopes: calls in them wait until they're done, and they wait for those already running. For your own storages, thread safety is your responsibility: one that's `Sendable`, such as an actor or a class behind a lock, works as it is, and one that isn't doesn't compile in an entry.
 
-**Use one `UnifiedStorage` for your app.** An instance coordinates only its own calls: `move(_:from:)`, `update(_:_:)` and `close(storage:forScope:)` hold their scopes against calls through the same instance, not through another. Several instances never break a value, since every storage they create is thread-safe, but a call through one can see another's move or update half done. So:
+**Use one `UnifiedStorage` for your app.** An instance coordinates only its own calls: `move(_:to:)`, `update(_:_:)` and `close(storage:forScope:)` hold their scopes against calls through the same instance, not through another. Several instances never break a value, since every storage they create is thread-safe, but a call through one can see another's move or update half done. So:
 * Create one `UnifiedStorage` and share it, for example as a static property or through dependency injection.
 * If you need more than one, such as one with observation and one without, give each its own scopes.
 * Reach each scope through one storage type: `FileStorage` and `IsolatedDataStorage<FileStorage>` are two storages over the same files, so a move or an update through one doesn't hold the other's calls, a close closes only its own, and each one's observers get only the changes made through it.

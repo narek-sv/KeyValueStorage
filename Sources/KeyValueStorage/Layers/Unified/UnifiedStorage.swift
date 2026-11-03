@@ -74,37 +74,63 @@ public final class UnifiedStorage: Sendable {
         }
     }
 
-    /// Moves the value at the entry's key from `scope` into the entry's own scope, such as when a scope's protection or
-    /// namespace changes: saves it there, unless a value is there already, then removes it from `scope`.
+    /// Moves the entry's value to `destination`, such as when its key, or its scope's protection or namespace, changes:
+    /// saves it there, unless a value is there already, then removes it from the entry. Moving it onto itself does nothing.
     ///
     /// - Calls through this `UnifiedStorage` in either scope wait until the move is done, and the move waits for those
     ///   already running, so none of them sees it half done.
-    /// - The value is never lost: it's removed from `scope` only once it's saved, and a failed or interrupted move is
+    /// - The value is never lost: it's removed from the entry only once it's saved, and a failed or interrupted move is
     ///   finished by calling it again.
     /// - Warning: Other `UnifiedStorage` instances, storages used directly and other processes, such as app extensions,
     ///   don't wait: move values before they use them, for example at launch.
     /// - Warning: Scopes that resolve to one place, such as File or SQLite App Group ids that differ only in case on macOS, or
-    ///   two scopes a custom locator maps to one place, aren't two copies: the move takes the value for one already in the
-    ///   target, and deletes it.
-    public func move<Storage: UnifiedStorable, Value: CodingValue>(_ entry: Entry<Storage, Value>, from scope: Storage.Scope) async throws(CodingStorageError<Storage>) {
-        guard scope != entry.scope else {
+    ///   two scopes a custom locator maps to one place, aren't two copies: the move takes the value for one already at the
+    ///   destination, and deletes it.
+    public func move<Storage: UnifiedStorable, Value: CodingValue>(
+        _ entry: Entry<Storage, Value>,
+        to destination: Entry<Storage, Value>
+    ) async throws(CodingStorageError<Storage>) {
+        guard entry != destination else {
             return
         }
 
-        try await scopes.withExclusiveAccess(to: scope, entry.scope) {
-            (source: ScopeStorage<Storage>, target: ScopeStorage<Storage>) throws(CodingStorageError<Storage>) in
-            let codingKey = CodingStorageKey<Storage, Value>(key: entry.key)
-            guard let value = try await source.fetch(forKey: codingKey) else {
-                return
+        guard entry.scope != destination.scope else {
+            return try await scopes.withExclusiveAccess(to: entry.scope) { (storage: ScopeStorage<Storage>) throws(CodingStorageError<Storage>) in
+                try await Self.moveValue(Value.self, at: entry.key, of: storage, to: destination.key, of: storage)
             }
-
-            // A value already there is newer: saved since, or by an earlier move that couldn't remove the old one
-            if try await target.fetch(forKey: codingKey) == nil {
-                try await target.save(value, forKey: codingKey)
-            }
-
-            try await source.delete(forKey: codingKey)
         }
+
+        try await scopes.withExclusiveAccess(to: entry.scope, destination.scope) {
+            (source: ScopeStorage<Storage>, target: ScopeStorage<Storage>) throws(CodingStorageError<Storage>) in
+            try await Self.moveValue(Value.self, at: entry.key, of: source, to: destination.key, of: target)
+        }
+    }
+
+    /// Moves the entry's value to its key in `scope`; see `move(_:to:)`.
+    /// In short - moves the value from one scope to another within the same storage
+    public func move<Storage: UnifiedStorable, Value: CodingValue>(
+        _ entry: Entry<Storage, Value>,
+        to scope: Storage.Scope
+    ) async throws(CodingStorageError<Storage>) {
+        try await move(entry, to: Entry(key: entry.key, scope: scope))
+    }
+
+    /// Moves the entry's value to `key` in its scope; see `move(_:to:)`.
+    /// In short - renames the value within the same scope/storage
+    public func move<Storage: UnifiedStorable, Value: CodingValue>(
+        _ entry: Entry<Storage, Value>,
+        to key: Storage.Key
+    ) async throws(CodingStorageError<Storage>) {
+        try await move(entry, to: Entry(key: key, scope: entry.scope))
+    }
+
+    /// Moves the entry's value to `key` in its scope (easy override for ExactString, accepts any string); see `move(_:to:)`.
+    /// In short - renames the value within the same scope/storage
+    public func move<Storage: UnifiedStorable, Value: CodingValue>(
+        _ entry: Entry<Storage, Value>,
+        to key: String
+    ) async throws(CodingStorageError<Storage>) where Storage.Key == ExactString {
+        try await move(entry, to: ExactString(key))
     }
 
     /// Saves what `transform` makes of the entry's value, or deletes the value for `nil`, as one step, such as to count:
@@ -175,5 +201,30 @@ public final class UnifiedStorage: Sendable {
                 bufferingPolicy: bufferingPolicy
             )
         }
+    }
+
+    // MARK: Moving
+
+    /// Saves the value at `key` of `source` under `destinationKey` of `target`, unless a value is there already, then
+    /// deletes it from `source`; both storages may be one.
+    private static func moveValue<Storage: UnifiedStorable, Value: CodingValue>(
+        _: Value.Type,
+        at key: Storage.Key,
+        of source: ScopeStorage<Storage>,
+        to destinationKey: Storage.Key,
+        of target: ScopeStorage<Storage>
+    ) async throws(CodingStorageError<Storage>) {
+        let sourceKey = CodingStorageKey<Storage, Value>(key: key)
+        let targetKey = CodingStorageKey<Storage, Value>(key: destinationKey)
+        guard let value = try await source.fetch(forKey: sourceKey) else {
+            return
+        }
+
+        // A value already there is newer: saved since, or by an earlier move that couldn't remove the old one
+        if try await target.fetch(forKey: targetKey) == nil {
+            try await target.save(value, forKey: targetKey)
+        }
+
+        try await source.delete(forKey: sourceKey)
     }
 }

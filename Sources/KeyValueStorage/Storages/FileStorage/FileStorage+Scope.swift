@@ -24,7 +24,7 @@ public extension FileStorage {
     /// Applies to every file the scope writes.
     /// - Note: Part of the place: scopes that differ only in protection never share values.
     /// - Warning: So an entry whose protection changes, such as in an app update, finds none of the values saved with the old
-    ///   one: move them with `UnifiedStorage.move(_:from:)`.
+    ///   one: move them with `UnifiedStorage.move(_:to:)`.
     enum Protection: Hashable, Sendable {
         /// No explicit class: the files get their folder's class or the app's default.
         case inherited

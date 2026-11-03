@@ -125,7 +125,7 @@ final class UnifiedStorageCloseTests: XCTestCase {
         try await place.waitUntilHeld()
         let close = Task { await storage.close(storage: CountedStorage.self, forScope: entry.scope) }
         try await waitUntil { storage.scopes.state(of: entry.scope, in: CountedStorage.self).waitingHolds == 1 }
-        let move = Task { try await storage.move(entry, from: source.scope) }
+        let move = Task { try await storage.move(Entry(key: "key", scope: source.scope), to: entry.scope) }
         try await waitUntil { storage.scopes.state(of: entry.scope, in: CountedStorage.self).waitingHolds == 2 }
 
         // When

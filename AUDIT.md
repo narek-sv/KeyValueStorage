@@ -208,7 +208,7 @@ Keychain's `errSecInteractionNotAllowed` is mapped to `.protectedDataUnavailable
 ## 3. Assessment
 
 The core is solid: scope isolation holds for all six storages, no data race was found, errors are typed end to end, and
-the suite (428 tests, no warnings) covers every compound condition.
+the suite (432 tests, no warnings) covers every compound condition.
 
 ### 3.1 Architecture — A−
 

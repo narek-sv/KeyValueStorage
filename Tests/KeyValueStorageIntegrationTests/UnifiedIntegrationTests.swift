@@ -49,34 +49,37 @@ final class UnifiedIntegrationTests: XCTestCase {
 
     // MARK: Moves
 
-    func testAMoveCarriesTheValueToANewProtectionOrNamespace() async throws {
-        // Given: values saved before their entries' scopes changed
+    func testAMoveCarriesTheValueToANewProtectionNamespaceOrKey() async throws {
+        // Given: values saved before their entries changed
         let storage = UnifiedStorage(factory: factory)
+        let oldFile = FileStorage.Entry<String>(key: "avatar", scope: .own(namespace: "ns"))
+        let oldRecord = SQLiteStorage.Entry<String>(key: "record", scope: .own(namespace: "ns"))
+        let oldFlag = UserDefaultsStorage.Entry<String>(key: "flag", scope: .own(namespace: "ns"))
         let file = FileStorage.Entry<String>(key: "avatar", scope: .own(protection: .afterFirstUnlock, namespace: "ns"))
-        let sqlite = SQLiteStorage.Entry<String>(key: "record", scope: .own(namespace: "moved"))
-        let defaults = UserDefaultsStorage.Entry<String>(key: "flag", scope: .own(namespace: "moved"))
-        try await storage.save("file", to: FileStorage.Entry<String>(key: "avatar", scope: .own(namespace: "ns")))
-        try await storage.save("sqlite", to: SQLiteStorage.Entry<String>(key: "record", scope: .own(namespace: "ns")))
-        try await storage.save("defaults", to: UserDefaultsStorage.Entry<String>(key: "flag", scope: .own(namespace: "ns")))
+        let record = SQLiteStorage.Entry<String>(key: "record", scope: .own(namespace: "moved"))
+        let flag = UserDefaultsStorage.Entry<String>(key: "renamedFlag", scope: .own(namespace: "ns"))
+        try await storage.save("file", to: oldFile)
+        try await storage.save("sqlite", to: oldRecord)
+        try await storage.save("defaults", to: oldFlag)
 
-        // When
-        try await storage.move(file, from: .own(namespace: "ns"))
-        try await storage.move(sqlite, from: .own(namespace: "ns"))
-        try await storage.move(defaults, from: .own(namespace: "ns"))
+        // When: to an entry, a scope and a key
+        try await storage.move(oldFile, to: file)
+        try await storage.move(oldRecord, to: record.scope)
+        try await storage.move(oldFlag, to: flag.key)
 
-        // Then: each value is in its entry's new scope only
+        // Then: each value is at its new entry only
         let movedFile = try await storage.fetch(file)
-        let movedRecord = try await storage.fetch(sqlite)
-        let movedFlag = try await storage.fetch(defaults)
+        let movedRecord = try await storage.fetch(record)
+        let movedFlag = try await storage.fetch(flag)
         XCTAssertEqual(movedFile, "file")
         XCTAssertEqual(movedRecord, "sqlite")
         XCTAssertEqual(movedFlag, "defaults")
-        let oldFile = try await storage.fetch(FileStorage.Entry<String>(key: "avatar", scope: .own(namespace: "ns")))
-        let oldRecord = try await storage.fetch(SQLiteStorage.Entry<String>(key: "record", scope: .own(namespace: "ns")))
-        let oldFlag = try await storage.fetch(UserDefaultsStorage.Entry<String>(key: "flag", scope: .own(namespace: "ns")))
-        XCTAssertNil(oldFile)
-        XCTAssertNil(oldRecord)
-        XCTAssertNil(oldFlag)
+        let leftFile = try await storage.fetch(oldFile)
+        let leftRecord = try await storage.fetch(oldRecord)
+        let leftFlag = try await storage.fetch(oldFlag)
+        XCTAssertNil(leftFile)
+        XCTAssertNil(leftRecord)
+        XCTAssertNil(leftFlag)
     }
 
     // MARK: Closing
