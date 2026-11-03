@@ -32,7 +32,7 @@ final class UnifiedStorageUpdateTests: XCTestCase {
         XCTAssertEqual(read.value, 1)
         XCTAssertEqual(updated, 2)
         XCTAssertEqual(place.value(forKey: "key"), 2)
-        XCTAssertEqual(place.calls, [.fetch("key"), .save(Data("2".utf8), "key")])
+        XCTAssertEqual(place.calls, [.fetch("key"), .set(Data("2".utf8), "key")])
     }
 
     func testWithoutAValueTheTransformGetsNil() async throws {
@@ -64,7 +64,7 @@ final class UnifiedStorageUpdateTests: XCTestCase {
         // Then
         XCTAssertNil(updated)
         XCTAssertNil(place.value(forKey: "key"))
-        XCTAssertEqual(place.calls, [.fetch("key"), .delete("key")])
+        XCTAssertEqual(place.calls, [.fetch("key"), .set(nil, "key")])
     }
 
     func testConcurrentUpdatesThroughOneStorageLoseNothing() async throws {
@@ -137,18 +137,18 @@ final class UnifiedStorageUpdateTests: XCTestCase {
     }
 
     func testAFailedWriteKeepsTheValue() async throws {
-        for (operation, result) in [(Place.Operation.save, Int?.some(2)), (.delete, nil)] {
+        for result in [Int?.some(2), nil] {
             // Given
             let (place, entry) = place()
             place.store(1, forKey: "key")
-            place.fail(operation, with: error)
+            place.fail(.set, with: error)
 
             // When - Then
             await assertThrows(CodingStorageError<PlaceStorage>.storage(error)) {
                 try await UnifiedStorage().update(entry) { _ in result }
             }
 
-            XCTAssertEqual(place.value(forKey: "key"), 1, "\(operation)")
+            XCTAssertEqual(place.value(forKey: "key"), 1, "\(String(describing: result))")
         }
     }
 
@@ -178,7 +178,7 @@ final class UnifiedStorageUpdateTests: XCTestCase {
         let (place, entry) = place()
         let storage = UnifiedStorage()
         place.store(1, forKey: "key")
-        place.hold(.save)
+        place.hold(.set)
         let update = Task { try await storage.update(entry) { ($0 ?? 0) + 1 } }
         try await place.waitUntilHeld()
         let fetched = Task { try await storage.fetch(entry) }
@@ -221,7 +221,7 @@ final class UnifiedStorageUpdateTests: XCTestCase {
         let (place, entry) = place()
         let (other, otherKey) = self.place()
         let storage = UnifiedStorage()
-        place.hold(.save)
+        place.hold(.set)
         let update = Task { try await storage.update(entry) { _ in 1 } }
         try await place.waitUntilHeld()
 

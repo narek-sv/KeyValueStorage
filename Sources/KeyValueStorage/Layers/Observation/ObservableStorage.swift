@@ -58,12 +58,11 @@ open class ObservableStorage<Storage: AsyncDataStorage & Sendable>: @unchecked S
         registry.observation(forKey: key, in: scopeID)?.change(to: value)
     }
 
+    /// Saves `value`, or deletes the stored one if `nil`, through the storage's `set`, then publishes it.
+    /// - Note: It doesn't call `save` or `delete`: a subclass that changes them changes this too.
     open func set<Value: CodingValue>(_ value: Value?, forKey key: CodingStorageKey<Storage, Value>) async throws(Error) {
-        if let value {
-            try await save(value, forKey: key)
-        } else {
-            try await delete(forKey: key)
-        }
+        try await storage.set(value, forKey: key)
+        registry.observation(forKey: key, in: scopeID)?.change(to: value)
     }
 
     open func delete<Value: CodingValue>(forKey key: CodingStorageKey<Storage, Value>) async throws(Error) {

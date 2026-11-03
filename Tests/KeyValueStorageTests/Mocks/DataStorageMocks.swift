@@ -29,13 +29,15 @@ struct MockError: Error, Equatable {
 enum DataStorageCall: Equatable {
     case fetch(String)
     case save(Data, String)
+    case set(Data?, String)
     case delete(String)
     case clear
 }
 
 // MARK: - DataStorageMock
 
-/// A synchronous in-memory storage; records every call, and throws `error` instead of answering.
+/// A synchronous in-memory storage; records every call, and throws `error` instead of answering. It has a `set` of its own, recorded as
+/// `.set`, so a test sees it reached.
 final class DataStorageMock: DataStorage {
     typealias Key = String
     typealias Error = MockError
@@ -56,6 +58,11 @@ final class DataStorageMock: DataStorage {
 
     func save(_ value: Data, forKey key: String) throws(MockError) {
         try record(.save(value, key))
+        values[key] = value
+    }
+
+    func set(_ value: Data?, forKey key: String) throws(MockError) {
+        try record(.set(value, key))
         values[key] = value
     }
 
@@ -80,6 +87,7 @@ final class DataStorageMock: DataStorage {
 // MARK: - AsyncDataStorageMock
 
 /// An asynchronous in-memory storage, as an app's server-backed one would be; records every call, and throws `error` instead of answering.
+/// Its `set` is recorded as `.set`.
 actor AsyncDataStorageMock: AsyncDataStorage {
     typealias Key = String
     typealias Error = MockError
@@ -100,6 +108,11 @@ actor AsyncDataStorageMock: AsyncDataStorage {
 
     func save(_ value: Data, forKey key: String) async throws(MockError) {
         try record(.save(value, key))
+        values[key] = value
+    }
+
+    func set(_ value: Data?, forKey key: String) async throws(MockError) {
+        try record(.set(value, key))
         values[key] = value
     }
 

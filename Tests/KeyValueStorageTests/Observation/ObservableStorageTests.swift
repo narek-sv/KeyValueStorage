@@ -475,7 +475,7 @@ final class ObservableStorageTests: XCTestCase {
         XCTAssertEqual(fetched, 1)
         XCTAssertEqual(storage.scope, underlying.scope)
         let calls = await underlying.calls
-        XCTAssertEqual(calls, [.save(Data("1".utf8), "key"), .fetch("key"), .delete("key"), .clear])
+        XCTAssertEqual(calls, [.save(Data("1".utf8), "key"), .fetch("key"), .set(nil, "key"), .clear])
 
         // When - Then
         let error = MockError(id: 1)
@@ -522,6 +522,10 @@ private actor SlowReadStorage: AsyncDataStorage {
     }
 
     func save(_ value: Data, forKey key: String) {
+        values[key] = value
+    }
+
+    func set(_ value: Data?, forKey key: String) {
         values[key] = value
     }
 

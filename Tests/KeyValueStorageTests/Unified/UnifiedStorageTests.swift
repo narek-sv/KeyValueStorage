@@ -173,6 +173,21 @@ final class UnifiedStorageTests: XCTestCase {
         XCTAssertNil(deleted)
     }
 
+    func testSetReachesTheStoragesOwnSet() async throws {
+        for storage in [UnifiedStorage(), UnifiedStorage(observable: true)] {
+            // Given
+            let place = Place.named("set-\(UUID().uuidString)")
+            let entry = PlaceStorage.Entry<Int>(key: "key", scope: place.scope)
+
+            // When
+            try await storage.set(1, to: entry)
+            try await storage.set(nil, to: entry)
+
+            // Then: the storage's own `set`, also through an observable storage, never `save` or `delete`
+            XCTAssertEqual(place.calls, [.set(Data("1".utf8), "key"), .set(nil, "key")])
+        }
+    }
+
     func testClearEmptiesOnlyTheGivenStorageTypeAndScope() async throws {
         // Given: two scopes of a real storage, and another storage type with the same key
         let storage = UnifiedStorage()
@@ -466,6 +481,10 @@ private actor GatedStorage: AsyncDataStorage {
     }
 
     func save(_ value: Data, forKey key: String) async throws(MockError) {
+        values[key] = value
+    }
+
+    func set(_ value: Data?, forKey key: String) async throws(MockError) {
         values[key] = value
     }
 

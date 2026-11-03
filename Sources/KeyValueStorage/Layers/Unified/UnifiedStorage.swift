@@ -54,11 +54,10 @@ public final class UnifiedStorage: Sendable {
         }
     }
 
+    /// Saves `value`, or deletes the stored one if `nil`, through the storage's `set`.
     public func set<Storage: UnifiedStorable, Value: CodingValue>(_ value: Value?, to entry: Entry<Storage, Value>) async throws(CodingStorageError<Storage>) {
-        if let value {
-            try await save(value, to: entry)
-        } else {
-            try await delete(entry)
+        try await scopes.withScope(entry.scope) { (storage: ScopeStorage<Storage>) throws(CodingStorageError<Storage>) in
+            try await storage.set(value, forKey: .init(key: entry.key))
         }
     }
 
@@ -125,12 +124,7 @@ public final class UnifiedStorage: Sendable {
         try await scopes.withHeldScopes([entry.scope]) { (storages: [ScopeStorage<Storage>]) throws(CodingStorageError<Storage>) in
             let codingKey = CodingStorageKey<Storage, Value>(key: entry.key)
             let updated = transform(try await storages[0].fetch(forKey: codingKey))
-            if let updated {
-                try await storages[0].save(updated, forKey: codingKey)
-            } else {
-                try await storages[0].delete(forKey: codingKey)
-            }
-
+            try await storages[0].set(updated, forKey: codingKey)
             return updated
         }
     }

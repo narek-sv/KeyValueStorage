@@ -315,7 +315,7 @@ You can define your own storage, synchronous or asynchronous, and it works with 
 * A storage whose operations never suspend conforms to `DataStorage`. Code that uses it directly never needs `await`, and neither does `CodingStorage` on top of it.
 * A storage whose operations suspend, such as one backed by a server, conforms to `AsyncDataStorage` and is used through `AsyncCodingStorage` or `UnifiedStorage`. Every `DataStorage` is an `AsyncDataStorage` too.
 
-Each storage implements every operation once, synchronous or `async`. Declare its `Key` and `Error` types: Swift doesn't infer them from typed throws.
+Each storage implements every operation once, synchronous or `async`. Declare its `Key` and `Error` types: Swift doesn't infer them from typed throws. `set`, which saves a value or deletes it for `nil`, is `save` or `delete` by default for a synchronous storage, and an asynchronous one implements it too. Every layer calls the storage's own `set`, so a storage that does either in one operation, such as one request, can implement its own.
 
 ```swift
 // Synchronous
@@ -337,7 +337,7 @@ actor RemoteStorage: AsyncDataStorage {
     nonisolated let scope: RemoteScope
     init(scope: RemoteScope) async throws(URLError) { ... }
     func fetch(forKey key: String) async throws(URLError) -> Data? { ... }
-    // save, delete and clear
+    // save, set, delete and clear
 }
 ```
 

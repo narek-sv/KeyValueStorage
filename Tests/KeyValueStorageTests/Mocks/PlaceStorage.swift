@@ -33,6 +33,10 @@ struct PlaceStorage: AsyncDataStorage, Sendable {
         try await place.perform(.save(value, key)) { $0[key] = value }
     }
 
+    func set(_ value: Data?, forKey key: String) async throws(MockError) {
+        try await place.perform(.set(value, key)) { $0[key] = value }
+    }
+
     func delete(forKey key: String) async throws(MockError) {
         try await place.perform(.delete(key)) { $0[key] = nil }
     }
@@ -47,7 +51,7 @@ struct PlaceStorage: AsyncDataStorage, Sendable {
 /// Values, recorded calls, failures, and an operation held until released, by name.
 final class Place: @unchecked Sendable {
     enum Operation {
-        case fetch, save, delete, clear
+        case fetch, save, set, delete, clear
     }
 
     private static let lock = NSLock()
@@ -153,6 +157,7 @@ final class Place: @unchecked Sendable {
         switch call {
         case .fetch:    return .fetch
         case .save:     return .save
+        case .set:      return .set
         case .delete:   return .delete
         case .clear:    return .clear
         }

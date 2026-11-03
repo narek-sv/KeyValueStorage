@@ -347,6 +347,14 @@ extension UnifiedStorage {
             }
         }
 
+        func set<Value: CodingValue>(_ value: Value?, forKey key: CodingStorageKey<Storage, Value>) async throws(CodingStorageError<Storage>) {
+            if let observable {
+                try await observable.set(value, forKey: key)
+            } else {
+                try await coding.set(value, forKey: key)
+            }
+        }
+
         func delete<Value: CodingValue>(forKey key: CodingStorageKey<Storage, Value>) async throws(CodingStorageError<Storage>) {
             if let observable {
                 try await observable.delete(forKey: key)

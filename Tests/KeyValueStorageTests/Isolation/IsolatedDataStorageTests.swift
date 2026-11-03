@@ -28,7 +28,7 @@ final class IsolatedDataStorageTests: XCTestCase {
 
         // Then
         XCTAssertEqual(fetched, Data([1]))
-        XCTAssertEqual(log.calls, [.save(Data([1]), "key"), .fetch("key"), .delete("key"), .save(Data([2]), "other"), .delete("other"), .clear])
+        XCTAssertEqual(log.calls, [.save(Data([1]), "key"), .fetch("key"), .set(nil, "key"), .set(Data([2]), "other"), .delete("other"), .clear])
     }
 
     func testTheWrappedStoragesErrorsPassThrough() async {
@@ -115,8 +115,8 @@ final class IsolatedDataStorageTests: XCTestCase {
 
 // MARK: - LoggedStorage
 
-/// A synchronous storage that isn't `Sendable`, as `IsolatedDataStorage` wraps; records into the `Log` named like its scope,
-/// since the caller gives the storage up.
+/// A synchronous storage that isn't `Sendable`, as `IsolatedDataStorage` wraps, with a `set` of its own; records into the
+/// `Log` named like its scope, since the caller gives the storage up.
 private final class LoggedStorage: DataStorage {
     typealias Key = String
     typealias Error = MockError
@@ -135,6 +135,11 @@ private final class LoggedStorage: DataStorage {
 
     func save(_ value: Data, forKey key: String) throws(MockError) {
         try Log.named(scope.name).record(.save(value, key))
+        values[key] = value
+    }
+
+    func set(_ value: Data?, forKey key: String) throws(MockError) {
+        try Log.named(scope.name).record(.set(value, key))
         values[key] = value
     }
 

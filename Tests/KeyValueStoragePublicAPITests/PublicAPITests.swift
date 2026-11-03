@@ -297,6 +297,27 @@ final class PublicAPITests: XCTestCase {
         XCTAssertEqual(isolatedValue, "Bob")
     }
 
+    /// A storage's own `set`, such as one request that writes or removes a value, is what every layer calls.
+    func testAStoragesOwnSetIsWhatEveryLayerCalls() async throws {
+        // Given
+        let scope = NamespaceScope(namespace: "publicAPIOwnSet-\(UUID().uuidString)")
+        let storage = UnifiedStorage(observable: true)
+        let entry = OwnSetStorage.Entry<Int>(key: "count", scope: scope)
+        let coding = CodingStorage(storage: OwnSetStorage(scope: scope))
+        let isolated = IsolatedDataStorage(OwnSetStorage(scope: scope))
+
+        // When: a set, an update and an unset through `UnifiedStorage`, and a set through a coding and an isolated storage
+        try await storage.set(1, to: entry)
+        let updated = try await storage.update(entry) { ($0 ?? 0) + 1 }
+        try await storage.set(nil, to: entry)
+        try coding.set(3, forKey: CodingStorageKey(key: "count"))
+        await isolated.set(Data("4".utf8), forKey: "count")
+
+        // Then: five writes, each through the storage's own `set`
+        XCTAssertEqual(updated, 2)
+        XCTAssertEqual(OwnSetStorage.sets(in: scope), 5)
+    }
+
     /// Compiles only while the storage and its locator throw `FileStorage.Error`, and clients can match every case.
     func testFileStorageThrowsItsOwnErrors() {
         let key = FileStorage.Key(String(repeating: "a", count: 256))
@@ -440,6 +461,10 @@ private actor RemoteStorage: AsyncDataStorage {
         values[key] = value
     }
 
+    func set(_ value: Data?, forKey key: String) async throws(URLError) {
+        values[key] = value
+    }
+
     func delete(forKey key: String) async throws(URLError) {
         values[key] = nil
     }
@@ -494,4 +519,37 @@ private final class LockedStorage: DataStorage, @unchecked Sendable {
     func save(_ value: Data, forKey key: String) { lock.withLock { values[key] = value } }
     func delete(forKey key: String) { _ = lock.withLock { values.removeValue(forKey: key) } }
     func clear() { lock.withLock { values = [:] } }
+}
+
+/// A storage with a `set` of its own, as one that writes or removes a value in one request would have; counts its calls by
+/// namespace, since `UnifiedStorage` creates an instance of its own.
+private final class OwnSetStorage: DataStorage, @unchecked Sendable {
+    typealias Key = String
+    typealias Error = Never
+
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var setCalls = [String: Int]()
+
+    let scope: NamespaceScope
+    private let lock = NSLock()
+    private var values = [String: Data]()
+
+    init(scope: NamespaceScope) {
+        self.scope = scope
+    }
+
+    /// How many times the storages of `scope` were set.
+    static func sets(in scope: NamespaceScope) -> Int {
+        lock.withLock { setCalls[scope.namespace, default: 0] }
+    }
+
+    func fetch(forKey key: String) -> Data? { lock.withLock { values[key] } }
+    func save(_ value: Data, forKey key: String) { lock.withLock { values[key] = value } }
+    func delete(forKey key: String) { _ = lock.withLock { values.removeValue(forKey: key) } }
+    func clear() { lock.withLock { values = [:] } }
+
+    func set(_ value: Data?, forKey key: String) {
+        Self.lock.withLock { Self.setCalls[scope.namespace, default: 0] += 1 }
+        lock.withLock { values[key] = value }
+    }
 }

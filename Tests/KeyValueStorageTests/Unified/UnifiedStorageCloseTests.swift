@@ -250,6 +250,10 @@ private final class CountedStorage: AsyncDataStorage, Sendable {
         try await place.save(value, forKey: key)
     }
 
+    func set(_ value: Data?, forKey key: String) async throws(MockError) {
+        try await place.set(value, forKey: key)
+    }
+
     func delete(forKey key: String) async throws(MockError) {
         try await place.delete(forKey: key)
     }

@@ -17,6 +17,7 @@ import Foundation
 public protocol DataStorage: AsyncDataStorage {
     func fetch(forKey key: Key) throws(Error) -> Data?
     func save(_ value: Data, forKey key: Key) throws(Error)
+    func set(_ value: Data?, forKey key: Key) throws(Error)
     func delete(forKey key: Key) throws(Error)
     func clear() throws(Error)
 }
@@ -24,7 +25,8 @@ public protocol DataStorage: AsyncDataStorage {
 // MARK: - DataStorage + Defaults
 
 public extension DataStorage {
-    /// Saves `value`, or deletes it if `nil`.
+    /// Saves `value`, or deletes it if `nil`, with `save` or `delete`; a storage that does either in one operation of its
+    /// own implements its own.
     func set(_ value: Data?, forKey key: Key) throws(Error) {
         if let value {
             try save(value, forKey: key)

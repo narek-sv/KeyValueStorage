@@ -73,7 +73,7 @@ final class CodingStorageTests: XCTestCase {
 
     // MARK: Set, Delete and Clear
 
-    func testSetSavesAValueAndDeletesNil() throws {
+    func testSetPassesTheEncodedValueOrNilToTheStoragesSet() throws {
         // Given
         let storage = makeStorage()
 
@@ -82,7 +82,21 @@ final class CodingStorageTests: XCTestCase {
         try storage.set(nil, forKey: key)
 
         // Then
-        XCTAssertEqual(self.storage.calls, [.save(Data("42".utf8), "key"), .delete("key")])
+        XCTAssertEqual(self.storage.calls, [.set(Data("42".utf8), "key"), .set(nil, "key")])
+    }
+
+    func testSetReportsTheCodersFailureWithoutWriting() {
+        assertThrows(Error.coding(error)) { try makeStorage(coder: DataCoderMock(encodeError: error)).set(42, forKey: key) }
+        XCTAssertEqual(storage.calls, [])
+    }
+
+    func testSetReportsTheStoragesFailure() {
+        // Given
+        storage.error = error
+
+        // When - Then
+        assertThrows(Error.storage(error)) { try makeStorage().set(42, forKey: key) }
+        assertThrows(Error.storage(error)) { try makeStorage().set(nil, forKey: key) }
     }
 
     func testDeleteAndClearReachTheStorage() throws {

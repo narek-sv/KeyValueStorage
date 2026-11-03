@@ -58,11 +58,17 @@ open class AsyncCodingStorage<Storage: AsyncDataStorage> {
         }
     }
 
+    /// Saves `value`, or deletes the stored one if `nil`, through the storage's `set`.
     public func set<Value: CodingValue>(_ value: Value?, forKey key: CodingStorageKey<Storage, Value>) async throws(Error) {
+        var encoded: Data?
         if let value {
-            try await save(value, forKey: key)
-        } else {
-            try await delete(forKey: key)
+            encoded = try coder.encoded(value, for: Storage.self)
+        }
+
+        do throws(Storage.Error) {
+            try await storage.set(encoded, forKey: key.key)
+        } catch {
+            throw .storage(error)
         }
     }
 

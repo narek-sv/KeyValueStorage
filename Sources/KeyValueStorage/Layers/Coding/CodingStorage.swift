@@ -105,11 +105,17 @@ open class CodingStorage<Storage: DataStorage> {
         }
     }
 
+    /// Saves `value`, or deletes the stored one if `nil`, through the storage's `set`.
     public func set<Value: CodingValue>(_ value: Value?, forKey key: CodingStorageKey<Storage, Value>) throws(Error) {
+        var encoded: Data?
         if let value {
-            try save(value, forKey: key)
-        } else {
-            try delete(forKey: key)
+            encoded = try coder.encoded(value, for: Storage.self)
+        }
+
+        do throws(Storage.Error) {
+            try storage.set(encoded, forKey: key.key)
+        } catch {
+            throw .storage(error)
         }
     }
 

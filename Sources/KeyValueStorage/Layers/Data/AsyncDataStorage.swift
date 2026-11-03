@@ -24,6 +24,7 @@ public protocol AsyncDataStorage {
 
     func fetch(forKey key: Key) async throws(Error) -> Data?
     func save(_ value: Data, forKey key: Key) async throws(Error)
+    func set(_ value: Data?, forKey key: Key) async throws(Error)
     func delete(forKey key: Key) async throws(Error)
     func clear() async throws(Error)
 }
