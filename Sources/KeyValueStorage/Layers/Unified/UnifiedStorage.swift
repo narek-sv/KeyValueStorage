@@ -43,33 +43,33 @@ public final class UnifiedStorage: Sendable {
     // MARK: Main Functionality
 
     public func fetch<Storage: UnifiedStorable, Value: CodingValue>(_ entry: Entry<Storage, Value>) async throws(CodingStorageError<Storage>) -> Value? {
-        try await scopes.withScope(entry.scope) { (storage: ScopeStorage<Storage>) throws(CodingStorageError<Storage>) in
+        try await scopes.withSharedAccess(to: entry.scope) { (storage: ScopeStorage<Storage>) throws(CodingStorageError<Storage>) in
             try await storage.fetch(forKey: .init(key: entry.key))
         }
     }
 
     public func save<Storage: UnifiedStorable, Value: CodingValue>(_ value: Value, to entry: Entry<Storage, Value>) async throws(CodingStorageError<Storage>) {
-        try await scopes.withScope(entry.scope) { (storage: ScopeStorage<Storage>) throws(CodingStorageError<Storage>) in
+        try await scopes.withSharedAccess(to: entry.scope) { (storage: ScopeStorage<Storage>) throws(CodingStorageError<Storage>) in
             try await storage.save(value, forKey: .init(key: entry.key))
         }
     }
 
     /// Saves `value`, or deletes the stored one if `nil`, through the storage's `set`.
     public func set<Storage: UnifiedStorable, Value: CodingValue>(_ value: Value?, to entry: Entry<Storage, Value>) async throws(CodingStorageError<Storage>) {
-        try await scopes.withScope(entry.scope) { (storage: ScopeStorage<Storage>) throws(CodingStorageError<Storage>) in
+        try await scopes.withSharedAccess(to: entry.scope) { (storage: ScopeStorage<Storage>) throws(CodingStorageError<Storage>) in
             try await storage.set(value, forKey: .init(key: entry.key))
         }
     }
 
     public func delete<Storage: UnifiedStorable, Value: CodingValue>(_ entry: Entry<Storage, Value>) async throws(CodingStorageError<Storage>) {
-        try await scopes.withScope(entry.scope) { (storage: ScopeStorage<Storage>) throws(CodingStorageError<Storage>) in
+        try await scopes.withSharedAccess(to: entry.scope) { (storage: ScopeStorage<Storage>) throws(CodingStorageError<Storage>) in
             try await storage.delete(forKey: CodingStorageKey<Storage, Value>(key: entry.key))
         }
     }
 
     /// Removes every value of the storage type's scope.
     public func clear<Storage: UnifiedStorable>(storage _: Storage.Type, forScope scope: Storage.Scope = .default) async throws(CodingStorageError<Storage>) {
-        try await scopes.withScope(scope) { (storage: ScopeStorage<Storage>) throws(CodingStorageError<Storage>) in
+        try await scopes.withSharedAccess(to: scope) { (storage: ScopeStorage<Storage>) throws(CodingStorageError<Storage>) in
             try await storage.clear()
         }
     }
@@ -91,7 +91,7 @@ public final class UnifiedStorage: Sendable {
             return
         }
 
-        try await scopes.withHeldScopes([scope, entry.scope]) { (storages: [ScopeStorage<Storage>]) throws(CodingStorageError<Storage>) in
+        try await scopes.withExclusiveAccess(to: [scope, entry.scope]) { (storages: [ScopeStorage<Storage>]) throws(CodingStorageError<Storage>) in
             let (source, target) = (storages[0], storages[1])
             let codingKey = CodingStorageKey<Storage, Value>(key: entry.key)
             guard let value = try await source.fetch(forKey: codingKey) else {
@@ -121,7 +121,7 @@ public final class UnifiedStorage: Sendable {
         _ entry: Entry<Storage, Value>,
         _ transform: (Value?) -> Value?
     ) async throws(CodingStorageError<Storage>) -> Value? {
-        try await scopes.withHeldScopes([entry.scope]) { (storages: [ScopeStorage<Storage>]) throws(CodingStorageError<Storage>) in
+        try await scopes.withExclusiveAccess(to: [entry.scope]) { (storages: [ScopeStorage<Storage>]) throws(CodingStorageError<Storage>) in
             let codingKey = CodingStorageKey<Storage, Value>(key: entry.key)
             let updated = transform(try await storages[0].fetch(forKey: codingKey))
             try await storages[0].set(updated, forKey: codingKey)
@@ -136,7 +136,7 @@ public final class UnifiedStorage: Sendable {
     /// - The storage is released before it returns, once nothing else keeps it: a factory that keeps its own reference keeps
     ///   it open.
     public func close<Storage: UnifiedStorable>(storage _: Storage.Type, forScope scope: Storage.Scope = .default) async {
-        await scopes.close(scope, of: Storage.self)
+        await scopes.withExclusiveAccess(closing: scope, of: Storage.self)
     }
 
     // MARK: Observation
@@ -149,8 +149,11 @@ public final class UnifiedStorage: Sendable {
     ///   actor calls it: put `receive(on: DispatchQueue.main)` before it.
     public func publisher<Storage: UnifiedStorable, Value: CodingValue>(for entry: Entry<Storage, Value>, includingCurrentValue: Bool = true)
     async throws(CodingStorageError<Storage>) -> ValuePublisher<Value?>? {
-        try await scopes.withScope(entry.scope) { (storage: ScopeStorage<Storage>) throws(CodingStorageError<Storage>) in
-            try await storage.observable?.publisher(forKey: .init(key: entry.key), includingCurrentValue: includingCurrentValue)
+        try await scopes.withSharedAccess(to: entry.scope) { (storage: ScopeStorage<Storage>) throws(CodingStorageError<Storage>) in
+            try await storage.observable?.publisher(
+                forKey: .init(key: entry.key),
+                includingCurrentValue: includingCurrentValue
+            )
         }
     }
 
@@ -165,9 +168,12 @@ public final class UnifiedStorage: Sendable {
         includingCurrentValue: Bool = true,
         bufferingPolicy: AsyncStream<Value?>.Continuation.BufferingPolicy = .unbounded
     ) async throws(CodingStorageError<Storage>) -> AsyncStream<Value?>? {
-        try await scopes.withScope(entry.scope) { (storage: ScopeStorage<Storage>) throws(CodingStorageError<Storage>) in
-            try await storage.observable?.stream(forKey: .init(key: entry.key), includingCurrentValue: includingCurrentValue,
-                                                 bufferingPolicy: bufferingPolicy)
+        try await scopes.withSharedAccess(to: entry.scope) { (storage: ScopeStorage<Storage>) throws(CodingStorageError<Storage>) in
+            try await storage.observable?.stream(
+                forKey: .init(key: entry.key),
+                includingCurrentValue: includingCurrentValue,
+                bufferingPolicy: bufferingPolicy
+            )
         }
     }
 }

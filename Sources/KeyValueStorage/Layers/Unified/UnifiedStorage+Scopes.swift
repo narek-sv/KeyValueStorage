@@ -31,8 +31,8 @@ extension UnifiedStorage {
         // MARK: Calls and Holds
 
         /// Runs `body` with the scope's storage, once no move, update or close holds or waits for the scope.
-        func withScope<Storage: UnifiedStorable, T>(
-            _ scope: Storage.Scope,
+        func withSharedAccess<Storage: UnifiedStorable, T>(
+            to scope: Storage.Scope,
             _ body: (ScopeStorage<Storage>) async throws(CodingStorageError<Storage>) -> T
         ) async throws(CodingStorageError<Storage>) -> T {
             let (slot, creation) = await enterCall(scope, of: Storage.self)
@@ -45,8 +45,8 @@ extension UnifiedStorage {
         }
 
         /// Runs `body` with the scopes' storages, all created first, once no call runs in any of them; calls in them wait meanwhile.
-        func withHeldScopes<Storage: UnifiedStorable, T>(
-            _ scopes: [Storage.Scope],
+        func withExclusiveAccess<Storage: UnifiedStorable, T>(
+            to scopes: [Storage.Scope],
             _ body: ([ScopeStorage<Storage>]) async throws(CodingStorageError<Storage>) -> T
         ) async throws(CodingStorageError<Storage>) -> T {
             let slots = lock.withLock {
@@ -68,7 +68,7 @@ extension UnifiedStorage {
         }
 
         /// Lets go of the scope's storage once no call runs in it, so the next call creates a new one; calls wait meanwhile.
-        func close<Storage: UnifiedStorable>(_ scope: Storage.Scope, of _: Storage.Type) async {
+        func withExclusiveAccess<Storage: UnifiedStorable>(closing scope: Storage.Scope, of _: Storage.Type) async {
             let slot = lock.withLock { self.slot(for: scope, of: Storage.self) }
             await enterHold([slot])
 
