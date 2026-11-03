@@ -29,7 +29,11 @@ public final class UserDefaultsStorage: DataStorage, Sendable {
 
     // MARK: Initializers
 
-    public init(scope: Scope, backingStore: any UserDefaultsBackingStore, locator: any UserDefaultsLocator) throws(Error) {
+    public init(
+        scope: Scope,
+        backingStore: any UserDefaultsBackingStore = DefaultUserDefaultsBackingStoreWrapper(),
+        locator: any UserDefaultsLocator = DefaultUserDefaultsLocator()
+    ) throws(Error) {
         let name = try locator.suiteName(for: scope)
         guard let suite = backingStore.suite(named: name) else {
             throw .invalidSuiteName(name)

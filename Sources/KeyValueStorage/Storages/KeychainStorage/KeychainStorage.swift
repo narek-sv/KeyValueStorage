@@ -29,7 +29,11 @@ public final class KeychainStorage: DataStorage, Sendable {
 
     // MARK: Initializers
 
-    public init(scope: Scope, backingStore: any KeychainBackingStore, locator: any KeychainLocator) {
+    public init(
+        scope: Scope,
+        backingStore: any KeychainBackingStore = DefaultKeychainBackingStoreWrapper(),
+        locator: any KeychainLocator = DefaultKeychainLocator()
+    ) {
         self.service = locator.service(for: scope)
         self.accessGroup = locator.accessGroup(for: scope)
         self.accessibility = Self.accessibility(for: scope)

@@ -30,7 +30,11 @@ public final class FileStorage: DataStorage, Sendable {
 
     // MARK: Initializers
 
-    public init(scope: Scope, backingStore: any FileBackingStore, locator: any FileLocator) throws(Error) {
+    public init(
+        scope: Scope,
+        backingStore: any FileBackingStore = DefaultFileBackingStoreWrapper(),
+        locator: any FileLocator = DefaultFileLocator()
+    ) throws(Error) {
         self.root = try locator.directory(for: scope)
         self.writingOptions = Self.writingOptions(for: scope)
         self.scope = scope

@@ -23,7 +23,11 @@ public final class InMemoryStorage: DataStorage, Sendable {
 
     // MARK: Initializers
 
-    public init(scope: Scope, backingStore: any InMemoryBackingStore, locator: any InMemoryLocator) {
+    public init(
+        scope: Scope,
+        backingStore: any InMemoryBackingStore = DefaultInMemoryBackingStoreWrapper(),
+        locator: any InMemoryLocator = DefaultInMemoryLocator()
+    ) {
         self.bucket = locator.bucket(for: scope)
         self.scope = scope
         self.backingStore = backingStore

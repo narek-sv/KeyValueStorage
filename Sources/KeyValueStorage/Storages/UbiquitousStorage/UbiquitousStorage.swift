@@ -28,7 +28,11 @@ public final class UbiquitousStorage: DataStorage, Sendable {
 
     // MARK: Initializers
 
-    public init(scope: Scope, backingStore: any UbiquitousBackingStore, locator: any UbiquitousLocator) {
+    public init(
+        scope: Scope,
+        backingStore: any UbiquitousBackingStore = DefaultUbiquitousBackingStoreWrapper(),
+        locator: any UbiquitousLocator = DefaultUbiquitousLocator()
+    ) {
         self.scope = scope
         self.backingStore = backingStore
         self.locator = locator

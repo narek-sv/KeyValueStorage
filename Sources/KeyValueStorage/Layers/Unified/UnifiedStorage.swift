@@ -16,6 +16,9 @@
 /// - It creates one storage per storage type and scope, on first use, through its factory, and keeps it until
 ///   `close(storage:forScope:)` lets go of it, or until it's deallocated: close a scope the app is done with, such as a
 ///   SQLite scope per account, to close its database.
+/// - Reach each scope through one storage type: `FileStorage` and `IsolatedDataStorage<FileStorage>` are two storages over
+///   the same files, so a `move` or an `update` through one doesn't hold the other's calls, a `close` closes only its own,
+///   and each one's observers get only the changes made through it.
 /// - Cancelling a call doesn't cancel its storage's creation, which concurrent calls share.
 /// - When its factory makes a storage observable, the changes made through it are published; see `ObservableStorage`.
 /// - Warning: Don't call it from inside its own storages, coders, factory or `ObservableStorage` subclasses: such a call can

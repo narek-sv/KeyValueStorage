@@ -23,7 +23,11 @@ public final class SQLiteStorage: DataStorage, Sendable {
 
     // MARK: Initializers
 
-    public init(scope: Scope, backingStore: any SQLiteBackingStore, locator: any SQLiteLocator) throws(Error) {
+    public init(
+        scope: Scope,
+        backingStore: any SQLiteBackingStore = DefaultSQLiteBackingStoreWrapper(),
+        locator: any SQLiteLocator = DefaultSQLiteLocator()
+    ) throws(Error) {
         let databaseURL = try locator.databaseURL(for: scope)
         let protection = Self.fileProtection(for: scope)
         do {
