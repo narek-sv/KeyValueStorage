@@ -740,6 +740,11 @@ xcodebuild test -project Tests/KeychainHost/KeychainHost.xcodeproj -scheme Keych
 ```
 
 ---
+## Design
+
+[DESIGN.md](DESIGN.md) explains why the package is built the way it is: the principles every change follows, and the decisions behind its shape, with the alternatives each one rules out.
+
+---
 ## Installation
 
 ### [Swift Package Manager](https://swift.org/package-manager/)

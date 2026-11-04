@@ -13,8 +13,8 @@
 
 What's left of the 4.0 refactor, and the audits it comes from: branch `4.0.0-experiments` at `4c12469` (2026-11-01) and
 `145f535` (2026-11-02), every source file, the README, the CHANGELOG and the test suite. The open work is in §1, by
-priority, with the details of each item; what only a device can settle is in §2; §3 assesses what's done. The finished
-design, its decisions (D1–D28) and their rationale are in git: the full plan as of commit `0d557e4`. Check `git log`
+priority, with the details of each item; what only a device can settle is in §2; §3 assesses what's done. The
+principles every change follows, and the decisions behind the design, are in [DESIGN.md](DESIGN.md). Check `git log`
 first, as this file can lag it. Work on branch `4.0.0-experiments`.
 
 Findings marked **confirmed** were reproduced with a probe built against the package (macOS); **verify** needs a real
@@ -25,28 +25,8 @@ maintainers will hit), **low** (rare, cosmetic or design).
 
 ## 0. How to work on this file
 
-**Working rules** (the maintainer's):
-- **Commits** only when the maintainer asks, one per step.
-- **Simple, bulletproof, sound:** the simplest rule that holds for every input. No logic in default backing stores (one system call per member); all naming lives in the locators, with the byte-level encodings they share in `Helpers/String+UTF8.swift`; no parameters or properties for demonstration only; never swallow a "can't tell": throw instead.
-- **Consistency:** a rule decided for one storage applies to all six.
-- **Isolation:** storages share no code, only the primitives in `Helpers/`: each keeps its own scope, error, locator and backing store types, even where they match another's, as File's and SQLite's do. File and SQLite share a scope's folder, so a test (`testEveryScopesDatabaseIsInTheFileStoragesFolderForTheSameScope`), not shared code, keeps their two folder rules in agreement. `CodingStorage` and `AsyncCodingStorage` stay copies too: what they could share is already in the coder.
-- **Names** are exact bytes everywhere (`ExactString`). Encode, don't reject: any string is a valid key or namespace, and only system limits throw.
-- **Errors** are typed end to end, carry the failing input as the caller passed it, are documented per case, and every throw site is tested.
-- **System and SDK gotchas** get a doc comment on the case they affect, not a workaround, unless they'd let two scopes reach each other's values.
-- **Comments** hold only essentials, gotchas and warnings, one line where possible, describing the current behavior, never its history. API docs use `///`, `- Note:` and `- Warning:`.
-- **Tests** use XCTest, with `// Given`, `// When`, `// Then` and mocks that record their calls. Storages, layers and the facade keep 100% region and line coverage; default adapters get integration tests against the real system. Every behavior the docs state is either measured by a test or listed in §2 as to verify.
-- **Members for tests only** are internal and read-only, and only where a test can't observe a state otherwise, such as `UnifiedStorage.Scopes.state(of:in:)`. Tests wait for a state with `waitUntil`, never for a fixed time.
-- **Condition coverage, not just lines:** Swift's coverage counts a whole condition as one region, so every compound condition (`&&`, `||`, `if`/`guard` clause lists, `where`, `??`, ternaries, patterns) needs a test for each path that short-circuiting can tell apart: `a && b && c` needs `a` false, `b` false, `c` false and all true. Limits get a test on each side of the boundary.
-- **When asked whether anything is left open,** do one complete pass, and say "none" when nothing is.
-
-**Commands:**
-- macOS: `swift build --build-tests`, with no warnings, and `swift test`.
-- iOS Simulator: `xcodebuild test -scheme KeyValueStorage -destination "platform=iOS Simulator,name=<an installed iPhone>"`.
-- KeychainHost, for the real keychain on the Simulator: `xcodebuild test -project Tests/KeychainHost/KeychainHost.xcodeproj -scheme KeychainHost -destination "platform=iOS Simulator,name=<an installed iPhone>"`.
-- Coverage: `swift test --enable-code-coverage`, then read `.build/arm64-apple-macosx/debug/codecov/KeyValueStorage.json`; delete the `default.profraw` a run can leave in the repository's root.
-- Test runs take minutes, so run them in the background rather than with a short timeout.
-
-**Deployment targets stay** (2026-11-01): iOS 13, macOS 10.15, watchOS 6. So `FileStorage`'s `#available(macOS 11)` fallback stays uncovered, and `UbiquitousStorage` keeps its `@available(watchOS 9.0, *)` annotations.
+Every change follows the principles in [DESIGN.md](DESIGN.md), which also holds the decisions behind the design, such as
+the deployment targets that stay (D27). The working rules and the commands are in [AGENTS.md](AGENTS.md).
 
 ---
 
