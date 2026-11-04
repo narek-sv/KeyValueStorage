@@ -261,6 +261,13 @@ Clearing removes only the values the library saved in that scope. Other code's v
 
 `update` starts from `nil` when the storage reads no value, and User Defaults reads none before the device's first unlock after a restart, such as in a background launch: don't update User Defaults values then, or the result can replace the value it couldn't read.
 
+Each scope keeps its values apart from other scopes' and other code's, so you can split your data into parts that you clear or move on their own, such as a namespace per feature or per signed-in user. To keep them apart:
+* Give each library, and each part your app clears on its own, a namespace of its own. The `.default` scope of every built-in storage uses the namespace `"KeyValueStorage"`, so it's shared by everything in the app that uses it.
+* Give tests a namespace of their own. Unit tests hosted in your app use the app's `.own` values, so a test's `clear()` empties the app's data on that device, and on macOS, `swift test` runs every package's tests as `com.apple.dt.xctest.tool`.
+* Remove only your own items. Code that removes a whole place, such as every keychain item of your app, its Caches folder or an App Group's User Defaults suite, removes the library's values too.
+
+[DESIGN.md](DESIGN.md#d9-sealed-scopes-the-library-picks-the-place-and-owns-every-name-in-it) lists every case where values can meet.
+
 ### Moving values
 
 A value lives at its entry's scope and key, so an entry whose scope changes, such as its protection or namespace in an app update, or whose key is renamed, finds none of the values saved before. Move each value to its new place, for example at launch: to another scope, another key, or both at once with another entry:

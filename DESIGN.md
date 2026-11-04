@@ -14,6 +14,15 @@ extends a decision updates its entry in the same commit, and entries keep their 
   system call per member); all naming lives in the locators, with the byte-level encodings they share in
   `Helpers/String+UTF8.swift`; no parameters or properties for demonstration only; never swallow a "can't tell": throw
   instead.
+- **Sealed by default, open on every layer:** the built-in storages hide where and how they keep values behind scopes,
+  each a sandbox the library simulates inside the system's shared places. A scope's values never meet another scope's,
+  another library's or other code's, and clearing a scope removes only its own, so an app splits its data as it likes,
+  such as a namespace per feature or per signed-in user, and clears or moves each part on its own. A few exceptions
+  remain, all rare: D9 lists them, with how an app stays clear of them. For what the seal rules out, every layer is
+  open: a storage takes its locator and backing store, and `UnifiedStorage` takes a factory that swaps any storage
+  type's storage, coder, coding storage or observable storage. An app swaps in its own, or subclasses the library's:
+  most classes are open, including all an adjustment needs, so a subclass changes one behavior and inherits the rest
+  (D2, D22). What an app swaps in owns the guarantees it changes.
 - **Consistency:** a rule decided for one storage applies to all six.
 - **Isolation:** storages share no code, only the primitives in `Helpers/`: each keeps its own scope, error, locator and
   backing store types, even where they match another's, as File's and SQLite's do. File and SQLite share a scope's
@@ -159,6 +168,35 @@ through a custom locator, which then owns the guarantees.
   domain's suite names, folders other code writes to.
 - **Cost:** keys that need a different protection or retention need a scope each, and changing either later starts an
   empty set.
+- **Exceptions an app avoids,** by the rule after each:
+  - **One namespace in two parts:** features, modules or libraries that use one namespace in one place share its
+    values, and each one's `clear()` removes the others'. Every built-in storage's `default` scope uses
+    `"KeyValueStorage"`, so it's shared by everything in the app that uses one. Give each library, and each part the
+    app clears on its own, a namespace of its own.
+  - **One bundle ID in two builds** (D11): builds that share one share `.own` values, unit tests hosted in an app use
+    the app's, and on macOS `swift test` runs every package's tests as `com.apple.dt.xctest.tool`. Give tests a
+    namespace of their own.
+  - **App Group ids that differ only in case,** on macOS: File and SQLite give them one folder, so a `move` between them
+    deletes the value, and User Defaults writes one file but reads two suites, which loses or mixes values. Write each
+    id as the capability shows it.
+  - **Two storage types over one place,** such as `FileStorage` and `IsolatedDataStorage<FileStorage>`, share values
+    but not holds, closes or observers (D21). Reach each scope through one storage type.
+  - **A custom locator** that maps two scopes or keys to one name shares their values, and one that decodes names it
+    didn't encode lets `clear()` remove other code's; observers are shared by storage type and scope, whatever the
+    locator. Follow the rules its protocol lists.
+  - **Code that removes a whole place,** such as every keychain item of the app, its Caches folder or an App Group's
+    suite, removes the library's values with the rest. Make the app's resets remove only their own items.
+- **Exceptions the system makes,** which no library can seal, since the seal keeps names apart, not code: whatever
+  reaches a place through the system reaches the values in it.
+  - **Keychain:** `.own` items go to the app's default access group, its first Keychain Sharing group if it lists any,
+    where every app in that group reaches them. List a group of the app's own first.
+  - **iCloud key-value store:** every app whose entitlements name the same store reaches its values, and the app's
+    other code counts toward its limits of 1 MB and 1024 keys.
+  - **User Defaults:** launch arguments, the global domain and registered defaults under a stored key's name read as
+    its value in every suite, and one that isn't `Data` makes `save` throw `.keyOccupied`. Stored keys hold `!/`, so
+    only a name chosen on purpose meets one.
+  - **macOS without App Sandbox:** the user's other apps can read `.own` files, databases and suites. Keep secrets in
+    the keychain.
 
 #### D10. Retention and protection are part of the place
 
