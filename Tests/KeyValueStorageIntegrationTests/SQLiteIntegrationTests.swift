@@ -44,18 +44,20 @@ final class SQLiteIntegrationTests: XCTestCase {
         XCTAssertEqual(locator.ownIdentifier, OwnIdentity.identifier)
     }
 
-    func testTheDatabaseIsHiddenInTheNamespacesFolder() throws {
+    func testEachProtectionsDatabaseIsInTheNamespacesFolderOfItsOwn() throws {
         // Given
-        let storage = try storage(.own(namespace: "name"))
+        let inherited = try storage(.own(namespace: "name"))
+        let afterFirstUnlock = try storage(.own(protection: .afterFirstUnlock, namespace: "name"))
 
         // When
-        try storage.save(Data([1]), forKey: "key")
+        try inherited.save(Data([1]), forKey: "key")
+        try afterFirstUnlock.save(Data([2]), forKey: "key")
 
         // Then
         let folder = try locator.databaseURL(for: .own(namespace: "name")).deletingLastPathComponent()
-        XCTAssertEqual(folder.path, base.appendingPathComponent("support/app/name!/i").path)
+        XCTAssertEqual(folder.path, base.appendingPathComponent("support/app/name+").path)
         let files = try fileManager.contentsOfDirectory(atPath: folder.path).sorted()
-        XCTAssertEqual(files, [".KeyValueStorage.sqlite", ".KeyValueStorage.sqlite-shm", ".KeyValueStorage.sqlite-wal"])
+        XCTAssertEqual(files, ["i.sqlite", "i.sqlite-shm", "i.sqlite-wal", "u.sqlite", "u.sqlite-shm", "u.sqlite-wal"])
     }
 
     func testOnlyAScopeExcludedFromBackupFlagsItsDatabasesFolder() throws {
@@ -68,7 +70,7 @@ final class SQLiteIntegrationTests: XCTestCase {
 
         // Then
         let folder = try locator.databaseURL(for: excluded).deletingLastPathComponent()
-        XCTAssertEqual(folder.path, base.appendingPathComponent("support/app/x/name!/i").path)
+        XCTAssertEqual(folder.path, base.appendingPathComponent("support/app/x/name+").path)
         XCTAssertEqual(try isExcludedFromBackup(folder), true)
         XCTAssertEqual(try isExcludedFromBackup(database.deletingLastPathComponent()), false)
     }
@@ -214,9 +216,9 @@ final class SQLiteIntegrationTests: XCTestCase {
 
     func testADatabasePathOverTheSystemsLimitIsReportedThoughEveryNameFits() throws {
         // Given: the database's folder within the system's 1024-byte limit on a whole path, so it's created, and its
-        // database at about 1000 bytes, or over the limit
+        // database at under 1000 bytes, or over the limit by a few
         let fitting = TestSQLiteLocator(base: try deepFolder(length: 950))
-        let tooDeep = TestSQLiteLocator(base: try deepFolder(length: 985))
+        let tooDeep = TestSQLiteLocator(base: try deepFolder(length: 1000))
         XCTAssertLessThan(try fitting.databaseURL(for: scope).path.utf8.count, 1010)
         XCTAssertGreaterThan(try tooDeep.databaseURL(for: scope).path.utf8.count, 1024)
         XCTAssertLessThan(try tooDeep.databaseURL(for: scope).deletingLastPathComponent().path.utf8.count, 1024)
@@ -318,8 +320,11 @@ final class SQLiteIntegrationTests: XCTestCase {
 
     /// A second connection to the database, like another process would open.
     /// A folder in the test's base whose path is `length` bytes, in names of at most 200.
+    /// A folder whose path is `length` bytes with its links resolved, as the system counts it: `/var` is `/private/var`.
     private func deepFolder(length: Int) throws -> URL {
-        var folder = base!
+        let resolved = try XCTUnwrap(realpath(base.path, nil))
+        defer { free(resolved) }
+        var folder = URL(fileURLWithPath: String(cString: resolved), isDirectory: true)
         while folder.path.utf8.count < length {
             folder.appendPathComponent(String(repeating: "d", count: min(200, length - folder.path.utf8.count - 1)), isDirectory: true)
         }

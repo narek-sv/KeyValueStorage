@@ -12,7 +12,7 @@ import Foundation
 /// Names a file storage's folder and files.
 ///
 /// A custom locator must:
-/// - never return a name starting with `.`: SQLite and the system keep dot files in the same folders;
+/// - never return a name starting with `.`: the system keeps dot files in the same folders;
 /// - never give two keys names the volume sees as one, such as names that differ only in case;
 /// - make `key(forFileName:in:)` the exact inverse of `fileName(forKey:in:)`, or `clear()` leaves files behind.
 public protocol FileLocator: Sendable {

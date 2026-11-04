@@ -129,7 +129,7 @@ Every scope names a `namespace`, which keeps sets of values apart within the sam
 | --- | --- | --- |
 | `UserDefaultsStorage` | The app's own suite, `<app>.KeyValueStorage`, keys `<namespace>!/<key>` | The group's suite, keys `<namespace>!/<key>` |
 | `FileStorage` | `<Application Support, Caches or tmp>/<app>/<namespace>!/<protection>`, with `x/` after `<app>` for `.persistentExcludedFromBackup` | `<group container>/<namespace>!/<protection>` |
-| `SQLiteStorage` | `.KeyValueStorage.sqlite` in `FileStorage`'s folder of the same scope | `.KeyValueStorage.sqlite` in `FileStorage`'s folder of the same scope |
+| `SQLiteStorage` | `<Application Support, Caches or tmp>/<app>/<namespace>+/<protection>.sqlite`, with `x/` after `<app>` for `.persistentExcludedFromBackup` | `<group container>/<namespace>+/<protection>.sqlite` |
 | `KeychainStorage` | The app's default access group, service `<app>:<namespace>:<protection>` | The group, service `<group>/<namespace>/<protection>` |
 | `InMemoryStorage` | A bucket per namespace in the current process | — |
 | `UbiquitousStorage` | — (`.iCloud(.own, namespace:)`) | App Groups have no effect; see [iCloud Key-Value Store](#icloud-key-value-store) |

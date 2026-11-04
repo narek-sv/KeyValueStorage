@@ -34,7 +34,7 @@ final class TestFileLocator: DefaultFileLocator, @unchecked Sendable {
     }
 }
 
-/// `TestFileLocator`'s places for SQLite, so a scope's database is in the file storage's folder for the same scope.
+/// `TestFileLocator`'s places for SQLite, so a scope's database is next to the file storage's folder for the same scope.
 /// Unchecked: used from one test at a time.
 final class TestSQLiteLocator: DefaultSQLiteLocator, @unchecked Sendable {
     private let base: URL

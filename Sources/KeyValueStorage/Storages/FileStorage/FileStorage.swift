@@ -103,7 +103,7 @@ public final class FileStorage: DataStorage, Sendable {
             return
         }
 
-        // The folder can also hold SQLite's files and other code's; it's checked once, above
+        // The folder can also hold other code's files; it's checked once, above
         let names = try Self.execute { try backingStore.itemNames(at: root) }
         var failures = [Key: Error]()
         for name in names {

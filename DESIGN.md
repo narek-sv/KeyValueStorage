@@ -25,10 +25,10 @@ extends a decision updates its entry in the same commit, and entries keep their 
   (D2, D22). What an app swaps in owns the guarantees it changes.
 - **Consistency:** a rule decided for one storage applies to all six.
 - **Isolation:** storages share no code, only the primitives in `Helpers/`: each keeps its own scope, error, locator and
-  backing store types, even where they match another's, as File's and SQLite's do. File and SQLite share a scope's
-  folder, so a test (`testEveryScopesDatabaseIsInTheFileStoragesFolderForTheSameScope`), not shared code, keeps their
-  two folder rules in agreement. `CodingStorage` and `AsyncCodingStorage` stay copies too: what they could share is
-  already in the coder.
+  backing store types, even where they match another's, as File's and SQLite's do. File and SQLite place a scope's
+  folders side by side, so a test (`testDatabasesNeverShareAFolderWithFiles`), not shared code, keeps their two folder
+  rules in agreement. `CodingStorage` and `AsyncCodingStorage` stay copies too: what they could share is already in the
+  coder.
 - **Names** are exact bytes everywhere (`ExactString`), so `"é"` and `"e\u{301}"` are two keys. Encode, don't reject:
   any string is a valid key or namespace, and only system limits throw.
 - **Only the storage's own values:** the library never replaces or removes other code's data. In File, User Defaults and
@@ -203,7 +203,7 @@ through a custom locator, which then owns the guarantees.
 File and SQLite scopes take a retention (`.persistent`, `.persistentExcludedFromBackup`, `.cache` or `.temporary`), and
 File, SQLite and Keychain scopes a protection. Scopes that differ in either never share values: each retention gets a
 folder of its own, `.persistentExcludedFromBackup` the subfolder `x` of `.persistent`'s, and each protection level a
-folder of its own, named with one letter, or a keychain service of its own.
+folder of its own, named with one letter, a database named with that letter, or a keychain service of its own.
 
 - **Why:** if two protections shared a place, each SQLite open would re-apply its class to the other's files, and each
   `clear()` would empty both. One letter, because every byte counts toward the system's 1024-byte limit on a whole path.
@@ -229,7 +229,8 @@ one; App Group places don't. Where it becomes a file or suite name, it's encoded
 #### D12. Names are encoded losslessly, and never normalized
 
 File and SQLite names keep `a`–`z`, `0`–`9`, `_` and `-`, write a capital as `!` and its lowercase letter, any other
-byte as `%` and two hex digits, and the empty name as `%`; namespace folders end with `!`, which no encoded name does.
+byte as `%` and two hex digits, and the empty name as `%`; namespace folders end with `!` for files and `+` for
+databases, which no encoded name does.
 User Defaults and Ubiquitous store `<namespace>!/<key>`, with `%` and NUL escaped in both and `/` in the namespace.
 Keychain services are `<app>:<namespace>:<protection>` or `<group>/<namespace>/<protection>`, with `%`, `:` and `/`
 escaped in every part. Every decoding is the strict inverse of its encoding.
@@ -266,14 +267,18 @@ couldn't remove.
 
 #### D15. SQLite: a database per scope, WAL, `synchronous = NORMAL` and a lock per operation
 
-Each scope has a database of its own, `.KeyValueStorage.sqlite` in File's folder for the scope, so `clear()` empties it
-whole. The connection runs in WAL mode with `synchronous = NORMAL`, set explicitly, and a 1-second busy timeout, and
-each operation holds its lock. Links in the path are followed.
+Each scope has a database of its own, `<protection>.sqlite` in `<namespace>+`, so `clear()` empties it whole. The
+folder sits next to File's `<namespace>!` and never holds files. The connection runs in WAL mode with
+`synchronous = NORMAL`, set explicitly, and a 1-second busy timeout, and each operation holds its lock. Links in the
+path are followed.
 
 - **Why:** WAL lets readers and a writer work at once, also across processes. NORMAL is Apple's default: a save
   survives an app crash, and a power loss can lose the last saves but never corrupts the database, as the README says.
   The connection's prepared statements serve one call at a time. `SQLITE_OPEN_NOFOLLOW` would reject any link in the
-  path, and `/var` is a link to `/private/var` above every app container.
+  path, and `/var` is a link to `/private/var` above every app container. A folder of its own keeps databases and files
+  apart with no naming rule to follow.
+- **Instead of:** the hidden `.KeyValueStorage.sqlite` in File's folder for the scope, which only the dot kept from
+  every key's file, and which a custom locator could break.
 - **Cost:** calls on one storage block their threads while they wait (D6).
 
 #### D16. Keychain: no read before a write

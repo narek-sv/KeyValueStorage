@@ -407,7 +407,7 @@ final class FileIntegrationTests: XCTestCase {
     }
 
     func testClearRemovesExactlyTheScopesValues() throws {
-        // Given: two namespaces, with SQLite's database and other code's files in the first one's folder
+        // Given: two namespaces, the first one's SQLite database, and other code's files in the first one's folder
         let first = try storage(.own(namespace: "first"))
         let second = try storage(.own(namespace: "second"))
         try first.save(Data([1]), forKey: "key")

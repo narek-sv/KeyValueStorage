@@ -314,10 +314,11 @@ Calling the async API from the main actor in a tight loop costs ~9 µs per call 
 With the public API and the default locators, no two scopes reach each other's values:
 
 - **File and SQLite:** `portableName` is injective, capital-free (safe on case-insensitive volumes), ASCII
-  (normalization-insensitive volumes can't merge names), and never starts with `.` (never SQLite's or the system's
-  files). Namespace folders end with `!`, which no portable name does; each protection is its own folder; `.own` lives
-  under the app's identifier, `.persistentExcludedFromBackup` in that folder's `x`, which no namespace folder is, and
-  `.appGroup` in the group container.
+  (normalization-insensitive volumes can't merge names), and never starts with `.` (never the system's files).
+  Namespace folders end with `!` for files and `+` for databases, which no portable name does, so a database never
+  shares a folder with files; each protection is its own folder or database; `.own` lives under the app's identifier,
+  `.persistentExcludedFromBackup` in that folder's `x`, which no namespace folder is, and `.appGroup` in the group
+  container.
 - **Keychain:** `.own` services are `:`-separated and `.appGroup` services `/`-separated, with `%`, `:` and `/` escaped
   in every part, so they never match even though `.own` queries reach every access group the app has. `.iCloud` items
   are separated by `kSecAttrSynchronizable`; protection is part of the service.
