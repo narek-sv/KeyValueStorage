@@ -33,7 +33,7 @@ Version 4 rebuilds the library around scopes, synchronous thread-safe storages a
 - `UnifiedStorage.close(storage:forScope:)`, which lets go of a scope's storage, such as to close the database of a SQLite scope the app is done with.
 - `UnifiedStorage.Entry(key:scope:)`, `CodingStorageKey(key:)` and every scope case with a namespace take a `String` too, for keys and namespaces named at runtime.
 - `UnifiedStorage(observable:)`.
-- Retention for files and SQLite, `.persistent`, `.cache` or `.temporary`, and protection levels for both.
+- Retention for files and SQLite, `.persistent`, `.persistentExcludedFromBackup`, `.cache` or `.temporary`, and protection levels for both. `.persistentExcludedFromBackup` keeps values until they're deleted, like `.persistent`, but out of the device's backups.
 - `DataStorage`, for synchronous custom storages, which need no `await` through `CodingStorage`; `AsyncDataStorage`, for asynchronous ones; and `IsolatedDataStorage`, an actor that makes any synchronous storage shareable.
 - A locator and a backing store for every built-in storage, each optional in `init(scope:backingStore:locator:)`: a custom locator changes where values live, and a custom backing store replaces the system calls, for example in tests. See [Custom Locators](README.md#custom-locators).
 - `UnifiedStorage.Factory`'s modifiers for one storage type: `dataStorage(for:_:)`, which creates it your way, such as with a custom locator or a token, `coder(_:for:)`, `codingStorage(for:_:)`, `observable(_:for:)` and `observableStorage(for:_:)`.

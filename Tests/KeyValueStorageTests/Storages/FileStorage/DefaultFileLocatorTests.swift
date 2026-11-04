@@ -16,9 +16,13 @@ final class DefaultFileLocatorTests: XCTestCase {
     // MARK: Directory
 
     func testOwnScopesUseTheirRetentionsBaseAndTheAppsFolder() throws {
-        let bases: [(FileStorage.Retention, String)] = [(.persistent, "/support"), (.cache, "/caches"), (.temporary, "/temporary")]
-        for (retention, path) in bases {
-            XCTAssertEqual(try directory(.own(retention, namespace: "name")).path, path + "/com%2etest%2e!app/name!/i")
+        let folders: [(FileStorage.Retention, String)] = [
+            (.persistent, "/support/com%2etest%2e!app"), (.persistentExcludedFromBackup, "/support/com%2etest%2e!app/x"),
+            (.cache, "/caches/com%2etest%2e!app"), (.temporary, "/temporary/com%2etest%2e!app")
+        ]
+
+        for (retention, folder) in folders {
+            XCTAssertEqual(try directory(.own(retention, namespace: "name")).path, folder + "/name!/i")
         }
     }
 
@@ -58,6 +62,10 @@ final class DefaultFileLocatorTests: XCTestCase {
             try directory(.own(namespace: "name"))
         }
 
+        assertThrows(FileStorage.Error.directoryNotFound(.applicationSupportDirectory)) {
+            try directory(.own(.persistentExcludedFromBackup, namespace: "name"))
+        }
+
         assertThrows(FileStorage.Error.directoryNotFound(.cachesDirectory)) {
             try directory(.own(.cache, namespace: "name"))
         }
@@ -77,10 +85,11 @@ final class DefaultFileLocatorTests: XCTestCase {
     }
 
     func testEveryScopeHasAFolderOfItsOwn() throws {
-        let namespaces: [FileStorage.Namespace] = ["", "a", "A", "settings", "Settings", "a b", "a%20b", "\u{E9}", "e\u{301}"]
+        // `x` and `X` too: `.persistentExcludedFromBackup`'s folders are in `x`
+        let namespaces: [FileStorage.Namespace] = ["", "a", "A", "x", "X", "settings", "Settings", "a b", "a%20b", "\u{E9}", "e\u{301}"]
         let scopes = namespaces.flatMap { namespace -> [FileStorage.Scope] in
-            [.own(namespace: namespace), .own(.cache, namespace: namespace), .own(protection: .whenUnlocked, namespace: namespace),
-             .appGroup(id: "group.test", namespace: namespace)]
+            [.own(namespace: namespace), .own(.persistentExcludedFromBackup, namespace: namespace), .own(.cache, namespace: namespace),
+             .own(protection: .whenUnlocked, namespace: namespace), .appGroup(id: "group.test", namespace: namespace)]
         }
 
         // Lowercased, as a volume that ignores case compares them

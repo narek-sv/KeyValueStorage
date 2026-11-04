@@ -200,12 +200,19 @@ through a custom locator, which then owns the guarantees.
 
 #### D10. Retention and protection are part of the place
 
-File and SQLite scopes take a retention (`.persistent`, `.cache` or `.temporary`), and File, SQLite and Keychain scopes
-a protection. Scopes that differ in either never share values: each protection level gets a folder of its own, named
-with one letter, or a keychain service of its own.
+File and SQLite scopes take a retention (`.persistent`, `.persistentExcludedFromBackup`, `.cache` or `.temporary`), and
+File, SQLite and Keychain scopes a protection. Scopes that differ in either never share values: each retention gets a
+folder of its own, `.persistentExcludedFromBackup` the subfolder `x` of `.persistent`'s, and each protection level a
+folder of its own, named with one letter, or a keychain service of its own.
 
 - **Why:** if two protections shared a place, each SQLite open would re-apply its class to the other's files, and each
   `clear()` would empty both. One letter, because every byte counts toward the system's 1024-byte limit on a whole path.
+- **Backups:** `.persistentExcludedFromBackup` sets `isExcludedFromBackup` on the scope's folder before every File save
+  and every SQLite open. A folder's flag covers what's inside, as Apple recommends for a group of files, while a file's
+  own flag can reset when the file is replaced, as every save does; and setting it every time leaves no folder without
+  it after a failure.
+- **Instead of:** a payload on `.persistent`, `.persistent(excludedFromBackup:)`, which makes a bare `.persistent` fail
+  to compile and, with a static overload, mean two things: not excluded as a value, and both in a `switch`.
 
 #### D11. `.own` places carry the app's identifier
 

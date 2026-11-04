@@ -12,9 +12,14 @@ import Foundation
 public extension SQLiteStorage {
     enum Retention: Hashable, Sendable {
         /// Kept until deleted, in Application Support, which the device's backups include: keep what you can download again
-        /// in `.cache`.
+        /// in `.persistentExcludedFromBackup`, or in `.cache` if the system may delete it.
         /// - Warning: On tvOS, an app's files must be purgeable: use `.cache` there.
         case persistent
+        /// Kept until deleted, in Application Support, but left out of the device's backups, so a restored or new device
+        /// starts without it: for what you can download again but must keep, such as records for offline use.
+        /// - Note: The system takes the exclusion as guidance, not as a guarantee.
+        /// - Warning: On tvOS, an app's files must be purgeable: use `.cache` there.
+        case persistentExcludedFromBackup
         /// The system can delete it when storage runs low; it isn't backed up.
         case cache
         /// The system can delete it while the app isn't running; it isn't backed up.

@@ -240,6 +240,57 @@ final class FileStorageTests: XCTestCase {
         }
     }
 
+    // MARK: Backups
+
+    func testSavesExcludedFromBackupFlagTheFolderBeforeEveryWrite() throws {
+        // Given
+        let root = URL(fileURLWithPath: "/support/com%2etest%2e!app/x/name!/i", isDirectory: true)
+        let file = root.appendingPathComponent("key", isDirectory: false)
+        let storage = try FileStorage(scope: .own(.persistentExcludedFromBackup, namespace: "name"), backingStore: backingStore, locator: FixedDirectoriesFileLocator())
+
+        // When: the first save creates the folder, the second finds it
+        try storage.save(data, forKey: "key")
+        try storage.save(data, forKey: "key")
+
+        // Then
+        let flagAndWrite: [FileBackingStoreMock.Call] = [.excludeFromBackup(root), .itemType(file), .write(data, file, .atomic)]
+        XCTAssertEqual(backingStore.calls, [.itemType(root), .createDirectory(root)] + flagAndWrite + [.itemType(root)] + flagAndWrite)
+    }
+
+    func testSavesInEveryOtherScopeLeaveTheFolderAsItIs() throws {
+        let scopes: [FileStorage.Scope] = [
+            .own(.persistent, namespace: "name"), .own(.cache, namespace: "name"), .own(.temporary, namespace: "name"),
+            .appGroup(id: "group.test", namespace: "name")
+        ]
+
+        for scope in scopes {
+            // When
+            let backingStore = FileBackingStoreMock()
+            try FileStorage(scope: scope, backingStore: backingStore, locator: FixedDirectoriesFileLocator()).save(data, forKey: "key")
+
+            // Then
+            XCTAssertFalse(backingStore.calls.contains { if case .excludeFromBackup = $0 { true } else { false } }, "\(scope)")
+        }
+    }
+
+    func testAFolderThatCantBeFlaggedGetsNoValueUntilASaveFlagsIt() throws {
+        // Given
+        let root = URL(fileURLWithPath: "/support/com%2etest%2e!app/x/name!/i", isDirectory: true)
+        let error = fileSystemError(.fileWriteUnknown)
+        backingStore.errors = [(.excludeFromBackup(root), error)]
+        let storage = try FileStorage(scope: .own(.persistentExcludedFromBackup, namespace: "name"), backingStore: backingStore, locator: FixedDirectoriesFileLocator())
+
+        // When - Then: the folder it created stays, without a value
+        assertThrows(FileStorage.Error.other(error)) { try storage.save(data, forKey: "key") }
+        XCTAssertEqual(backingStore.items, [root.path: .directory])
+
+        // When - Then: the next save flags the folder it finds, then writes
+        backingStore.errors = []
+        try storage.save(data, forKey: "key")
+        XCTAssertEqual(backingStore.items, [root.path: .directory, root.appendingPathComponent("key").path: .file(data)])
+        XCTAssertEqual(backingStore.calls.filter { $0 == .excludeFromBackup(root) }.count, 2)
+    }
+
     // MARK: Delete
 
     func testDeleteRemovesTheFile() throws {

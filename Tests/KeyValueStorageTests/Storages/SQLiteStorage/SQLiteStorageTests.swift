@@ -50,6 +50,46 @@ final class SQLiteStorageTests: XCTestCase {
         XCTAssertEqual(backingStore.calls, [.createDirectory(URL(fileURLWithPath: "/located", isDirectory: true))])
     }
 
+    func testInitFlagsTheFolderOfAScopeExcludedFromBackupBeforeOpening() throws {
+        // When
+        _ = try SQLiteStorage(scope: .own(.persistentExcludedFromBackup, namespace: "name"), backingStore: backingStore, locator: locator)
+
+        // Then
+        let folder = URL(fileURLWithPath: "/located", isDirectory: true)
+        XCTAssertEqual(backingStore.calls, [.createDirectory(folder), .excludeFromBackup(folder), .open(locator.databaseURL, nil)])
+    }
+
+    func testInitLeavesTheFolderOfEveryOtherScopeAsItIs() throws {
+        let scopes: [SQLiteStorage.Scope] = [
+            .own(.persistent, namespace: "name"), .own(.cache, namespace: "name"), .own(.temporary, namespace: "name"),
+            .appGroup(id: "group.test", namespace: "name")
+        ]
+
+        for scope in scopes {
+            // When
+            let backingStore = SQLiteBackingStoreMock()
+            _ = try SQLiteStorage(scope: scope, backingStore: backingStore, locator: locator)
+
+            // Then
+            let folder = URL(fileURLWithPath: "/located", isDirectory: true)
+            XCTAssertEqual(backingStore.calls, [.createDirectory(folder), .open(locator.databaseURL, nil)], "\(scope)")
+        }
+    }
+
+    func testInitReportsAFolderThatCantBeFlaggedWithoutOpening() {
+        // Given
+        let error = NSError(domain: NSCocoaErrorDomain, code: NSFileWriteUnknownError)
+        backingStore.excludeFromBackupError = error
+        let folder = URL(fileURLWithPath: "/located", isDirectory: true)
+
+        // When - Then
+        assertThrows(SQLiteStorage.Error.other(error)) {
+            try SQLiteStorage(scope: .own(.persistentExcludedFromBackup, namespace: "name"), backingStore: backingStore, locator: locator)
+        }
+
+        XCTAssertEqual(backingStore.calls, [.createDirectory(folder), .excludeFromBackup(folder)])
+    }
+
     func testInitReportsOpenErrors() {
         // Given
         backingStore.openError = SQLiteError(code: SQLITE_NOTADB, message: "file is not a database")

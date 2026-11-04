@@ -14,6 +14,8 @@ import SQLite3
 public protocol SQLiteBackingStore: Sendable {
     /// `FileManager.createDirectory(atPath:withIntermediateDirectories: true)`.
     func createDirectory(at url: URL) throws
+    /// `URL.setResourceValues(_:)` with `isExcludedFromBackup`, which on a folder covers everything inside.
+    func excludeFromBackup(at url: URL) throws
     /// `sqlite3_open_v2`, creating the database and its table if needed.
     func open(at url: URL, protection: FileProtectionType?) throws(SQLiteError) -> any SQLiteDatabase
 }
@@ -55,6 +57,13 @@ open class DefaultSQLiteBackingStoreWrapper: SQLiteBackingStore, @unchecked Send
 
     open func createDirectory(at url: URL) throws {
         try fileManager.createDirectory(atPath: url.path, withIntermediateDirectories: true)
+    }
+
+    open func excludeFromBackup(at url: URL) throws {
+        var url = url
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try url.setResourceValues(values)
     }
 
     open func open(at url: URL, protection: FileProtectionType?) throws(SQLiteError) -> any SQLiteDatabase {

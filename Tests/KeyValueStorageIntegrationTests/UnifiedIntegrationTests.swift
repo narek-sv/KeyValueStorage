@@ -49,11 +49,11 @@ final class UnifiedIntegrationTests: XCTestCase {
     // MARK: Round Trips
 
     func testFileRoundTrips() async throws {
-        try await assertRoundTrips(FileStorage.self, scopes: [.own(namespace: "ns"), .own(namespace: ""), .own(.cache, protection: .none, namespace: "ns"), .appGroup(id: "group", namespace: "ns")])
+        try await assertRoundTrips(FileStorage.self, scopes: [.own(namespace: "ns"), .own(namespace: ""), .own(.persistentExcludedFromBackup, namespace: "ns"), .own(.cache, protection: .none, namespace: "ns"), .appGroup(id: "group", namespace: "ns")])
     }
 
     func testSQLiteRoundTrips() async throws {
-        try await assertRoundTrips(SQLiteStorage.self, scopes: [.own(namespace: "ns"), .own(namespace: ""), .own(.temporary, protection: .none, namespace: "ns"), .appGroup(id: "group", namespace: "ns")])
+        try await assertRoundTrips(SQLiteStorage.self, scopes: [.own(namespace: "ns"), .own(namespace: ""), .own(.persistentExcludedFromBackup, namespace: "ns"), .own(.temporary, protection: .none, namespace: "ns"), .appGroup(id: "group", namespace: "ns")])
     }
 
     func testUserDefaultsRoundTrips() async throws {

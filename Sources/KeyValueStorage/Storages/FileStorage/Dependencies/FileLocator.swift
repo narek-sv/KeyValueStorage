@@ -28,7 +28,8 @@ public protocol FileLocator: Sendable {
 
 /// Encodes keys, namespaces and the app's identifier losslessly into ASCII names: `a`–`z`, `0`–`9`, `_` and `-` stay,
 /// a capital is `!` and its lowercase letter, any other byte is `%xx`, and the empty name is `%`. Only names over 255 bytes throw.
-/// A scope's folder is `<namespace>!/<protection>`, in `<base>/<app identifier>` for `.own` and in the group's container for `.appGroup`.
+/// A scope's folder is `<namespace>!/<protection>`: in `<base>/<app identifier>` for `.own`, in its subfolder `x` for
+/// `.persistentExcludedFromBackup`, and in the group's container for `.appGroup`.
 /// - Note: Names are exact bytes, not normalized: `"é"` and `"e\u{301}"` are two keys.
 /// - Note: A subclass that changes names overrides both name methods.
 /// - Warning: Subclasses inherit `Sendable`: their own state must be thread-safe too.
@@ -73,8 +74,7 @@ open class DefaultFileLocator: FileLocator, @unchecked Sendable {
         case let .own(retention, protection, namespace):
             // Before the lookups, so the namespace's error doesn't depend on the system
             let namespaceFolder = try Self.namespaceFolderName(for: namespace)
-            let app = try baseDirectory(for: retention).appendingPathComponent(appFolderName, isDirectory: true)
-            return Self.directory(in: app, namespaceFolder: namespaceFolder, protection: protection)
+            return try Self.directory(in: appDirectory(for: retention), namespaceFolder: namespaceFolder, protection: protection)
         case let .appGroup(groupId, protection, namespace):
             let namespaceFolder = try Self.namespaceFolderName(for: namespace)
             guard !groupId.isEmpty, let container = groupDirectory(for: groupId) else {
@@ -104,11 +104,21 @@ open class DefaultFileLocator: FileLocator, @unchecked Sendable {
         ownIdentifier.portableName
     }
 
+    // `.persistentExcludedFromBackup` shares `.persistent`'s base, so its folders are in `x`: one letter, as protections
+    // are, and never a namespace folder, which ends with `!`
+    private func appDirectory(for retention: FileStorage.Retention) throws(FileStorage.Error) -> URL {
+        let app = try baseDirectory(for: retention).appendingPathComponent(appFolderName, isDirectory: true)
+        switch retention {
+        case .persistentExcludedFromBackup:     return app.appendingPathComponent("x", isDirectory: true)
+        case .persistent, .cache, .temporary:   return app
+        }
+    }
+
     private func baseDirectory(for retention: FileStorage.Retention) throws(FileStorage.Error) -> URL {
         switch retention {
-        case .persistent:   return try baseDirectory(.applicationSupportDirectory)
-        case .cache:        return try baseDirectory(.cachesDirectory)
-        case .temporary:    return temporaryDirectory
+        case .persistent, .persistentExcludedFromBackup:    return try baseDirectory(.applicationSupportDirectory)
+        case .cache:                                        return try baseDirectory(.cachesDirectory)
+        case .temporary:                                    return temporaryDirectory
         }
     }
 

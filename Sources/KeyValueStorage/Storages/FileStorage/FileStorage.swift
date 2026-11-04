@@ -25,6 +25,7 @@ public final class FileStorage: DataStorage, Sendable {
     private let locator: any FileLocator
     private let root: URL
     private let writingOptions: Data.WritingOptions
+    private let isExcludedFromBackup: Bool
 
     public let scope: Scope
 
@@ -37,6 +38,7 @@ public final class FileStorage: DataStorage, Sendable {
     ) throws(Error) {
         self.root = try locator.directory(for: scope)
         self.writingOptions = Self.writingOptions(for: scope)
+        self.isExcludedFromBackup = Self.isExcludedFromBackup(scope)
         self.scope = scope
         self.backingStore = backingStore
         self.locator = locator
@@ -75,6 +77,11 @@ public final class FileStorage: DataStorage, Sendable {
         case .typeDirectory?:   break
         case nil:               try Self.execute { try backingStore.createDirectory(at: root) }
         default:                throw .pathOccupied(root)
+        }
+
+        // Before every write, so a value never lands in the folder without it, even after a failed save
+        if isExcludedFromBackup {
+            try Self.execute { try backingStore.excludeFromBackup(at: root) }
         }
 
         switch try itemType(at: url) {
@@ -187,6 +194,13 @@ public final class FileStorage: DataStorage, Sendable {
         switch scope {
         case let .own(_, protection, _), let .appGroup(_, protection, _):
             return (protection.fileProtection ?? []).union(.atomic)
+        }
+    }
+
+    private static func isExcludedFromBackup(_ scope: Scope) -> Bool {
+        switch scope {
+        case .own(.persistentExcludedFromBackup, _, _): return true
+        case .own, .appGroup:                           return false
         }
     }
 

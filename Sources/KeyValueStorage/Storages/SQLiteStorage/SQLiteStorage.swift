@@ -29,9 +29,14 @@ public final class SQLiteStorage: DataStorage, Sendable {
         locator: any SQLiteLocator = DefaultSQLiteLocator()
     ) throws(Error) {
         let databaseURL = try locator.databaseURL(for: scope)
+        let folder = databaseURL.deletingLastPathComponent()
         let protection = Self.fileProtection(for: scope)
         do {
-            try backingStore.createDirectory(at: databaseURL.deletingLastPathComponent())
+            try backingStore.createDirectory(at: folder)
+            // Before the database opens, so its files never land in the folder without it
+            if Self.isExcludedFromBackup(scope) {
+                try backingStore.excludeFromBackup(at: folder)
+            }
         } catch {
             throw .other(error)
         }
@@ -89,6 +94,13 @@ public final class SQLiteStorage: DataStorage, Sendable {
         switch scope {
         case let .own(_, protection, _), let .appGroup(_, protection, _):
             protection.fileProtection
+        }
+    }
+
+    private static func isExcludedFromBackup(_ scope: Scope) -> Bool {
+        switch scope {
+        case .own(.persistentExcludedFromBackup, _, _): true
+        case .own, .appGroup:                           false
         }
     }
 

@@ -61,7 +61,7 @@ Here's how the built-in storages compare:
 * The fastest storage for large values: every value is written once, directly into its own file.
 * Deleting a value frees its disk space right away.
 * Every value is a separate file, so reading one value never loads the others into memory, and a damaged file affects only its own value. A value itself is saved and fetched whole, in memory, so keep each one to what the app can hold in memory at once.
-* Keep what you can download again, such as cached responses, in a `.cache` scope: the default `.persistent` scope is in Application Support, which the device's backups include.
+* The default `.persistent` scope is in Application Support, which the device's backups include. Keep what you can download again out of them: in a `.cache` scope, such as cached responses, which the system can delete when storage runs low, or in a `.persistentExcludedFromBackup` scope, such as media for offline use, which stays until you delete it.
 * Files are replaced atomically, so a crash never leaves a value half-written. A save survives an app crash; a power loss or system crash right after it can lose it, since files aren't flushed to the disk on every save.
 * Slow for small values, since every save writes and renames a file.
 * Any string is a valid key, up to a 255-byte file name, and keys that differ only in case are separate values on every platform. The name keeps `a`–`z`, `0`–`9`, `_` and `-`, writes a capital as `!` and its lowercase letter, so `Key` is saved as `!key`, and every other byte as `%` and two hex digits. Such bytes take three, so a key in Cyrillic fits about 42 characters and one in Chinese 28: hash longer keys, such as URLs with long query strings.
@@ -75,6 +75,7 @@ Here's how the built-in storages compare:
 * Deleted values free space inside the database for reuse, but the database file itself doesn't shrink.
 * A scope's database stays open while `UnifiedStorage` keeps its storage: close the scopes the app is done with, see [Closing storages](#closing-storages).
 * A single value can't exceed SQLite's size limit, so very large values belong in files.
+* Its scopes take the same retentions as files', so a database you can download again stays out of the backups in a `.cache` or `.persistentExcludedFromBackup` scope.
 
 **iCloud Key-Value Store** - small preferences and state that follow the user to their other devices.
 * Synced through iCloud by the system, with a local copy that's read and written without waiting for the network.
@@ -88,7 +89,7 @@ Here's how the built-in storages compare:
 Quick guide:
 * Secrets → `KeychainStorage`
 * Settings and flags → `UserDefaultsStorage`
-* Large values, such as images or videos → `FileStorage`, in a `.cache` scope if you can download them again
+* Large values, such as images or videos → `FileStorage`, in a `.cache` scope if you can download them again, or `.persistentExcludedFromBackup` if they must stay for offline use
 * Many small and medium values, such as records → `SQLiteStorage`
 * Data written by both the app and its extensions → `SQLiteStorage`
 * Temporary state and tests → `InMemoryStorage`
@@ -127,7 +128,7 @@ Every scope names a `namespace`, which keeps sets of values apart within the sam
 | Storage | `.own` scope | `.appGroup` scope |
 | --- | --- | --- |
 | `UserDefaultsStorage` | The app's own suite, `<app>.KeyValueStorage`, keys `<namespace>!/<key>` | The group's suite, keys `<namespace>!/<key>` |
-| `FileStorage` | `<Application Support, Caches or tmp>/<app>/<namespace>!/<protection>` | `<group container>/<namespace>!/<protection>` |
+| `FileStorage` | `<Application Support, Caches or tmp>/<app>/<namespace>!/<protection>`, with `x/` after `<app>` for `.persistentExcludedFromBackup` | `<group container>/<namespace>!/<protection>` |
 | `SQLiteStorage` | `.KeyValueStorage.sqlite` in `FileStorage`'s folder of the same scope | `.KeyValueStorage.sqlite` in `FileStorage`'s folder of the same scope |
 | `KeychainStorage` | The app's default access group, service `<app>:<namespace>:<protection>` | The group, service `<group>/<namespace>/<protection>` |
 | `InMemoryStorage` | A bucket per namespace in the current process | — |

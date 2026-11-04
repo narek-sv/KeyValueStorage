@@ -22,6 +22,8 @@ public protocol FileBackingStore: Sendable {
     func remove(at url: URL) throws
     /// `FileManager.createDirectory(at:withIntermediateDirectories: true)`.
     func createDirectory(at url: URL) throws
+    /// `URL.setResourceValues(_:)` with `isExcludedFromBackup`, which on a folder covers everything inside.
+    func excludeFromBackup(at url: URL) throws
     /// `FileManager.contentsOfDirectory(atPath:)`.
     func itemNames(at url: URL) throws -> [String]
 }
@@ -62,6 +64,13 @@ open class DefaultFileBackingStoreWrapper: FileBackingStore, @unchecked Sendable
 
     open func createDirectory(at url: URL) throws {
         try fileManager.createDirectory(at: url, withIntermediateDirectories: true)
+    }
+
+    open func excludeFromBackup(at url: URL) throws {
+        var url = url
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try url.setResourceValues(values)
     }
 
     open func itemNames(at url: URL) throws -> [String] {

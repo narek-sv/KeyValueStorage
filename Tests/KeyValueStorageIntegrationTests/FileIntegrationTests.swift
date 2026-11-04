@@ -330,13 +330,30 @@ final class FileIntegrationTests: XCTestCase {
         XCTAssertEqual(Set(failures.all), [])
     }
 
+    // MARK: Backups
+
+    func testOnlyAScopeExcludedFromBackupFlagsItsFolder() throws {
+        // Given
+        let excluded = FileStorage.Scope.own(.persistentExcludedFromBackup, namespace: "name")
+        let persistent = FileStorage.Scope.own(namespace: "name")
+
+        // When
+        try storage(excluded).save(Data([1]), forKey: "key")
+        try storage(persistent).save(Data([2]), forKey: "key")
+
+        // Then
+        XCTAssertEqual(try folder(excluded).path, base.appendingPathComponent("support/app/x/name!/i").path)
+        XCTAssertEqual(try isExcludedFromBackup(folder(excluded)), true)
+        XCTAssertEqual(try isExcludedFromBackup(folder(persistent)), false)
+    }
+
     // MARK: Clashes
 
     func testScopesThatDifferOnlyInRetentionProtectionOrGroupKeepTheirValuesApart() throws {
         // Given: one namespace in every kind of place
         let scopes: [FileStorage.Scope] = [
-            .own(namespace: "name"), .own(.cache, namespace: "name"), .own(.temporary, namespace: "name"),
-            .own(protection: .none, namespace: "name"), .appGroup(id: "group.test", namespace: "name")
+            .own(namespace: "name"), .own(.persistentExcludedFromBackup, namespace: "name"), .own(.cache, namespace: "name"),
+            .own(.temporary, namespace: "name"), .own(protection: .none, namespace: "name"), .appGroup(id: "group.test", namespace: "name")
         ]
         let storages = try scopes.map { try storage($0) }
 
@@ -540,6 +557,10 @@ final class FileIntegrationTests: XCTestCase {
 
     private func folder(_ scope: FileStorage.Scope = .own(namespace: "test")) throws(FileStorage.Error) -> URL {
         try locator.directory(for: scope)
+    }
+
+    private func isExcludedFromBackup(_ url: URL) throws -> Bool? {
+        try url.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup
     }
 
     /// A folder in the test's base whose path is `length` bytes, in names of at most 200.

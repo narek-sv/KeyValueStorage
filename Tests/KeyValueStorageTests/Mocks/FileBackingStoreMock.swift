@@ -18,6 +18,7 @@ final class FileBackingStoreMock: FileBackingStore, @unchecked Sendable {
         case write(Data, URL, Data.WritingOptions)
         case remove(URL)
         case createDirectory(URL)
+        case excludeFromBackup(URL)
         case itemNames(URL)
     }
 
@@ -84,6 +85,10 @@ final class FileBackingStoreMock: FileBackingStore, @unchecked Sendable {
         }
 
         items[url.path] = .directory
+    }
+
+    func excludeFromBackup(at url: URL) throws {
+        try record(.excludeFromBackup(url))
     }
 
     func itemNames(at url: URL) throws -> [String] {

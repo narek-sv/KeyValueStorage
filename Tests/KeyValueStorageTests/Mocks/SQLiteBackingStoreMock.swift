@@ -13,11 +13,13 @@ import Foundation
 final class SQLiteBackingStoreMock: SQLiteBackingStore, @unchecked Sendable {
     enum Call: Equatable {
         case createDirectory(URL)
+        case excludeFromBackup(URL)
         case open(URL, FileProtectionType?)
     }
 
     let database = SQLiteDatabaseMock()
     var createDirectoryError: (any Error)?
+    var excludeFromBackupError: (any Error)?
     var openError: SQLiteError?
     private(set) var calls = [Call]()
 
@@ -25,6 +27,13 @@ final class SQLiteBackingStoreMock: SQLiteBackingStore, @unchecked Sendable {
         calls.append(.createDirectory(url))
         if let createDirectoryError {
             throw createDirectoryError
+        }
+    }
+
+    func excludeFromBackup(at url: URL) throws {
+        calls.append(.excludeFromBackup(url))
+        if let excludeFromBackupError {
+            throw excludeFromBackupError
         }
     }
 

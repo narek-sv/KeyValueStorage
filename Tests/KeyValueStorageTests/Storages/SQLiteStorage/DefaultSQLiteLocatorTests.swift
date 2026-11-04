@@ -15,9 +15,13 @@ final class DefaultSQLiteLocatorTests: XCTestCase {
     // MARK: Database
 
     func testOwnScopesUseTheirRetentionsBaseAndTheAppsFolder() throws {
-        let bases: [(SQLiteStorage.Retention, String)] = [(.persistent, "/support"), (.cache, "/caches"), (.temporary, "/temporary")]
-        for (retention, path) in bases {
-            XCTAssertEqual(try databasePath(.own(retention, namespace: "name")), path + "/com%2etest%2e!app/name!/i/.KeyValueStorage.sqlite")
+        let folders: [(SQLiteStorage.Retention, String)] = [
+            (.persistent, "/support/com%2etest%2e!app"), (.persistentExcludedFromBackup, "/support/com%2etest%2e!app/x"),
+            (.cache, "/caches/com%2etest%2e!app"), (.temporary, "/temporary/com%2etest%2e!app")
+        ]
+
+        for (retention, folder) in folders {
+            XCTAssertEqual(try databasePath(.own(retention, namespace: "name")), folder + "/name!/i/.KeyValueStorage.sqlite")
         }
     }
 
@@ -49,6 +53,10 @@ final class DefaultSQLiteLocatorTests: XCTestCase {
             try databasePath(.own(namespace: "name"))
         }
 
+        assertThrows(SQLiteStorage.Error.directoryNotFound(.applicationSupportDirectory)) {
+            try databasePath(.own(.persistentExcludedFromBackup, namespace: "name"))
+        }
+
         assertThrows(SQLiteStorage.Error.directoryNotFound(.cachesDirectory)) {
             try databasePath(.own(.cache, namespace: "name"))
         }
@@ -73,7 +81,9 @@ final class DefaultSQLiteLocatorTests: XCTestCase {
         let protections: [(SQLiteStorage.Protection, FileStorage.Protection)] = [
             (.inherited, .inherited), (.none, .none), (.afterFirstUnlock, .afterFirstUnlock), (.whenUnlocked, .whenUnlocked), (.whenUnlockedOrOpen, .whenUnlockedOrOpen)
         ]
-        let retentions: [(SQLiteStorage.Retention, FileStorage.Retention)] = [(.persistent, .persistent), (.cache, .cache), (.temporary, .temporary)]
+        let retentions: [(SQLiteStorage.Retention, FileStorage.Retention)] = [
+            (.persistent, .persistent), (.persistentExcludedFromBackup, .persistentExcludedFromBackup), (.cache, .cache), (.temporary, .temporary)
+        ]
 
         for name in names {
             for (protection, fileProtection) in protections {

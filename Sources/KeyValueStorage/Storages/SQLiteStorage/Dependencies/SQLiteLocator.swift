@@ -65,8 +65,7 @@ open class DefaultSQLiteLocator: SQLiteLocator, @unchecked Sendable {
         case let .own(retention, protection, namespace):
             // Before the lookups, so the namespace's error doesn't depend on the system
             let namespaceFolder = try Self.namespaceFolderName(for: namespace)
-            let app = try baseDirectory(for: retention).appendingPathComponent(appFolderName, isDirectory: true)
-            folder = Self.directory(in: app, namespaceFolder: namespaceFolder, protection: protection)
+            folder = try Self.directory(in: appDirectory(for: retention), namespaceFolder: namespaceFolder, protection: protection)
         case let .appGroup(groupId, protection, namespace):
             let namespaceFolder = try Self.namespaceFolderName(for: namespace)
             guard !groupId.isEmpty, let container = groupDirectory(for: groupId) else {
@@ -89,11 +88,21 @@ open class DefaultSQLiteLocator: SQLiteLocator, @unchecked Sendable {
         ownIdentifier.portableName
     }
 
+    // As in `DefaultFileLocator`: `.persistentExcludedFromBackup` shares `.persistent`'s base, so its folders are in `x`,
+    // never a namespace folder, which ends with `!`
+    private func appDirectory(for retention: SQLiteStorage.Retention) throws(SQLiteStorage.Error) -> URL {
+        let app = try baseDirectory(for: retention).appendingPathComponent(appFolderName, isDirectory: true)
+        switch retention {
+        case .persistentExcludedFromBackup:     return app.appendingPathComponent("x", isDirectory: true)
+        case .persistent, .cache, .temporary:   return app
+        }
+    }
+
     private func baseDirectory(for retention: SQLiteStorage.Retention) throws(SQLiteStorage.Error) -> URL {
         switch retention {
-        case .persistent:   return try baseDirectory(.applicationSupportDirectory)
-        case .cache:        return try baseDirectory(.cachesDirectory)
-        case .temporary:    return temporaryDirectory
+        case .persistent, .persistentExcludedFromBackup:    return try baseDirectory(.applicationSupportDirectory)
+        case .cache:                                        return try baseDirectory(.cachesDirectory)
+        case .temporary:                                    return temporaryDirectory
         }
     }
 

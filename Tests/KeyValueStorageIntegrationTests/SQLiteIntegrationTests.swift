@@ -58,6 +58,21 @@ final class SQLiteIntegrationTests: XCTestCase {
         XCTAssertEqual(files, [".KeyValueStorage.sqlite", ".KeyValueStorage.sqlite-shm", ".KeyValueStorage.sqlite-wal"])
     }
 
+    func testOnlyAScopeExcludedFromBackupFlagsItsDatabasesFolder() throws {
+        // Given
+        let excluded = SQLiteStorage.Scope.own(.persistentExcludedFromBackup, namespace: "name")
+
+        // When
+        _ = try storage(excluded)
+        _ = try storage()
+
+        // Then
+        let folder = try locator.databaseURL(for: excluded).deletingLastPathComponent()
+        XCTAssertEqual(folder.path, base.appendingPathComponent("support/app/x/name!/i").path)
+        XCTAssertEqual(try isExcludedFromBackup(folder), true)
+        XCTAssertEqual(try isExcludedFromBackup(database.deletingLastPathComponent()), false)
+    }
+
     func testEachProtectionIsADatabaseOfItsOwnInItsClass() throws {
         // A `.complete` probe doesn't get its class on a locked Mac, the iOS Simulator (no class) or GitHub's macOS runners (the default class)
         let probe = base.appendingPathComponent("probe")
@@ -295,6 +310,10 @@ final class SQLiteIntegrationTests: XCTestCase {
 
     private func storage(_ scope: SQLiteStorage.Scope? = nil) throws(SQLiteStorage.Error) -> SQLiteStorage {
         try SQLiteStorage(scope: scope ?? self.scope, backingStore: DefaultSQLiteBackingStoreWrapper(), locator: locator)
+    }
+
+    private func isExcludedFromBackup(_ url: URL) throws -> Bool? {
+        try url.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup
     }
 
     /// A second connection to the database, like another process would open.
