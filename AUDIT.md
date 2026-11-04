@@ -214,6 +214,10 @@ Once every other item is addressed (rule 1):
   - **A doc per storage,** in detail: its scopes and where each keeps values, its key and namespace encodings and
     limits, setup, errors, locator and backing store (their rules, and how to replace or subclass them), and nuances,
     such as durability, cross-process behavior and system gotchas.
+  - **SQLite for many values, not only medium ones:** the comparison, the quick guide and SQLite's doc say so, and why:
+    each value is a row of one table, indexed by its key. Measured on an M3 Max on 2026-11-05, with 100,000 values of
+    100 bytes, against `FileStorage`: a save takes 15.5 µs against 174 µs, a fetch 3.6 µs against 25.5 µs, `clear()`
+    3.5 ms against 11 s, and the values take 13 MB on disk against 391 MB, since every file takes a 4 KB block.
   - **A doc on the layers:** the data storages, coding and its coders, observation, isolation, and `UnifiedStorage`
     with its factory: what each is for, how they compose, and how to use one on its own, replace it or subclass it.
   - **A doc on the factory and its modifiers:** what a modifier is, how to use the factory and the built-in modifiers,
