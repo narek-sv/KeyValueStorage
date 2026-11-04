@@ -41,33 +41,6 @@ extension String {
         return String(decoding: encoded, as: UTF8.self)
     }
 
-    /// The inverse of `portableName`; `nil` for names it can't decode.
-    /// - Note: Also decodes names the encoding never writes, such as `%41` for `A`.
-    init?(portableName name: String) {
-        guard name != "%" else {
-            self = ""
-            return
-        }
-
-        var bytes = [UInt8]()
-        var rest = Substring(name).utf8
-        while let byte = rest.popFirst() {
-            if Self.keptBytes.contains(byte) {
-                bytes.append(byte)
-            } else if byte == UInt8(ascii: "!"), let letter = rest.popFirst(), Self.lowercaseLetters.contains(letter) {
-                bytes.append(letter - Self.lowercaseLetters.lowerBound + Self.capitals.lowerBound)
-            } else if byte == UInt8(ascii: "%"),
-                      let high = rest.popFirst().flatMap(Self.lowercaseHexDigits.firstIndex),
-                      let low = rest.popFirst().flatMap(Self.lowercaseHexDigits.firstIndex) {
-                bytes.append(UInt8(high << 4 | low))
-            } else {
-                return nil
-            }
-        }
-
-        self = String(decoding: bytes, as: UTF8.self)
-    }
-
     /// Each `reserved` byte as `%XX`; include `%` to keep the result unambiguous.
     /// - Precondition: `reserved` holds only ASCII bytes: escaping part of a multi-byte character would corrupt it.
     func percentEscaping(_ reserved: Set<UInt8>) -> String {

@@ -24,6 +24,7 @@ Version 4 rebuilds the library around scopes, synchronous thread-safe storages a
 ### Fixed
 
 - Clearing a User Defaults storage removed every value of its suite, including your app's own and other libraries'. It removes only the values the library saved in the scope's namespace now.
+- Clearing a file storage removed one file at a time and stopped at the first it couldn't remove, leaving the rest. It empties the scope at once now: one step moves the scope's folder out, and its files are deleted in the background.
 
 ### Added
 

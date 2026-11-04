@@ -12,8 +12,8 @@ import Foundation
 
 /// A coding storage that publishes the changes made through it.
 ///
-/// - Changes are delivered on the thread that makes them, right after the write succeeds.
-///   Use `receive(on: DispatchQueue.main)`, or hop to the main actor, before updating UI.
+/// - Changes are delivered on the thread that makes them, right after the write succeeds; a write that throws publishes
+///   nothing. Use `receive(on: DispatchQueue.main)`, or hop to the main actor, before updating UI.
 ///   Streams resume on the executor of the task that iterates them.
 /// - Every instance of a storage type and scope publishes to the others' observers, in this process.
 ///   Changes made otherwise aren't published: through a plain coding storage, by other processes (such as app extensions),
@@ -71,8 +71,6 @@ open class ObservableStorage<Storage: AsyncDataStorage & Sendable>: @unchecked S
     }
 
     /// Every observed key of the scope gets `nil`.
-    /// - Note: Only when the storage's `clear()` succeeds: when it throws, no observer is told, even about values it removed
-    ///   before failing, such as those a file storage's `.clearIncomplete` doesn't list.
     open func clear() async throws(Error) {
         try await storage.clear()
         for observation in registry.observations(in: scopeID) {

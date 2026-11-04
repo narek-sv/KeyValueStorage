@@ -12,10 +12,9 @@ import Foundation
 /// Values in files, one per key; every save replaces the file atomically.
 /// - Note: A save survives an app crash, but files aren't flushed to the disk on every save, so a power loss or system
 ///   crash right after one can lose it. A save the app is killed in leaves a hidden temporary file in the scope's folder,
-///   which `clear()` never removes.
-/// - Note: Only a regular file at a key's path is a value. Anything else there, or anything but a folder where the scope's
-///   folder goes, is never read or removed, and `save` throws `.pathOccupied`. Links are never followed.
-/// - Warning: A folder that another process puts at a key's path between `delete`'s check and its removal is removed.
+///   which only `clear()` removes.
+/// - Note: Only a regular file at a key's path is a value, and links are never followed. `save` throws `.pathOccupied`
+///   instead of replacing anything else there, or anything but a folder where the scope's folder goes.
 /// - Note: Thread-safe: an instance can be shared between threads and tasks, but a sequence of operations isn't atomic.
 public final class FileStorage: DataStorage, Sendable {
 
@@ -57,7 +56,8 @@ public final class FileStorage: DataStorage, Sendable {
 
     public func fetch(forKey key: Key) throws(Error) -> Data? {
         let url = try url(for: key)
-        guard try hasValue(at: url) else {
+        // The folder first, so a file or a link in its place is never looked into
+        guard try itemType(at: root) == .typeDirectory, try itemType(at: url) == .typeRegular else {
             return nil
         }
 
@@ -73,6 +73,65 @@ public final class FileStorage: DataStorage, Sendable {
 
     public func save(_ value: Data, forKey key: Key) throws(Error) {
         let url = try url(for: key)
+        do throws(Error) {
+            try write(value, at: url)
+        } catch {
+            // A `clear()` moved the folder out mid-save: the value goes into a new one, as if saved after the clear
+            guard try itemType(at: root) == nil else {
+                throw error
+            }
+
+            try write(value, at: url)
+        }
+    }
+
+    /// Removes the key's file, or a link in its place but never what it points to; a folder there isn't a value, and stays.
+    public func delete(forKey key: Key) throws(Error) {
+        let url = try url(for: key)
+        // The folder first, so a link in its place is never followed
+        guard try itemType(at: root) == .typeDirectory else {
+            return
+        }
+
+        do throws(FileItemError) {
+            try backingStore.remove(at: url)
+        } catch .notFound {
+            // No value, or removed by another call since the check
+        } catch .notPermitted {
+            // `remove` refuses a folder, which isn't a value; anything else wasn't permitted
+            guard try itemType(at: url) == .typeDirectory else {
+                throw Error(.notPermitted)
+            }
+        } catch {
+            throw Error(error)
+        }
+    }
+
+    /// Empties the scope at once, for every process: one rename moves its folder into a new temporary folder on its
+    /// volume, which is deleted in the background; if that fails, the system purges it with its other temporary files.
+    /// - Warning: Removes everything in the scope's folder, values or not, so a custom locator gives each scope a folder
+    ///   nothing else uses.
+    /// - Throws: Only before the move, so the scope is cleared whole or not at all.
+    public func clear() throws(Error) {
+        guard try itemType(at: root) != nil else {
+            return
+        }
+
+        let temporaryFolder = try Self.execute { try backingStore.itemReplacementDirectory(appropriateFor: root) }
+        // The temporary folder goes whether the move works or not
+        defer { backingStore.removeInBackground(at: temporaryFolder) }
+        do throws(FileItemError) {
+            try backingStore.move(at: root, to: temporaryFolder.appendingPathComponent(root.lastPathComponent, isDirectory: true))
+        } catch .notFound {
+            // Moved by another call since the check: the scope is empty either way
+        } catch {
+            throw Error(error)
+        }
+    }
+
+    // MARK: Helpers
+
+    private func write(_ value: Data, at url: URL) throws(Error) {
         switch try itemType(at: root) {
         case .typeDirectory?:   break
         case nil:               try Self.execute { try backingStore.createDirectory(at: root) }
@@ -90,85 +149,6 @@ public final class FileStorage: DataStorage, Sendable {
         }
 
         try Self.execute { try backingStore.write(value, at: url, options: writingOptions) }
-    }
-
-    public func delete(forKey key: Key) throws(Error) {
-        try removeValue(at: url(for: key))
-    }
-
-    /// Tries to remove every value of the scope, even after one fails.
-    /// - Throws: `.clearIncomplete` with each value it couldn't remove; any other error before it removes anything.
-    public func clear() throws(Error) {
-        guard try itemType(at: root) == .typeDirectory else {
-            return
-        }
-
-        // The folder can also hold other code's files; it's checked once, above
-        let names = try Self.execute { try backingStore.itemNames(at: root) }
-        var failures = [Key: Error]()
-        for name in names {
-            guard let key = valueKey(forFileName: name) else {
-                continue
-            }
-
-            do throws(Error) {
-                let url = root.appendingPathComponent(name, isDirectory: false)
-                if try isFile(at: url) {
-                    try remove(at: url)
-                }
-            } catch {
-                failures[key] = error
-            }
-        }
-
-        guard failures.isEmpty else {
-            throw .clearIncomplete(failures)
-        }
-    }
-
-    // MARK: Helpers
-
-    /// The folder comes first, so a file in its place is never looked into.
-    private func hasValue(at url: URL) throws(Error) -> Bool {
-        guard try itemType(at: root) == .typeDirectory else {
-            return false
-        }
-
-        return try isFile(at: url)
-    }
-
-    /// Never a folder: `remove` deletes a folder with everything inside.
-    private func isFile(at url: URL) throws(Error) -> Bool {
-        try itemType(at: url) == .typeRegular
-    }
-
-    private func removeValue(at url: URL) throws(Error) {
-        guard try hasValue(at: url) else {
-            return
-        }
-
-        try remove(at: url)
-    }
-
-    private func remove(at url: URL) throws(Error) {
-        try Self.execute {
-            do {
-                try backingStore.remove(at: url)
-            } catch CocoaError.fileNoSuchFile {
-                // Removed by another call since the check: the value is gone either way
-            }
-        }
-    }
-
-    /// The key of a name this storage writes, byte for byte, or `nil`: a locator's reverse mapping can accept more.
-    private func valueKey(forFileName name: String) -> Key? {
-        guard let key = locator.key(forFileName: name, in: scope),
-              let encoded = try? locator.fileName(forKey: key, in: scope),
-              Key(encoded) == Key(name) else {
-            return nil
-        }
-
-        return key
     }
 
     private func url(for key: Key) throws(Error) -> URL {

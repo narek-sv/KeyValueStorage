@@ -517,7 +517,7 @@ final class PublicAPITests: XCTestCase {
             switch error {
             case .invalidKey(key):
                 break
-            case .invalidKey, .invalidNamespace, .pathOccupied, .directoryNotFound, .groupDirectoryNotFound, .protectedDataUnavailable, .clearIncomplete, .other:
+            case .invalidKey, .invalidNamespace, .pathOccupied, .directoryNotFound, .groupDirectoryNotFound, .protectedDataUnavailable, .other:
                 XCTFail("Unexpected \(error)")
             }
         }
@@ -550,14 +550,6 @@ final class PublicAPITests: XCTestCase {
             override func fileName(forKey key: FileStorage.Key, in scope: FileStorage.Scope) throws(FileStorage.Error) -> String {
                 try "legacy-" + super.fileName(forKey: key, in: scope)
             }
-
-            override func key(forFileName fileName: String, in scope: FileStorage.Scope) -> FileStorage.Key? {
-                guard fileName.hasPrefix("legacy-") else {
-                    return nil
-                }
-
-                return super.key(forFileName: String(fileName.dropFirst("legacy-".count)), in: scope)
-            }
         }
 
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("publicAPI-\(UUID().uuidString)", isDirectory: true)
@@ -573,7 +565,7 @@ final class PublicAPITests: XCTestCase {
         // Then
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path), ["legacy-key"])
         try storage.clear()
-        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path), [])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path))
     }
 
     func testDefaultInitializersUseTheDefaultScope() throws {

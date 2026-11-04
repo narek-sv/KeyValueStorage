@@ -248,6 +248,7 @@ Keychain's `errSecInteractionNotAllowed` is mapped to `.protectedDataUnavailable
 - **The same key written on two devices before they sync**, for Keychain's and Ubiquitous's `.iCloud` scopes: which value wins. Last writer is likely but not measured; the result becomes a doc line on each `.iCloud` case.
 - **Ubiquitous:** a signed host with the iCloud key-value store entitlement and an Apple Account, ideally with a second device to see values sync. Check the key-length limit on the oldest supported systems too (item 6), the default adapter's integration tests, the quota, signed-out behavior, what an unentitled build does (keeps nothing, `synchronize()` returns `false`), and that the store, like UserDefaults, drops keys with NUL (assumed; the locator escapes it).
 - **Backups:** that iCloud and computer backups leave out `.persistentExcludedFromBackup` File and SQLite scopes, which Apple calls guidance, not a guarantee: the app's backup size in Settings, and a restore to another device, which starts without their values. Also whether a Quick Start transfer from device to device carries them.
+- **Clearing files:** where `itemReplacementDirectory` puts the folder `clear()` moves out of an App Group scope, and that the system removes it when the app quits before the background deletion ends.
 - **UserDefaults before the first unlock after a restart:** fetches return `nil` (documented); whether saves made then last, or are replaced by the file's values once it's readable.
 - **UserDefaults size:** whether `set` drops a value once its suite reaches 4 MB on iOS, or 500 KB on tvOS (with the tvOS checks below); if it does, a `valueTooLarge` check like Ubiquitous's.
 - **App Group SQLite and suspension:** whether an idle connection, whose WAL index keeps a shared lock on its `-shm` file, gets a suspended app terminated (`0xdead10cc`); the scope warns about locks held while reading and writing. If it does, apps close those scopes with `close(storage:forScope:)` before they're suspended.
@@ -259,7 +260,7 @@ Keychain's `errSecInteractionNotAllowed` is mapped to `.protectedDataUnavailable
 ## 3. Assessment
 
 The core is solid: scope isolation holds for all six storages, no data race was found, errors are typed end to end, and
-the suite (456 tests, no warnings) covers every compound condition.
+the suite (463 tests, no warnings) covers every compound condition.
 
 ### 3.1 Architecture — A−
 
@@ -275,7 +276,8 @@ the suite (456 tests, no warnings) covers every compound condition.
 - **A factory of modifiers:** each changes one step of making a storage, for every storage type or for one, with no
   casts at the call site, and the last one decides; a modifier of the app's own implements only the steps it changes.
 - **Encodings:** `portableName` is lossless, ASCII-only and capital-free; `percentEscaping` is exactly invertible;
-  every `clear()` re-encodes each name before removing it, so a locator's lenient decoder never claims foreign items.
+  a suite's or store's `clear()` re-encodes each name before removing it, so a locator's lenient decoder never claims
+  foreign items, and a file scope's `clear()` moves its own folder out in one rename.
 
 Weak spots: item 1, and the optional item 7.
 
@@ -292,9 +294,9 @@ Measured per call on an M3 Max, release build, median of 7 runs:
 | `UnifiedStorage(observable: true).save` (Int) | 1.72 µs | 2 |
 
 **Real-life use:** the facade's ~1 µs disappears behind any persistent storage, and each storage is near its system's
-floor: File makes one `lstat` per item and checks the folder once in `clear`, Keychain updates first and adds only when
-missing, SQLite uses prepared statements, WAL and `synchronous = NORMAL`. The facade's cache is typed per storage type,
-so its lookup doesn't box scopes, stays flat however many scopes are cached, and adds no allocations.
+floor: File makes one `lstat` per item, deletes with one `unlink` and clears with one `rename`, Keychain updates first
+and adds only when missing, SQLite uses prepared statements, WAL and `synchronous = NORMAL`. The facade's cache is typed
+per storage type, so its lookup doesn't box scopes, stays flat however many scopes are cached, and adds no allocations.
 
 **Extreme cases:**
 - **Large values** are saved and fetched whole, in memory (File reads the whole file; JSON adds copies for non-`Data`
@@ -374,7 +376,7 @@ and of `close` fails a test within seconds, none by hanging.
 
 ## 4. Uncovered by design
 
-No test can reach these: `Lock`'s `NSLock` fallback (before macOS 13 / iOS 16), `FileStorage`'s `.atomic`-only writing options (before macOS 11), `OwnIdentity.identifier` without a bundle ID, `assert` failure arms, a call that has left a scope still holding its storage when a `close` releases it (the call consumes its reference before it leaves, but the window without that is a few instructions, which no test can time), SQLite's out-of-memory and empty-blob-pointer paths, and `SQLiteStorage.init()`, which would open a database in the real Application Support. The Keychain and Ubiquitous default adapters run in KeychainHost and on a device.
+No test can reach these: `Lock`'s `NSLock` fallback (before macOS 13 / iOS 16), `FileStorage`'s `.atomic`-only writing options (before macOS 11), `DefaultFileBackingStoreWrapper`'s `EINVAL` for a URL without a file system path, which `withUnsafeFileSystemRepresentation` never gives (even `https://example.com` gives `""`), `OwnIdentity.identifier` without a bundle ID, `assert` failure arms, a call that has left a scope still holding its storage when a `close` releases it (the call consumes its reference before it leaves, but the window without that is a few instructions, which no test can time), SQLite's out-of-memory and empty-blob-pointer paths, and `SQLiteStorage.init()`, which would open a database in the real Application Support. The Keychain and Ubiquitous default adapters run in KeychainHost and on a device.
 
 ## 5. Risks and notes
 

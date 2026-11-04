@@ -10,7 +10,7 @@ import Foundation
 // MARK: - SQLiteLocator
 
 /// - Note: `clear()` empties the whole database, so a custom locator gives each scope its own.
-/// - Warning: Keep databases out of file storages' folders, which their `clear()` may empty.
+/// - Warning: Keep databases out of file storages' folders: their `clear()` removes everything inside.
 public protocol SQLiteLocator: Sendable {
     /// The storage creates the file's folder.
     func databaseURL(for scope: SQLiteStorage.Scope) throws(SQLiteStorage.Error) -> URL
@@ -20,8 +20,8 @@ public protocol SQLiteLocator: Sendable {
 
 // MARK: - DefaultSQLiteLocator
 
-/// Keeps a scope's database, `<protection>.sqlite`, in the folder `<namespace>+`, next to the `<namespace>!` where
-/// `DefaultFileLocator` keeps the scope's files: names are encoded as there, and databases never share a folder with files.
+/// Keeps a scope's database, `<protection>.sqlite`, in `<namespace>+`, next to `DefaultFileLocator`'s `<namespace>!`:
+/// names are encoded the same way, and databases never share a folder with files.
 /// - Warning: Subclasses inherit `Sendable`: their own state must be thread-safe too.
 open class DefaultSQLiteLocator: SQLiteLocator, @unchecked Sendable {
     private static let maximumNameLength = 255

@@ -17,15 +17,20 @@ public protocol FileBackingStore: Sendable {
     func read(at url: URL) throws -> Data
     /// `Data.write(to:options:)`.
     func write(_ data: Data, at url: URL, options: Data.WritingOptions) throws
-    /// `FileManager.removeItem(at:)`.
-    /// - Warning: Removes a folder with everything inside.
-    func remove(at url: URL) throws
+    /// `unlink`, which removes a file, or a link but never what it points to, and never a folder.
+    func remove(at url: URL) throws(FileItemError)
     /// `FileManager.createDirectory(at:withIntermediateDirectories: true)`.
     func createDirectory(at url: URL) throws
     /// `URL.setResourceValues(_:)` with `isExcludedFromBackup`, which on a folder covers everything inside.
     func excludeFromBackup(at url: URL) throws
-    /// `FileManager.contentsOfDirectory(atPath:)`.
-    func itemNames(at url: URL) throws -> [String]
+    /// `FileManager.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor:create: true)`: a new
+    /// temporary folder on the volume of `url`.
+    func itemReplacementDirectory(appropriateFor url: URL) throws -> URL
+    /// `rename`, which moves an item in one step within its volume, and a link but never what it points to.
+    func move(at url: URL, to destination: URL) throws(FileItemError)
+    /// `FileManager.removeItem(at:)` on a background queue, ignoring failures.
+    /// - Warning: Removes a folder with everything inside.
+    func removeInBackground(at url: URL)
 }
 
 // MARK: - DefaultFileBackingStoreWrapper
@@ -58,8 +63,13 @@ open class DefaultFileBackingStoreWrapper: FileBackingStore, @unchecked Sendable
         try data.write(to: url, options: options)
     }
 
-    open func remove(at url: URL) throws {
-        try fileManager.removeItem(at: url)
+    open func remove(at url: URL) throws(FileItemError) {
+        let code = url.withUnsafeFileSystemRepresentation { path in
+            path.map { unlink($0) == 0 ? 0 : errno }
+        } ?? EINVAL
+        guard code == 0 else {
+            throw FileItemError(code: code)
+        }
     }
 
     open func createDirectory(at url: URL) throws {
@@ -73,18 +83,40 @@ open class DefaultFileBackingStoreWrapper: FileBackingStore, @unchecked Sendable
         try url.setResourceValues(values)
     }
 
-    open func itemNames(at url: URL) throws -> [String] {
-        try fileManager.contentsOfDirectory(atPath: url.path)
+    open func itemReplacementDirectory(appropriateFor url: URL) throws -> URL {
+        try fileManager.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: url, create: true)
+    }
+
+    open func move(at url: URL, to destination: URL) throws(FileItemError) {
+        let code = url.withUnsafeFileSystemRepresentation { source in
+            destination.withUnsafeFileSystemRepresentation { target in
+                guard let source, let target else {
+                    return EINVAL
+                }
+
+                return rename(source, target) == 0 ? 0 : errno
+            }
+        }
+        guard code == 0 else {
+            throw FileItemError(code: code)
+        }
+    }
+
+    open func removeInBackground(at url: URL) {
+        DispatchQueue.global(qos: .utility).async { [self] in
+            try? fileManager.removeItem(at: url)
+        }
     }
 }
 
 // MARK: - FileItemError
 
-/// Why `itemType(at:)` failed: the cases the storage tells apart, and the `errno` code of any other.
+/// Why a lookup, removal or move failed: the cases the storage tells apart, and the `errno` code of any other.
 public enum FileItemError: Error, Equatable, Sendable {
     /// `ENOENT`: nothing is at the path.
     case notFound
-    /// `EPERM`: the item is protected while the device is locked, or the sandbox denies access.
+    /// `EPERM`: the item is protected while the device is locked, or the sandbox denies access; `remove` also refuses a
+    /// folder with it.
     case notPermitted
     case other(Int32)
 
@@ -93,14 +125,6 @@ public enum FileItemError: Error, Equatable, Sendable {
         case ENOENT:    self = .notFound
         case EPERM:     self = .notPermitted
         default:        self = .other(code)
-        }
-    }
-
-    var code: Int32 {
-        switch self {
-        case .notFound:         return ENOENT
-        case .notPermitted:     return EPERM
-        case let .other(code):  return code
         }
     }
 }

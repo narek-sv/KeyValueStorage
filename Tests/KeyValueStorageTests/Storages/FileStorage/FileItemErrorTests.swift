@@ -18,12 +18,6 @@ final class FileItemErrorTests: XCTestCase {
         }
     }
 
-    func testEveryCaseKeepsItsCode() {
-        for code in [ENOENT, EPERM, EACCES, ENOTDIR, ENAMETOOLONG, ELOOP, EIO, EINVAL, 0, -1] {
-            XCTAssertEqual(FileItemError(code: code).code, code)
-        }
-    }
-
     func testModesMapToTheirTypes() {
         let types: [(mode_t, FileAttributeType)] = [
             (S_IFREG, .typeRegular),

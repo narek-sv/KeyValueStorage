@@ -76,12 +76,7 @@ final class SQLiteIntegrationTests: XCTestCase {
     }
 
     func testEachProtectionIsADatabaseOfItsOwnInItsClass() throws {
-        // A `.complete` probe doesn't get its class on a locked Mac, the iOS Simulator (no class) or GitHub's macOS runners (the default class)
-        let probe = base.appendingPathComponent("probe")
-        try? Data([1]).write(to: probe, options: .completeFileProtection)
-        let probeClass = try? fileManager.attributesOfItem(atPath: probe.path)[.protectionKey] as? FileProtectionType
-        try? fileManager.removeItem(at: probe)
-        try XCTSkipUnless(probeClass == .complete, "This volume doesn't apply data protection classes now")
+        try skipUnlessDataProtectionApplies(in: base)
 
         // `.none` opens, but can't be checked: macOS reports the default class for it
         _ = try storage(.own(protection: .none, namespace: "test"))

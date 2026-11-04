@@ -31,9 +31,11 @@ extends a decision updates its entry in the same commit, and entries keep their 
   coder.
 - **Names** are exact bytes everywhere (`ExactString`), so `"é"` and `"e\u{301}"` are two keys. Encode, don't reject:
   any string is a valid key or namespace, and only system limits throw.
-- **Only the storage's own values:** the library never replaces or removes other code's data. In File, User Defaults and
+- **Only the storage's own values:** the library never replaces or removes other code's data. In User Defaults and
   Ubiquitous, anything at a key's place that isn't the storage's kind of value is other code's: `fetch` returns `nil`,
-  `delete` and `clear()` leave it, and `save` throws `.pathOccupied` or `.keyOccupied` instead of replacing it.
+  `delete` and `clear()` leave it, and `save` throws `.keyOccupied` instead of replacing it. A file scope's folder is
+  the library's own: `fetch` reads only a file, `save` throws `.pathOccupied` instead of replacing anything else,
+  `delete` removes a link but never a folder, and `clear()` removes the whole folder (D14).
 - **Errors** are typed end to end, carry the failing input as the caller passed it, are documented per case, and every
   throw site is tested. Each storage throws its own `Error`, which `CodingStorageError` wraps, never translates. Absence
   isn't an error (`nil` from `fetch`, nothing to do for `delete` and `clear()`), and nothing else is swallowed, so an
@@ -60,8 +62,9 @@ extends a decision updates its entry in the same commit, and entries keep their 
 #### D1. Each storage is three parts: the storage, its locator and its backing store
 
 The storage holds the logic: what it checks before acting, what each system error means, and how `clear()` removes
-values. The locator owns every name: scope to place, key to stored name and back, and the system's limits on them. The
-backing store is the system and nothing else: one call per member, no logic, acting only on the places it's given.
+values. The locator owns every name: scope to place, key to stored name, back again where a `clear()` lists names, and
+the system's limits on them. The backing store is the system and nothing else: one call per member, no logic, acting
+only on the places it's given.
 
 - **Why:** every rule, including what an error means, sits where unit tests reach it with mocks, so the storages are
   fully covered without the real systems, and the default adapters need only integration tests.
@@ -181,8 +184,9 @@ through a custom locator, which then owns the guarantees.
     id as the capability shows it.
   - **Two storage types over one place,** such as `FileStorage` and `IsolatedDataStorage<FileStorage>`, share values
     but not holds, closes or observers (D21). Reach each scope through one storage type.
-  - **A custom locator** that maps two scopes or keys to one name shares their values, and one that decodes names it
-    didn't encode lets `clear()` remove other code's; observers are shared by storage type and scope, whatever the
+  - **A custom locator** that maps two scopes or keys to one name shares their values, one that decodes names it didn't
+    encode lets `clear()` remove other code's, and a file locator that gives a scope a folder other code uses lets
+    `clear()` remove that folder with everything inside; observers are shared by storage type and scope, whatever the
     locator. Follow the rules its protocol lists.
   - **Code that removes a whole place,** such as every keychain item of the app, its Caches folder or an App Group's
     suite, removes the library's values with the rest. Make the app's resets remove only their own items.
@@ -207,10 +211,10 @@ folder of its own, named with one letter, a database named with that letter, or 
 
 - **Why:** if two protections shared a place, each SQLite open would re-apply its class to the other's files, and each
   `clear()` would empty both. One letter, because every byte counts toward the system's 1024-byte limit on a whole path.
-- **Backups:** `.persistentExcludedFromBackup` sets `isExcludedFromBackup` on the scope's folder before every File save
-  and every SQLite open. A folder's flag covers what's inside, as Apple recommends for a group of files, while a file's
-  own flag can reset when the file is replaced, as every save does; and setting it every time leaves no folder without
-  it after a failure.
+- **Backups:** `.persistentExcludedFromBackup` sets `isExcludedFromBackup` on the folder of the scope's files before
+  every save, and on its database's before every open. A folder's flag covers what's inside, as Apple recommends for a
+  group of files, while a file's own flag can reset when the file is replaced, as every save does; and setting it every
+  time leaves no folder without it after a failure.
 - **Instead of:** a payload on `.persistent`, `.persistent(excludedFromBackup:)`, which makes a bare `.persistent` fail
   to compile and, with a static overload, mean two things: not excluded as a value, and both in a `switch`.
 
@@ -237,8 +241,8 @@ escaped in every part. Every decoding is the strict inverse of its encoding.
 
 - **Why:** any string is a valid key. File names never have capitals, `.` or whitespace, so a case-insensitive or
   normalizing volume can't merge two, and no key's file is a dot file. NUL never reaches a suite's file, where its value
-  would be lost on relaunch. Strict inverses claim only the names their scope writes, so `clear()` never removes another
-  scope's values.
+  would be lost on relaunch. Strict inverses claim only the names their scope writes, so a suite's or store's `clear()`
+  never removes another scope's values; a file scope's `clear()` takes its own folder instead (D14).
 - **Instead of:** normalizing, since Foundation's canonical mapping merges keys that Swift keeps apart, and
   `removingPercentEncoding` drops a leading U+FEFF; or rejecting the characters a system can't take.
 
@@ -254,16 +258,24 @@ escaped in every part. Every decoding is the strict inverse of its encoding.
 - **Instead:** synced values use `UbiquitousStorage`, Keychain's `.iCloud` scopes, or CloudKit outside the library. If
   this is ever revisited, coordination goes into a backing store of its own, always on for its scope.
 
-#### D14. Files: one file per value, written atomically, links never followed
+#### D14. Files: one file per value, written atomically, links never followed, and `clear()` moves the folder out
 
 Each value is a regular file in its scope's folder, saved and fetched whole and written with an atomic replace. Links
-are never followed, read, written or removed. `clear()` tries every value and throws `.clearIncomplete` with each one it
-couldn't remove.
+are never followed, read or written over. `delete` removes the key's file with `unlink`, which removes a link but never
+what it points to, and refuses a folder. `clear()` moves the scope's folder, with everything inside, into a new
+temporary folder on its volume with one `rename`, and deletes it from there in the background. A save whose folder a
+`clear()` moves out mid-save writes once more, into a new folder.
 
 - **Why:** reading a value never loads the others, and a damaged file affects only its own value. A link could lead out
-  of the scope. A `clear()` that stopped at its first failure would leave the rest untried, and the caller unsure what's
-  gone.
-- **Cost, documented:** a value is held in memory whole.
+  of the scope. One rename empties the scope at once for every process, and either happens or throws, so a scope is
+  never half cleared: for 100,000 files it took 16 ms, where removing each file took 11.4 s, and removing the folder,
+  which still goes file by file, 8.7 s (measured on 2026-11-05). `unlink` can't remove a folder, so `delete` never
+  removes one, even one another process swaps in after its check.
+- **Instead of:** removing each file whose name decodes to a key, which needs a reverse mapping in every locator, leaves
+  other items behind, and can stop halfway.
+- **Cost, documented:** a value is held in memory whole. The scope's folder is its own: `clear()` removes anything else
+  in it, so a custom locator never gives a scope a folder other code uses. The files' space frees shortly after
+  `clear()` returns, and a device check is left for where the system puts the temporary folder of an App Group scope.
 
 #### D15. SQLite: a database per scope, WAL, `synchronous = NORMAL` and a lock per operation
 
@@ -277,8 +289,8 @@ path are followed.
   The connection's prepared statements serve one call at a time. `SQLITE_OPEN_NOFOLLOW` would reject any link in the
   path, and `/var` is a link to `/private/var` above every app container. A folder of its own keeps databases and files
   apart with no naming rule to follow.
-- **Instead of:** the hidden `.KeyValueStorage.sqlite` in File's folder for the scope, which only the dot kept from
-  every key's file, and which a custom locator could break.
+- **Instead of:** a hidden database in File's folder for the scope, kept apart from every key's file only by its dot,
+  which a custom locator can break.
 - **Cost:** calls on one storage block their threads while they wait (D6).
 
 #### D16. Keychain: no read before a write

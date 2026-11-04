@@ -169,41 +169,22 @@ final class DefaultFileLocatorTests: XCTestCase {
         }
     }
 
-    // MARK: Keys
+    // MARK: Subclasses
 
-    func testNamesTheEncodingNeverWritesArentClaimed() {
-        let foreign = [
-            ".KeyValueStorage.sqlite", ".KeyValueStorage.sqlite-wal", ".DS_Store", "Notes", "a.b", "a b", "\u{E9}",
-            "!", "!!", "a!", "!1", "!A", "%%", "%2", "%zz", "%2E", "%41", "%ff", "%c3", String(repeating: "a", count: 256)
-        ]
-
-        for name in foreign {
-            XCTAssertNil(locator.key(forFileName: name, in: scope), name.debugDescription)
-        }
-    }
-
-    func testSubclassesCanCallSuperForBothNameMethods() {
+    func testSubclassesCanCallSuperForFileNames() throws {
         // Given
         /// Unchecked: used from one test at a time.
         final class PrefixedLocator: DefaultFileLocator, @unchecked Sendable {
             override func fileName(forKey key: FileStorage.Key, in scope: FileStorage.Scope) throws(FileStorage.Error) -> String {
                 try "v2-" + super.fileName(forKey: key, in: scope)
             }
-
-            override func key(forFileName fileName: String, in scope: FileStorage.Scope) -> FileStorage.Key? {
-                fileName.hasPrefix("v2-") ? super.key(forFileName: String(fileName.dropFirst(3)), in: scope) : nil
-            }
         }
 
         let locator = PrefixedLocator()
 
         // When - Then
-        assertLocatorLaws(
-            keys: ["key", "Key", ".hidden", "%", ""],
-            foreignNames: ["key", "v2-Key", "v2-%2E"],
-            storedName: { try locator.fileName(forKey: .init($0), in: scope) },
-            key: { locator.key(forFileName: $0, in: scope)?.string }
-        )
+        XCTAssertEqual(try locator.fileName(forKey: "Key", in: scope), "v2-!key")
+        assertLocatorNamesNeverShared(keys: ["key", "Key", ".hidden", "%", ""]) { try locator.fileName(forKey: .init($0), in: scope) }
     }
 
     // MARK: Laws
@@ -217,11 +198,9 @@ final class DefaultFileLocatorTests: XCTestCase {
             "日本", "🙂", "👨‍👩‍👧", String(repeating: "a", count: 255)
         ]
 
-        assertLocatorLaws(
+        assertLocatorNamesNeverShared(
             keys: keys,
-            foreignNames: [".KeyValueStorage.sqlite", ".DS_Store", "Key", "%41", "%2E", "a.b"],
             storedName: { try locator.fileName(forKey: .init($0), in: scope) },
-            key: { locator.key(forFileName: $0, in: scope)?.string },
             sameName: { $0.compare($1, options: .caseInsensitive) == .orderedSame } // APFS's default: case-insensitive, canonical
         )
     }

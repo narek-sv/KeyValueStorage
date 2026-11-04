@@ -90,39 +90,6 @@ final class StringUTF8Tests: XCTestCase {
         assertBytes("KeyValueStorage".portableName, "!key!value!storage")
     }
 
-    // MARK: init(portableName:)
-
-    func testDecodingInvertsEncoding() {
-        var everyASCIIByte = String(decoding: Array(UInt8(0)...0x7F), as: UTF8.self)
-        everyASCIIByte += "\u{E9}"
-        for sample in samples + [everyASCIIByte] {
-            assertBytes(String(portableName: sample.portableName), sample)
-        }
-    }
-
-    func testAPercentSignDecodesToTheEmptyName() {
-        assertBytes(String(portableName: "%"), "")
-    }
-
-    func testNamesTheEncodingCantProduceDontDecode() {
-        for name in ["a!", "!", "!A", "!1", "!!", "!%", "a%", "a%4", "%4", "%zz", "%g0", "%2E", "%%", "A", ".", " ", "a/b", "\u{E9}", "%25%"] {
-            XCTAssertNil(String(portableName: name), name.debugDescription)
-        }
-    }
-
-    func testNonCanonicalEscapesStillDecode() {
-        // `DefaultFileLocator` re-encodes to reject these
-        assertBytes(String(portableName: "%41"), "A")
-        assertBytes(String(portableName: "%61"), "a")
-        assertBytes(String(portableName: "%00"), "\0")
-    }
-
-    func testDecodingKeepsTheExactBytes() {
-        assertBytes(String(portableName: "%c3%a9"), "\u{E9}")
-        assertBytes(String(portableName: "e%cc%81"), "e\u{301}")
-        XCTAssertNotEqual(ExactString(String(portableName: "%c3%a9")!), ExactString(String(portableName: "e%cc%81")!))
-    }
-
     // MARK: percentEscaping
 
     func testOnlyReservedBytesAreEscapedWithUppercaseHex() {

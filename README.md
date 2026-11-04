@@ -59,7 +59,7 @@ Here's how the built-in storages compare:
 
 **File System** - large values, such as images, videos or cached responses.
 * The fastest storage for large values: every value is written once, directly into its own file.
-* Deleting a value frees its disk space right away.
+* Deleting a value frees its disk space right away. Clearing a scope empties it at once, for every process: one step moves its folder out, with everything in it, and the files are deleted in the background.
 * Every value is a separate file, so reading one value never loads the others into memory, and a damaged file affects only its own value. A value itself is saved and fetched whole, in memory, so keep each one to what the app can hold in memory at once.
 * The default `.persistent` scope is in Application Support, which the device's backups include. Keep what you can download again out of them: in a `.cache` scope, such as cached responses, which the system can delete when storage runs low, or in a `.persistentExcludedFromBackup` scope, such as media for offline use, which stays until you delete it.
 * Files are replaced atomically, so a crash never leaves a value half-written. A save survives an app crash; a power loss or system crash right after it can lose it, since files aren't flushed to the disk on every save.
@@ -258,7 +258,7 @@ try await storage.update(launches) { ($0 ?? 0) + 1 }
 try await storage.clear(storage: KeychainStorage.self, forScope: .own(namespace: "auth"))
 ```
 
-Clearing removes only the values the library saved in that scope. Other code's values in the same suite, folder or store are never touched.
+Clearing removes only that scope's values. Other code's values in the same suite or store are never touched, and a file scope's folder is the library's own, which clearing removes whole.
 
 `update` starts from `nil` when the storage reads no value, and User Defaults reads none before the device's first unlock after a restart, such as in a background launch: don't update User Defaults values then, or the result can replace the value it couldn't read.
 
@@ -488,7 +488,9 @@ let storage = UnifiedStorage(factory: .default.dataStorage(for: FileStorage.self
 
 Each storage's `init(scope:backingStore:locator:)` defaults both, so pass only the one you change. A custom backing store, which replaces the system calls, such as in tests, goes in the same way, as `backingStore:`.
 
-A locator must give every scope and key names of their own, and decode exactly the names it encodes, or values get shared, or `clear()` leaves them behind; each locator protocol lists its rules. A subclass of a default locator or backing store restates `@unchecked Sendable`, and its own state must be thread-safe too.
+A locator must give every scope and key names of their own, or values get shared, and one that maps names back to keys, as User Defaults' and Ubiquitous' do, must decode exactly the names it encodes, or `clear()` leaves values behind; each locator protocol lists its rules. A subclass of a default locator or backing store restates `@unchecked Sendable`, and its own state must be thread-safe too.
+
+***WARNING***! `FileStorage`'s `clear()` removes the scope's whole folder, with everything inside, so a custom file locator gives each scope a folder nothing else uses: never one your app or other code keeps files in, such as Documents.
 
 ---
 ## Xcode autocompletion 
@@ -664,7 +666,7 @@ for await theme in try await settings.stream(forKey: CodingStorageKey<FileStorag
 }
 ```
 
-Changes are delivered on the thread that makes them, right after the write succeeds, so move to the main thread before updating the UI. Subscribers run inside the save, and other saves of the same key wait for them: keep them short, and move slow work off with `receive(on:)` or a stream. Streams resume on the executor of the task that iterates them. An observer sees only the values saved with its own value type. While a key is observed, its latest change stays in memory, and each publisher keeps the value it read, so mind large values.
+Changes are delivered on the thread that makes them, right after the write succeeds, so move to the main thread before updating the UI; a write that throws publishes nothing. Subscribers run inside the save, and other saves of the same key wait for them: keep them short, and move slow work off with `receive(on:)` or a stream. Streams resume on the executor of the task that iterates them. An observer sees only the values saved with its own value type. While a key is observed, its latest change stays in memory, and each publisher keeps the value it read, so mind large values.
 
 ***NOTE***! In the Swift 6 language mode, a closure written in `@MainActor` code, such as in a view model, or anywhere in a target whose default actor isolation is `MainActor`, crashes the app when it's called off the main thread, as a `sink` is for every save made outside the main actor. Put `receive(on: DispatchQueue.main)` before such a `sink`, as above, or iterate a stream from the main actor.
 
@@ -692,14 +694,11 @@ Keys, namespaces and values over a storage's limits:
 * `.invalidNamespace(namespace)` (`FileStorage`, `SQLiteStorage`) - its encoded folder name is over 255 bytes.
 * `UbiquitousStorage.Error.valueTooLarge(key:size:)` - the value is over 1 MB (1,000,000 bytes).
 
-Something that isn't a value where a value goes. It's never replaced or removed:
-* `FileStorage.Error.pathOccupied(url)` - for example a folder at a key's file, or a file where the scope's folder goes.
-* `.keyOccupied(key)` (`UserDefaultsStorage`, `UbiquitousStorage`) - a value that isn't `Data` is under the key's stored key. In `UserDefaults`, registered defaults count.
+Something that isn't a value where a value goes, which `save` never replaces:
+* `FileStorage.Error.pathOccupied(url)` - for example a folder at a key's file, or a file where the scope's folder goes. `clear()` removes it with the rest of the scope's folder.
+* `.keyOccupied(key)` (`UserDefaultsStorage`, `UbiquitousStorage`) - a value that isn't `Data` is under the key's stored key, and it's never removed. In `UserDefaults`, registered defaults count.
 
-Clearing a scope that only partly succeeds:
-* `FileStorage.Error.clearIncomplete(errors)` - `clear()` removes a scope's values one file at a time, and doesn't stop at the first failure: it tries every value, then throws each one it couldn't remove, by key, with its error. The other values are gone. The other storages clear a scope in one step, or can't fail.
-
-`FileStorage` and `SQLiteStorage` wrap any other failure in `.other(error)`, keeping the original error; a failed file lookup is a `FileItemError` with the system's code. `InMemoryStorage` never throws.
+`FileStorage` and `SQLiteStorage` wrap any other failure in `.other(error)`, keeping the original error; a failed file lookup, removal or move is a `FileItemError` with the system's code. `InMemoryStorage` never throws.
 
 ---
 ## Thread Safety

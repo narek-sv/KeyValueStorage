@@ -39,7 +39,6 @@ final class FileIntegrationTests: XCTestCase {
         XCTAssertEqual(try adapter.itemType(at: makeLink("linkToFile", to: file)), .typeSymbolicLink)
         XCTAssertEqual(try adapter.itemType(at: makeLink("linkToFolder", to: folder)), .typeSymbolicLink)
         XCTAssertEqual(try adapter.itemType(at: makeLink("dangling", to: base.appendingPathComponent("missing"))), .typeSymbolicLink)
-        XCTAssertEqual(Set(try adapter.itemNames(at: base)), ["file", "folder", "linkToFile", "linkToFolder", "dangling"])
     }
 
     func testOtherItemTypesAreReported() throws {
@@ -81,6 +80,97 @@ final class FileIntegrationTests: XCTestCase {
         XCTAssertThrowsError(try adapter.itemType(at: locked.appendingPathComponent("inner"))) { error in
             XCTAssertEqual(error as? FileItemError, .other(EACCES))
         }
+    }
+
+    func testRemoveDeletesAFileOrALinkButNeverAFolder() throws {
+        // Given
+        let adapter = DefaultFileBackingStoreWrapper()
+        let file = try makeFile("file")
+        let folder = try makeFolder("folder")
+        let links = [
+            try makeLink("toFile", to: file),
+            try makeLink("toFolder", to: folder),
+            try makeLink("dangling", to: base.appendingPathComponent("missing"))
+        ]
+
+        // When - Then: each link goes, never what it points to
+        for link in links {
+            try adapter.remove(at: link)
+        }
+
+        XCTAssertEqual(Set(try fileManager.contentsOfDirectory(atPath: base.path)), ["file", "folder"])
+        XCTAssertTrue(fileManager.fileExists(atPath: folder.appendingPathComponent("inner").path))
+        try adapter.remove(at: file)
+        XCTAssertEqual(try fileManager.contentsOfDirectory(atPath: base.path), ["folder"])
+
+        // When - Then: a folder stays whole
+        XCTAssertThrowsError(try adapter.remove(at: folder)) { error in
+            XCTAssertEqual(error as? FileItemError, .notPermitted)
+        }
+
+        XCTAssertTrue(fileManager.fileExists(atPath: folder.appendingPathComponent("inner").path))
+        XCTAssertThrowsError(try adapter.remove(at: base.appendingPathComponent("missing"))) { error in
+            XCTAssertEqual(error as? FileItemError, .notFound)
+        }
+
+        XCTAssertThrowsError(try adapter.remove(at: makeFile("plain").appendingPathComponent("key"))) { error in
+            XCTAssertEqual(error as? FileItemError, .other(ENOTDIR))
+        }
+    }
+
+    func testMoveTakesAFolderWholeAndALinkItself() throws {
+        // Given
+        let adapter = DefaultFileBackingStoreWrapper()
+        let folder = try makeFolder("folder")
+        let target = try makeFile("target")
+        let link = try makeLink("link", to: target)
+        let destination = try makeFolder(base.appendingPathComponent("destination", isDirectory: true))
+
+        // When
+        try adapter.move(at: folder, to: destination.appendingPathComponent("folder", isDirectory: true))
+        try adapter.move(at: link, to: destination.appendingPathComponent("link", isDirectory: false))
+
+        // Then
+        XCTAssertEqual(Set(try fileManager.contentsOfDirectory(atPath: base.path)), ["destination", "target"])
+        XCTAssertTrue(fileManager.fileExists(atPath: destination.appendingPathComponent("folder/inner").path))
+        XCTAssertEqual(try adapter.itemType(at: destination.appendingPathComponent("link")), .typeSymbolicLink)
+        XCTAssertEqual(try Data(contentsOf: target), Data([1]))
+        let missing = base.appendingPathComponent("missing")
+        XCTAssertThrowsError(try adapter.move(at: missing, to: destination.appendingPathComponent("missing"))) { error in
+            XCTAssertEqual(error as? FileItemError, .notFound)
+        }
+    }
+
+    func testEachItemReplacementDirectoryIsANewEmptyFolderOnTheVolume() throws {
+        // Given
+        let adapter = DefaultFileBackingStoreWrapper()
+        let folder = try makeFolder("folder")
+
+        // When
+        let first = try adapter.itemReplacementDirectory(appropriateFor: folder)
+        let second = try adapter.itemReplacementDirectory(appropriateFor: folder)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: first)
+            try? FileManager.default.removeItem(at: second)
+        }
+
+        // Then: a move into it works, which takes the same volume
+        XCTAssertNotEqual(first, second)
+        XCTAssertEqual(try fileManager.contentsOfDirectory(atPath: first.path), [])
+        try adapter.move(at: folder, to: first.appendingPathComponent("folder", isDirectory: true))
+        XCTAssertTrue(fileManager.fileExists(atPath: first.appendingPathComponent("folder/inner").path))
+    }
+
+    func testRemoveInBackgroundRemovesAFolderWithEverythingInside() async throws {
+        // Given
+        let adapter = DefaultFileBackingStoreWrapper()
+        let folder = try makeFolder("folder")
+
+        // When
+        adapter.removeInBackground(at: folder)
+
+        // Then
+        try await waitUntilGone(folder)
     }
 
     func testTheLocatorsLookupsReturnTheSystemsDirectories() {
@@ -195,7 +285,7 @@ final class FileIntegrationTests: XCTestCase {
 
         XCTAssertEqual(try fileManager.contentsOfDirectory(atPath: folder().path).count, keys.count)
         try storage.clear()
-        XCTAssertEqual(try fileManager.contentsOfDirectory(atPath: folder().path), [])
+        XCTAssertFalse(fileManager.fileExists(atPath: try folder().path))
     }
 
     func testOnlySavesCreateTheFolder() throws {
@@ -293,6 +383,26 @@ final class FileIntegrationTests: XCTestCase {
         XCTAssertNil(try storage.fetch(forKey: "key"))
     }
 
+    func testConcurrentClearsOfOneScopeAllSucceed() throws {
+        // Given
+        let storage = try storage()
+        try storage.save(Data([1]), forKey: "key")
+        let failures = Failures()
+
+        // When: 100 threads clear the scope at once, and all but the first find its folder gone
+        DispatchQueue.concurrentPerform(iterations: 100) { _ in
+            do {
+                try storage.clear()
+            } catch {
+                failures.append("\(error)")
+            }
+        }
+
+        // Then
+        XCTAssertEqual(failures.all, [])
+        XCTAssertFalse(fileManager.fileExists(atPath: try folder().path))
+    }
+
     func testFetchesRacingDeletesOfTheirFileFindTheValueOrNone() throws {
         // Given
         let storage = try storage()
@@ -347,6 +457,49 @@ final class FileIntegrationTests: XCTestCase {
         XCTAssertEqual(try isExcludedFromBackup(folder(persistent)), false)
     }
 
+    func testTheFolderASaveMakesAfterAClearIsExcludedFromBackupToo() throws {
+        // Given
+        let excluded = FileStorage.Scope.own(.persistentExcludedFromBackup, namespace: "name")
+        let storage = try storage(excluded)
+        try storage.save(Data([1]), forKey: "key")
+
+        // When
+        try storage.clear()
+        try storage.save(Data([2]), forKey: "key")
+
+        // Then
+        XCTAssertEqual(try isExcludedFromBackup(folder(excluded)), true)
+    }
+
+    // MARK: Protection
+
+    func testEachProtectionsFilesGetItsClass() throws {
+        try skipUnlessDataProtectionApplies(in: base)
+
+        // `.none` and `.inherited` can't be checked: macOS reports the default class for them
+        let protections: [(FileStorage.Protection, FileProtectionType)] = [
+            (.whenUnlocked, .complete),
+            (.whenUnlockedOrOpen, .completeUnlessOpen),
+            (.afterFirstUnlock, .completeUntilFirstUserAuthentication)
+        ]
+
+        for (protection, expected) in protections {
+            // Given
+            let scope = FileStorage.Scope.own(protection: protection, namespace: "test")
+            let storage = try storage(scope)
+            let file = try folder(scope).appendingPathComponent("key")
+
+            // When - Then: a new file, a replaced one, and one in the folder a save makes after a clear
+            try storage.save(Data([1]), forKey: "key")
+            XCTAssertEqual(try protectionClass(of: file), expected, "\(protection)")
+            try storage.save(Data([2]), forKey: "key")
+            XCTAssertEqual(try protectionClass(of: file), expected, "\(protection)")
+            try storage.clear()
+            try storage.save(Data([3]), forKey: "key")
+            XCTAssertEqual(try protectionClass(of: file), expected, "\(protection)")
+        }
+    }
+
     // MARK: Clashes
 
     func testScopesThatDifferOnlyInRetentionProtectionOrGroupKeepTheirValuesApart() throws {
@@ -371,7 +524,7 @@ final class FileIntegrationTests: XCTestCase {
         }
     }
 
-    func testAFolderAtAKeysPathIsNeverAValueAndNeverRemoved() throws {
+    func testAFolderAtAKeysPathIsNeverAValueAndOnlyClearRemovesIt() throws {
         // Given: another app's folder with a key's name
         let storage = try storage()
         let folder = try makeFolder("settings", in: makeScopeFolder())
@@ -379,16 +532,21 @@ final class FileIntegrationTests: XCTestCase {
         // When
         let fetched = try storage.fetch(forKey: "settings")
         try storage.delete(forKey: "settings")
-        try storage.clear()
         let error = storageError { try storage.save(Data([2]), forKey: "settings") }
 
         // Then
         XCTAssertNil(fetched)
         assertPathOccupied(error, folder)
         XCTAssertTrue(fileManager.fileExists(atPath: folder.appendingPathComponent("inner").path))
+
+        // When - Then
+        try storage.clear()
+        XCTAssertFalse(fileManager.fileExists(atPath: folder.path))
+        try storage.save(Data([2]), forKey: "settings")
+        XCTAssertEqual(try storage.fetch(forKey: "settings"), Data([2]))
     }
 
-    func testAFileWhereTheScopesFolderGoesIsNeverAValueAndNeverRemoved() throws {
+    func testAFileWhereTheScopesFolderGoesIsNeverAValueAndOnlyClearRemovesIt() throws {
         // Given
         let storage = try storage()
         let scopeFolder = try folder()
@@ -397,17 +555,22 @@ final class FileIntegrationTests: XCTestCase {
         // When
         let fetched = try storage.fetch(forKey: "key")
         try storage.delete(forKey: "key")
-        try storage.clear()
         let error = storageError { try storage.save(Data([2]), forKey: "key") }
 
         // Then
         XCTAssertNil(fetched)
         assertPathOccupied(error, scopeFolder)
         XCTAssertEqual(try Data(contentsOf: file), Data([1]))
+
+        // When - Then
+        try storage.clear()
+        XCTAssertFalse(fileManager.fileExists(atPath: file.path))
+        try storage.save(Data([2]), forKey: "key")
+        XCTAssertEqual(try storage.fetch(forKey: "key"), Data([2]))
     }
 
-    func testClearRemovesExactlyTheScopesValues() throws {
-        // Given: two namespaces, the first one's SQLite database, and other code's files in the first one's folder
+    func testClearRemovesEverythingInTheScopesFolderAndNothingElse() throws {
+        // Given: two namespaces, the first one's SQLite database, and other code's items in the first one's folder
         let first = try storage(.own(namespace: "first"))
         let second = try storage(.own(namespace: "second"))
         try first.save(Data([1]), forKey: "key")
@@ -416,30 +579,64 @@ final class FileIntegrationTests: XCTestCase {
         let folder = try folder(.own(namespace: "first"))
         let sqlite = try SQLiteStorage(scope: .own(namespace: "first"), backingStore: DefaultSQLiteBackingStoreWrapper(), locator: TestSQLiteLocator(base: base))
         try sqlite.save(Data([3]), forKey: "key")
+        let outside = try makeFile("outside")
         try makeFile(".hidden", in: folder)
-        try makeFile("Notes.txt", in: folder)   // no key produces a raw capital or `.`
-        try makeFile("todo", in: folder)        // a key could have written it
+        try makeFile("Notes.txt", in: folder)
+        try makeFolder("settings", in: folder)
+        try makeLink("link", to: outside, in: folder)
 
         // When
         try first.clear()
 
-        // Then
+        // Then: the folder is gone, and what the link pointed to stays
+        XCTAssertFalse(fileManager.fileExists(atPath: folder.path))
         XCTAssertNil(try first.fetch(forKey: "key"))
         XCTAssertNil(try first.fetch(forKey: "Key"))
         XCTAssertEqual(try second.fetch(forKey: "key"), Data([2]))
         XCTAssertEqual(try sqlite.fetch(forKey: "key"), Data([3]))
-        XCTAssertTrue(fileManager.fileExists(atPath: folder.appendingPathComponent(".hidden").path))
-        XCTAssertTrue(fileManager.fileExists(atPath: folder.appendingPathComponent("Notes.txt").path))
-        XCTAssertFalse(fileManager.fileExists(atPath: folder.appendingPathComponent("todo").path))
+        XCTAssertEqual(try Data(contentsOf: outside), Data([1]))
+    }
+
+    func testClearEmptiesTheScopeAtOnceAndDeletesItsFilesInTheBackground() async throws {
+        // Given
+        let backingStore = ObservedFileBackingStore()
+        let storage = try FileStorage(scope: .own(namespace: "test"), backingStore: backingStore, locator: locator)
+        try storage.save(Data([1]), forKey: "key")
+
+        // When
+        try storage.clear()
+
+        // Then: the folder is gone when `clear()` returns, and the temporary folder it moved into goes after
+        XCTAssertFalse(fileManager.fileExists(atPath: try folder().path))
+        XCTAssertNil(try storage.fetch(forKey: "key"))
+        let temporaryFolder = try XCTUnwrap(backingStore.removedInBackground.first)
+        XCTAssertFalse(temporaryFolder.path.hasPrefix(base.path))
+        try await waitUntilGone(temporaryFolder)
+    }
+
+    func testASaveWhoseFolderIsClearedMidSaveSavesIntoANewOne() throws {
+        // Given: a clear right before the next write, as another thread or process can make
+        let backingStore = ObservedFileBackingStore()
+        let storage = try FileStorage(scope: .own(namespace: "test"), backingStore: backingStore, locator: locator)
+        try storage.save(Data([1]), forKey: "other")
+        backingStore.beforeNextWrite = { try storage.clear() }
+
+        // When
+        try storage.save(Data([2]), forKey: "key")
+
+        // Then: the first write failed in the moved folder, and the second one made a new folder
+        XCTAssertEqual(try storage.fetch(forKey: "key"), Data([2]))
+        XCTAssertNil(try storage.fetch(forKey: "other"))
+        XCTAssertEqual(backingStore.writes, 3)
     }
 
     // MARK: Links
 
-    func testALinkIsNeverAValueAndNeverTouched() throws {
+    func testALinkIsNeverAValueOrFollowed() throws {
         // Given: links with keys' names, to a file and to a folder
         let scopeFolder = try makeScopeFolder()
-        let file = try makeFile("target", in: scopeFolder)
-        let folder = try makeFolder("folder", in: scopeFolder)
+        let file = try makeFile("target")
+        let folder = try makeFolder("folder")
         try makeLink("tofile", to: file, in: scopeFolder)
         try makeLink("tofolder", to: folder, in: scopeFolder)
         let storage = try storage()
@@ -447,35 +644,40 @@ final class FileIntegrationTests: XCTestCase {
         for key in ["tofile", "tofolder"] {
             // When
             let fetched = try storage.fetch(forKey: .init(key))
-            try storage.delete(forKey: .init(key))
             let error = storageError { try storage.save(Data([2]), forKey: .init(key)) }
+            try storage.delete(forKey: .init(key))
 
-            // Then
+            // Then: `save` never replaces the link, and `delete` removes it, never what it points to
             XCTAssertNil(fetched, key)
             assertPathOccupied(error, scopeFolder.appendingPathComponent(key, isDirectory: false))
         }
 
-        // When
-        try storage.clear()
-
-        // Then: both links stay, and so does what they point to, apart from `target`, a key's file
-        XCTAssertEqual(Set(try fileManager.contentsOfDirectory(atPath: scopeFolder.path)), ["folder", "tofile", "tofolder"])
+        XCTAssertEqual(try fileManager.contentsOfDirectory(atPath: scopeFolder.path), [])
+        XCTAssertEqual(try Data(contentsOf: file), Data([1]))
         XCTAssertTrue(fileManager.fileExists(atPath: folder.appendingPathComponent("inner").path))
     }
 
     func testALinkInTheScopesFoldersPlaceIsNeverFollowed() throws {
         // Given
-        let target = try makeFolder(base.appendingPathComponent("target", isDirectory: true))
+        let target = try makeFolder("target")
         let scopeFolder = try folder()
         try makeLink(scopeFolder.lastPathComponent, to: target, in: makeFolder(scopeFolder.deletingLastPathComponent()))
         let storage = try storage()
 
         // When
+        let fetched = try storage.fetch(forKey: "inner")
+        try storage.delete(forKey: "inner")
         let error = storageError { try storage.save(Data([1]), forKey: "key") }
 
         // Then
+        XCTAssertNil(fetched)
         assertPathOccupied(error, scopeFolder)
-        XCTAssertEqual(try fileManager.contentsOfDirectory(atPath: target.path), [])
+        XCTAssertEqual(try fileManager.contentsOfDirectory(atPath: target.path), ["inner"])
+
+        // When - Then: `clear()` takes the link out, never what it points to
+        try storage.clear()
+        XCTAssertFalse(fileManager.fileExists(atPath: scopeFolder.path))
+        XCTAssertEqual(try fileManager.contentsOfDirectory(atPath: target.path), ["inner"])
     }
 
     // MARK: Permissions
@@ -496,17 +698,11 @@ final class FileIntegrationTests: XCTestCase {
             storageError { try storage.clear() }
         ]
 
-        // Then: the value `clear()` couldn't remove is reported under its key
-        for error in errors.dropLast() {
+        // Then: `clear()` couldn't move the folder, which moving needs to write to
+        for error in errors {
             assertOther(error, posix: .EACCES)
         }
 
-        guard case let .clearIncomplete(failures)? = errors.last else {
-            return XCTFail("Expected .clearIncomplete, got \(String(describing: errors.last))")
-        }
-
-        XCTAssertEqual(Array(failures.keys), ["key"])
-        assertOther(failures["key"], posix: .EACCES)
         XCTAssertEqual(try storage.fetch(forKey: "key"), Data([1]))
         XCTAssertNil(try storage.fetch(forKey: "new"))
     }
@@ -561,6 +757,22 @@ final class FileIntegrationTests: XCTestCase {
 
     private func isExcludedFromBackup(_ url: URL) throws -> Bool? {
         try url.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup
+    }
+
+    private func protectionClass(of url: URL) throws -> FileProtectionType? {
+        try fileManager.attributesOfItem(atPath: url.path)[.protectionKey] as? FileProtectionType
+    }
+
+    /// Returns once nothing is at `url`, looking every 10 ms; fails the test after `timeout` seconds.
+    private func waitUntilGone(_ url: URL, timeout: TimeInterval = 10, file: StaticString = #filePath, line: UInt = #line) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while fileManager.fileExists(atPath: url.path) {
+            guard Date() < deadline else {
+                return XCTFail("\(url.path) is still there after \(timeout) s", file: file, line: line)
+            }
+
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
     }
 
     /// A folder in the test's base whose path is `length` bytes, in names of at most 200.
@@ -653,6 +865,30 @@ final class FileIntegrationTests: XCTestCase {
         let error = error as NSError
         let posix = error.domain == NSPOSIXErrorDomain ? error : error.userInfo[NSUnderlyingErrorKey] as? NSError
         return posix.flatMap { $0.domain == NSPOSIXErrorDomain ? POSIXErrorCode(rawValue: Int32($0.code)) : nil }
+    }
+}
+
+/// The live file system, which counts writes, records what it removes in the background, and runs a call right before
+/// the next write, as another thread or process can.
+/// Unchecked: used from one test at a time.
+private final class ObservedFileBackingStore: DefaultFileBackingStoreWrapper, @unchecked Sendable {
+    var beforeNextWrite: (() throws -> Void)?
+    private(set) var writes = 0
+    private(set) var removedInBackground = [URL]()
+
+    override func write(_ data: Data, at url: URL, options: Data.WritingOptions) throws {
+        writes += 1
+        if let beforeNextWrite {
+            self.beforeNextWrite = nil
+            try beforeNextWrite()
+        }
+
+        try super.write(data, at: url, options: options)
+    }
+
+    override func removeInBackground(at url: URL) {
+        removedInBackground.append(url)
+        super.removeInBackground(at: url)
     }
 }
 

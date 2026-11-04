@@ -58,6 +58,35 @@ func assertLocatorLaws(
     file: StaticString = #filePath,
     line: UInt = #line
 ) {
+    for (candidate, name) in storedNames(keys, storedName, sameName, file, line) {
+        XCTAssertEqual(key(name).map { Array($0.unicodeScalars) }, Array(candidate.unicodeScalars),
+                       "L1: \(candidate.debugDescription) doesn't map back", file: file, line: line)
+    }
+
+    for name in foreignNames {
+        XCTAssertNil(key(name), "L4: \(name.debugDescription) is claimed", file: file, line: line)
+    }
+}
+
+/// The law for a locator without a reverse mapping: no shared names (L2).
+func assertLocatorNamesNeverShared(
+    keys: [String],
+    storedName: (String) throws -> String,
+    sameName: (String, String) -> Bool = { $0 == $1 },
+    file: StaticString = #filePath,
+    line: UInt = #line
+) {
+    _ = storedNames(keys, storedName, sameName, file, line)
+}
+
+/// Each valid key's stored name, failing for a key that has none and for two keys that share one (L2).
+private func storedNames(
+    _ keys: [String],
+    _ storedName: (String) throws -> String,
+    _ sameName: (String, String) -> Bool,
+    _ file: StaticString,
+    _ line: UInt
+) -> [(key: String, name: String)] {
     var named = [(key: String, name: String)]()
     for candidate in keys {
         let name: String
@@ -68,8 +97,6 @@ func assertLocatorLaws(
             continue
         }
 
-        XCTAssertEqual(key(name).map { Array($0.unicodeScalars) }, Array(candidate.unicodeScalars),
-                       "L1: \(candidate.debugDescription) doesn't map back", file: file, line: line)
         for other in named where !other.key.unicodeScalars.elementsEqual(candidate.unicodeScalars) && sameName(other.name, name) {
             XCTFail("L2: \(other.key.debugDescription) and \(candidate.debugDescription) share \(name.debugDescription)", file: file, line: line)
         }
@@ -77,9 +104,7 @@ func assertLocatorLaws(
         named.append((candidate, name))
     }
 
-    for name in foreignNames {
-        XCTAssertNil(key(name), "L4: \(name.debugDescription) is claimed", file: file, line: line)
-    }
+    return named
 }
 
 /// A Cocoa error wrapping a POSIX one, as Foundation's file APIs throw them.

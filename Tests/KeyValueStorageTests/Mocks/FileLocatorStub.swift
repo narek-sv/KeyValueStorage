@@ -14,15 +14,12 @@ final class FileLocatorStub: FileLocator, @unchecked Sendable {
     enum Call: Equatable {
         case directory(FileStorage.Scope)
         case fileName(FileStorage.Key, FileStorage.Scope)
-        case key(String, FileStorage.Scope)
     }
 
     private(set) var calls = [Call]()
     var directory = URL(fileURLWithPath: "/located", isDirectory: true)
     var directoryError: FileStorage.Error?
     var fileNameError: FileStorage.Error?
-    /// The file names the locator claims, and their keys.
-    var keys = [String: FileStorage.Key]()
 
     func directory(for scope: FileStorage.Scope) throws(FileStorage.Error) -> URL {
         calls.append(.directory(scope))
@@ -40,10 +37,5 @@ final class FileLocatorStub: FileLocator, @unchecked Sendable {
         }
 
         return "located-\(key)"
-    }
-
-    func key(forFileName fileName: String, in scope: FileStorage.Scope) -> FileStorage.Key? {
-        calls.append(.key(fileName, scope))
-        return keys[fileName]
     }
 }

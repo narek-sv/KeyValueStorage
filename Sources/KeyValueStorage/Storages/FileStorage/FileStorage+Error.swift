@@ -22,12 +22,11 @@ public extension FileStorage {
         /// - Note: The system also refuses a whole path over 1024 bytes, which only a deep App Group container or home
         ///   folder reaches: every operation on the key then throws `.other`.
         case invalidKey(Key)
-        /// Something that isn't a value is at the key's file, or isn't a folder where the scope's folder goes; it's never replaced or removed.
+        /// Something that isn't a value is at the key's file, or isn't a folder where the scope's folder goes, and `save`
+        /// never replaces it.
         case pathOccupied(URL)
         /// `EPERM`: the file is protected while the device is locked, or the sandbox denied access, which unlocking doesn't fix.
         case protectedDataUnavailable
-        /// `clear()` couldn't remove these values, each for its own reason; it removed every other value of the scope.
-        case clearIncomplete([Key: FileStorage.Error])
         /// Any other file system failure, with the original error.
         case other(any Swift.Error)
     }

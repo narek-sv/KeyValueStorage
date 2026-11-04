@@ -15,6 +15,8 @@ final class FileStorageTests: XCTestCase {
 
     /// `scope`'s folder, as `FixedDirectoriesFileLocator` names it.
     private let root = URL(fileURLWithPath: "/support/com%2etest%2e!app/name!/i", isDirectory: true)
+    /// Where `clear()` moves `root`, in the mock's temporary folder.
+    private let movedRoot = FileBackingStoreMock.temporaryFolder.appendingPathComponent("i", isDirectory: true)
     private let scope = FileStorage.Scope.own(namespace: "name")
     private let data = Data([0xAA, 0xBB])
     private let backingStore = FileBackingStoreMock()
@@ -74,11 +76,9 @@ final class FileStorageTests: XCTestCase {
     func testStorageUsesExactlyTheLocatorsNames() throws {
         // Given
         let locator = FileLocatorStub()
-        locator.keys = ["located-key": "key"]
         let storage = try FileStorage(scope: scope, backingStore: backingStore, locator: locator)
         let folder = locator.directory.path
         let file = locator.directory.appendingPathComponent("located-key").path
-        let other = locator.directory.appendingPathComponent("other").path
 
         // When - Then
         try storage.save(data, forKey: "key")
@@ -88,19 +88,17 @@ final class FileStorageTests: XCTestCase {
         XCTAssertEqual(backingStore.items, [folder: .directory])
 
         try storage.save(data, forKey: "key")
-        backingStore.items[other] = .file(data)
         try storage.clear()
-        XCTAssertEqual(backingStore.items, [folder: .directory, other: .file(data)])
+        XCTAssertEqual(backingStore.items, [:])
+        let moved = FileBackingStoreMock.temporaryFolder.appendingPathComponent("located", isDirectory: true)
+        XCTAssertTrue(backingStore.calls.contains(.move(locator.directory, moved)))
 
         XCTAssertEqual(locator.calls, [
             .directory(scope),
             .fileName("key", scope),
             .fileName("key", scope),
             .fileName("key", scope),
-            .fileName("key", scope),
-            .key("located-key", scope),
-            .fileName("key", scope),
-            .key("other", scope)
+            .fileName("key", scope)
         ])
     }
 
@@ -146,17 +144,13 @@ final class FileStorageTests: XCTestCase {
             // Given
             let backingStore = FileBackingStoreMock()
             backingStore.items = items
-            let storage = try makeStorage(backingStore)
 
             // When
-            let fetched = try storage.fetch(forKey: "key")
-            try storage.delete(forKey: "key")
+            let fetched = try makeStorage(backingStore).fetch(forKey: "key")
 
-            // Then: nothing is read, and nothing changes
+            // Then: nothing is read
             XCTAssertNil(fetched, "\(items)")
-            XCTAssertEqual(backingStore.items, items)
             XCTAssertFalse(backingStore.calls.contains(.read(file("key"))), "\(items)")
-            XCTAssertFalse(backingStore.calls.contains(.remove(file("key"))), "\(items)")
         }
     }
 
@@ -240,6 +234,45 @@ final class FileStorageTests: XCTestCase {
         }
     }
 
+    func testASaveWhoseFolderAClearMovesOutSavesOnceMoreIntoANewOne() throws {
+        // Given: the folder, which a clear moves out right before the first write
+        backingStore.items = [root.path: .directory]
+        backingStore.beforeWrite = { [root] backingStore in
+            backingStore.items[root.path] = nil
+            backingStore.beforeWrite = nil
+        }
+
+        // When
+        try makeStorage().save(data, forKey: "key")
+
+        // Then: the second write made a new folder
+        XCTAssertEqual(backingStore.items, [root.path: .directory, path("key"): .file(data)])
+        XCTAssertEqual(backingStore.calls.filter { if case .write = $0 { true } else { false } }.count, 2)
+        XCTAssertEqual(backingStore.calls.suffix(3), [.createDirectory(root), .itemType(file("key")), .write(data, file("key"), .atomic)])
+    }
+
+    func testASaveTriesOnlyOnceMore() throws {
+        // Given: a clear before every write
+        backingStore.beforeWrite = { [root] backingStore in
+            backingStore.items[root.path] = nil
+        }
+
+        // When - Then
+        assertThrows(FileStorage.Error.other(CocoaError(.fileNoSuchFile))) { try makeStorage().save(data, forKey: "key") }
+        XCTAssertEqual(backingStore.calls.filter { if case .write = $0 { true } else { false } }.count, 2)
+    }
+
+    func testASaveThatFailsWithItsFolderInPlaceIsntTriedAgain() throws {
+        // Given
+        let error = fileSystemError(.fileWriteUnknown)
+        backingStore.items = [root.path: .directory]
+        backingStore.errors = [(.write(data, file("key"), .atomic), error)]
+
+        // When - Then
+        assertThrows(FileStorage.Error.other(error)) { try makeStorage().save(data, forKey: "key") }
+        XCTAssertEqual(backingStore.calls.filter { if case .write = $0 { true } else { false } }.count, 1)
+    }
+
     // MARK: Backups
 
     func testSavesExcludedFromBackupFlagTheFolderBeforeEveryWrite() throws {
@@ -293,7 +326,7 @@ final class FileStorageTests: XCTestCase {
 
     // MARK: Delete
 
-    func testDeleteRemovesTheFile() throws {
+    func testDeleteRemovesTheFileWithOneCallAfterTheFolder() throws {
         // Given
         backingStore.items = [root.path: .directory, path("key"): .file(data), path("other"): .file(data)]
 
@@ -302,103 +335,123 @@ final class FileStorageTests: XCTestCase {
 
         // Then
         XCTAssertEqual(backingStore.items, [root.path: .directory, path("other"): .file(data)])
+        XCTAssertEqual(backingStore.calls, [.itemType(root), .remove(file("key"))])
+    }
+
+    func testDeleteWithoutTheFolderChangesNothing() throws {
+        // A link where the folder goes is never followed
+        for items in [noValue[0], noValue[4], noValue[5]] {
+            // Given
+            let backingStore = FileBackingStoreMock()
+            backingStore.items = items
+
+            // When
+            try makeStorage(backingStore).delete(forKey: "key")
+
+            // Then
+            XCTAssertEqual(backingStore.items, items)
+            XCTAssertEqual(backingStore.calls, [.itemType(root)])
+        }
+    }
+
+    func testDeleteWithoutAFileInTheFolderChangesNothing() throws {
+        // Given
+        backingStore.items = [root.path: .directory]
+
+        // When
+        try makeStorage().delete(forKey: "key")
+
+        // Then
+        XCTAssertEqual(backingStore.items, [root.path: .directory])
+        XCTAssertEqual(backingStore.calls, [.itemType(root), .remove(file("key"))])
+    }
+
+    func testDeleteRemovesALinkInTheFilesPlaceButLeavesAFolder() throws {
+        // Given
+        let folder: Items = [root.path: .directory, path("key"): .directory, path("key/inner"): .file(data)]
+
+        // When - Then: the link goes, but never what it points to
+        backingStore.items = [root.path: .directory, path("key"): .link]
+        try makeStorage().delete(forKey: "key")
+        XCTAssertEqual(backingStore.items, [root.path: .directory])
+
+        // When - Then: `remove` refuses the folder, which stays, and that's no error
+        let folderStore = FileBackingStoreMock()
+        folderStore.items = folder
+        try makeStorage(folderStore).delete(forKey: "key")
+        XCTAssertEqual(folderStore.items, folder)
+        XCTAssertEqual(folderStore.calls, [.itemType(root), .remove(file("key")), .itemType(file("key"))])
     }
 
     func testAFileRemovedByAnotherCallSinceTheCheckIsDeleted() throws {
-        // Given: the check finds the file, and another call removes it before this one does
+        // Given: the check finds the folder, and another call removes the file before this one does
         backingStore.items = [root.path: .directory, path("key"): .file(data)]
-        backingStore.errors = [(.remove(file("key")), CocoaError(.fileNoSuchFile))]
+        backingStore.errors = [(.remove(file("key")), FileItemError.notFound)]
 
         // When - Then
         try makeStorage().delete(forKey: "key")
     }
 
-    // MARK: Clear
-
-    func testClearRemovesOnlyTheScopesFiles() throws {
-        // Given: the scope's files, next to SQLite's, files no key produces, and a folder with a key's name
-        let foreign: Items = [
-            path(".KeyValueStorage.sqlite"): .file(data),
-            path(".DS_Store"): .file(data),
-            path("%2E"): .file(data),
-            path("%41"): .file(data),
-            path("Notes"): .file(data),
-            path("notes.txt"): .file(data),
-            path("100%"): .file(data),
-            path("settings"): .directory,
-            path("settings/theme"): .file(data)
-        ]
-        backingStore.items = foreign.merging([root.path: .directory, path("key"): .file(data), path("!key"): .file(data)]) { $1 }
-
-        // When
-        try makeStorage().clear()
-
-        // Then
-        XCTAssertEqual(backingStore.items, foreign.merging([root.path: .directory]) { $1 })
-    }
-
-    func testClearSkipsFilesWhoseKeyHasAnotherName() throws {
-        // Given: a locator whose two name methods disagree, by a key or only by how `é` is written
-        let locator = FileLocatorStub()
-        locator.keys = ["stale-key": "key", "located-other": "other", "located-e\u{301}": "\u{E9}"]
-        let folder = locator.directory
-        backingStore.items = [
-            folder.path: .directory,
-            folder.appendingPathComponent("stale-key").path: .file(data),
-            folder.appendingPathComponent("located-other").path: .file(data),
-            folder.appendingPathComponent("located-e\u{301}").path: .file(data)
+    func testARemovalThatIsntPermittedIsProtectedDataUnlessItsAFolder() throws {
+        let cases: [(items: Items, error: FileStorage.Error?)] = [
+            ([root.path: .directory, path("key"): .file(data)], .protectedDataUnavailable),
+            ([root.path: .directory, path("key"): .link], .protectedDataUnavailable),
+            ([root.path: .directory, path("key"): .directory], nil),
+            ([root.path: .directory], .protectedDataUnavailable)    // gone before the lookup
         ]
 
-        // When
-        try FileStorage(scope: scope, backingStore: backingStore, locator: locator).clear()
+        for (items, expected) in cases {
+            // Given
+            let backingStore = FileBackingStoreMock()
+            backingStore.items = items
+            backingStore.errors = [(.remove(file("key")), FileItemError.notPermitted)]
 
-        // Then
-        XCTAssertEqual(backingStore.items, [
-            folder.path: .directory,
-            folder.appendingPathComponent("stale-key").path: .file(data),
-            folder.appendingPathComponent("located-e\u{301}").path: .file(data)
-        ])
-    }
-
-    func testClearChecksTheFolderOnceThenEachFile() throws {
-        // Given: two values, and a folder named like a key
-        backingStore.items = [root.path: .directory, path("a"): .file(data), path("b"): .file(data), path("c"): .directory]
-
-        // When
-        try makeStorage().clear()
-
-        // Then: the folder isn't checked again per file, and the folder named like a key stays
-        XCTAssertEqual(backingStore.items, [root.path: .directory, path("c"): .directory])
-        XCTAssertEqual(backingStore.calls.filter { $0 == .itemType(root) }.count, 1)
-        // The folder lists its items in no set order
-        let perFile = backingStore.calls.filter { $0 != .itemType(root) && $0 != .itemNames(root) }
-        let expected: [FileBackingStoreMock.Call] = [.itemType(file("a")), .remove(file("a")), .itemType(file("b")), .remove(file("b")), .itemType(file("c"))]
-        XCTAssertEqual(perFile.count, expected.count, "\(perFile)")
-        for call in expected {
-            XCTAssertTrue(perFile.contains(call), "\(call)")
+            // When - Then
+            if let expected {
+                assertThrows(expected) { try makeStorage(backingStore).delete(forKey: "key") }
+            } else {
+                try makeStorage(backingStore).delete(forKey: "key")
+            }
+            XCTAssertEqual(backingStore.items, items)
         }
     }
 
-    func testClearSkipsFilesWhoseKeyHasNoFileName() throws {
-        // Given: a locator that claims a file, but can't name its key's file
-        let locator = FileLocatorStub()
-        locator.keys = ["claimed": "key"]
-        let folder = locator.directory
-        let items: Items = [folder.path: .directory, folder.appendingPathComponent("claimed").path: .file(data)]
-        backingStore.items = items
-        let storage = try FileStorage(scope: scope, backingStore: backingStore, locator: locator)
-        locator.fileNameError = .invalidKey("key")
+    func testAFailedLookupAfterARefusedRemovalIsReported() throws {
+        // Given
+        backingStore.items = [root.path: .directory, path("key"): .file(data)]
+        backingStore.errors = [(.remove(file("key")), FileItemError.notPermitted), (.itemType(file("key")), FileItemError.other(EIO))]
 
-        // When
-        try storage.clear()
-
-        // Then: kept, and no error
-        XCTAssertEqual(backingStore.items, items)
-        XCTAssertEqual(locator.calls.suffix(2), [.key("claimed", scope), .fileName("key", scope)])
+        // When - Then
+        assertThrows(FileStorage.Error.other(FileItemError.other(EIO))) { try makeStorage().delete(forKey: "key") }
     }
 
-    func testClearWithoutAFolderDoesNothing() throws {
-        for items in [noValue[0], noValue[4], noValue[5]] {
+    // MARK: Clear
+
+    func testClearMovesTheWholeFolderOutInOneCallThenRemovesItInTheBackground() throws {
+        // Given: values, items no save makes, and another scope's value
+        let other = "/support/com%2etest%2e!app/other!/i/key"
+        backingStore.items = [
+            root.path: .directory, path("key"): .file(data), path("!key"): .file(data), path(".DS_Store"): .file(data),
+            path("notes.txt"): .file(data), path("settings"): .directory, path("settings/theme"): .file(data), path("link"): .link,
+            other: .file(data)
+        ]
+
+        // When
+        try makeStorage().clear()
+
+        // Then: everything in the scope's folder is gone, with the folder
+        XCTAssertEqual(backingStore.items, [other: .file(data)])
+        XCTAssertEqual(backingStore.calls, [
+            .itemType(root),
+            .itemReplacementDirectory(root),
+            .move(root, movedRoot),
+            .removeInBackground(FileBackingStoreMock.temporaryFolder)
+        ])
+    }
+
+    func testClearMovesAnythingInTheFoldersPlace() throws {
+        // A link goes, but never what it points to
+        for items in [noValue[4], noValue[5]] {
             // Given
             let backingStore = FileBackingStoreMock()
             backingStore.items = items
@@ -407,60 +460,52 @@ final class FileStorageTests: XCTestCase {
             try makeStorage(backingStore).clear()
 
             // Then
-            XCTAssertEqual(backingStore.items, items)
-            XCTAssertEqual(backingStore.calls, [.itemType(root)])
+            XCTAssertEqual(backingStore.items, [:])
         }
     }
 
-    func testClearTriesEveryValueAndReportsEachOneItCouldntRemove() throws {
-        // Given: a value whose removal fails, and one whose lookup isn't permitted, among values that go
-        let error = POSIXError(.EACCES)
-        backingStore.items = [root.path: .directory, path("a"): .file(data), path("b"): .file(data), path("c"): .file(data), path("d"): .file(data)]
-        backingStore.errors = [(.remove(file("b")), error), (.itemType(file("c")), FileItemError.notPermitted)]
+    func testClearWithNothingInTheFoldersPlaceDoesNothing() throws {
+        // When
+        try makeStorage().clear()
+
+        // Then
+        XCTAssertEqual(backingStore.calls, [.itemType(root)])
+    }
+
+    func testAFolderMovedByAnotherClearSinceTheCheckIsCleared() throws {
+        // Given
+        backingStore.items = [root.path: .directory]
+        backingStore.errors = [(.move(root, movedRoot), FileItemError.notFound)]
 
         // When
-        var thrown: FileStorage.Error?
-        do {
-            try makeStorage().clear()
-        } catch {
-            thrown = error
-        }
+        try makeStorage().clear()
 
-        // Then: every value was tried, and only those that failed are left, each with its own error
-        guard case let .clearIncomplete(failures)? = thrown else {
-            return XCTFail("Expected .clearIncomplete, got \(String(describing: thrown))")
-        }
-
-        XCTAssertEqual(Set(failures.keys), ["b", "c"])
-        XCTAssertEqual(failures["b"].map { String(reflecting: $0) }, String(reflecting: FileStorage.Error.other(error)))
-        XCTAssertEqual(failures["c"].map { String(reflecting: $0) }, String(reflecting: FileStorage.Error.protectedDataUnavailable))
-        XCTAssertEqual(backingStore.items, [root.path: .directory, path("b"): .file(data), path("c"): .file(data)])
-        let removed = backingStore.calls.compactMap { call -> URL? in if case let .remove(url) = call { url } else { nil } }
-        XCTAssertEqual(Set(removed), [file("a"), file("b"), file("d")])
+        // Then: the temporary folder goes too
+        XCTAssertEqual(backingStore.calls.last, .removeInBackground(FileBackingStoreMock.temporaryFolder))
     }
 
-    func testClearReportsASingleFailureAsIncompleteToo() throws {
-        // Given
-        let error = POSIXError(.EACCES)
-        backingStore.items = [root.path: .directory, path("a"): .file(data), path("b"): .file(data)]
-        backingStore.errors = [(.remove(file("a")), error)]
+    func testAClearThatFailsChangesNothing() throws {
+        let moveError = FileItemError.other(EACCES)
+        let folderError = fileSystemError(.fileWriteUnknown)
+        let cases: [(call: FileBackingStoreMock.Call, error: any Error, expected: FileStorage.Error, madeTemporaryFolder: Bool)] = [
+            (.itemType(root), FileItemError.notPermitted, .protectedDataUnavailable, false),
+            (.itemReplacementDirectory(root), folderError, .other(folderError), false),
+            (.move(root, movedRoot), moveError, .other(moveError), true),
+            (.move(root, movedRoot), FileItemError.notPermitted, .protectedDataUnavailable, true)
+        ]
+        let items: Items = [root.path: .directory, path("key"): .file(data)]
 
-        // When - Then
-        assertThrows(FileStorage.Error.clearIncomplete(["a": .other(error)])) { try makeStorage().clear() }
-        XCTAssertEqual(backingStore.items, [root.path: .directory, path("a"): .file(data)])
-    }
+        for (call, error, expected, madeTemporaryFolder) in cases {
+            // Given
+            let backingStore = FileBackingStoreMock()
+            backingStore.items = items
+            backingStore.errors = [(call, error)]
 
-    func testClearThrowsAtOnceWhenItCantStart() throws {
-        // Given: the folder can't be listed, or looked up
-        let error = POSIXError(.EACCES)
-        backingStore.items = [root.path: .directory, path("a"): .file(data)]
-        backingStore.errors = [(.itemNames(root), error)]
-
-        // When - Then: nothing was removed, so the failure itself is thrown
-        assertThrows(FileStorage.Error.other(error)) { try makeStorage().clear() }
-        backingStore.errors = [(.itemType(root), FileItemError.notPermitted)]
-        assertThrows(FileStorage.Error.protectedDataUnavailable) { try makeStorage().clear() }
-        XCTAssertEqual(backingStore.items, [root.path: .directory, path("a"): .file(data)])
+            // When - Then: the scope keeps every value, and a temporary folder it made goes
+            assertThrows(expected) { try makeStorage(backingStore).clear() }
+            XCTAssertEqual(backingStore.items, items)
+            XCTAssertEqual(backingStore.calls.contains(.removeInBackground(FileBackingStoreMock.temporaryFolder)), madeTemporaryFolder, "\(call)")
+        }
     }
 
     // MARK: Set
@@ -496,16 +541,21 @@ final class FileStorageTests: XCTestCase {
             try operation.run(makeStorage(succeeding))
 
             for call in succeeding.calls {
-                // Given
+                // Given: a failure of each call that can fail
+                if case .removeInBackground = call {
+                    continue
+                }
+
                 let failing = FileBackingStoreMock()
                 failing.items = operation.items
-                let error: any Error = if case .itemType = call { lookup } else { fileSystem }
+                let error: any Error = switch call {
+                case .itemType, .remove, .move:     lookup
+                default:                            fileSystem
+                }
                 failing.errors = [(call, error)]
 
-                // When - Then: a value `clear()` couldn't remove is reported under its key
-                let perValue = operation.name == "clear" && call != .itemType(root) && call != .itemNames(root)
-                let expected: FileStorage.Error = perValue ? .clearIncomplete(["key": .other(error)]) : .other(error)
-                assertThrows(expected) { try operation.run(makeStorage(failing)) }
+                // When - Then
+                assertThrows(FileStorage.Error.other(error)) { try operation.run(makeStorage(failing)) }
             }
         }
     }
@@ -523,24 +573,23 @@ final class FileStorageTests: XCTestCase {
     }
 
     func testALookupThatIsntPermittedIsProtectedDataInEveryOperation() throws {
-        let operations: [(name: String, run: (FileStorage) throws -> Void)] = [
-            ("fetch", { _ = try $0.fetch(forKey: "key") }),
-            ("save", { [data] in try $0.save(data, forKey: "key") }),
-            ("delete", { try $0.delete(forKey: "key") }),
-            ("clear", { try $0.clear() })
+        // Every lookup each operation makes: `delete` and `clear()` look up only the folder
+        let operations: [(name: String, urls: [URL], run: (FileStorage) throws -> Void)] = [
+            ("fetch", [root, file("key")], { _ = try $0.fetch(forKey: "key") }),
+            ("save", [root, file("key")], { [data] in try $0.save(data, forKey: "key") }),
+            ("delete", [root], { try $0.delete(forKey: "key") }),
+            ("clear", [root], { try $0.clear() })
         ]
 
         for operation in operations {
-            for url in [root, file("key")] {
+            for url in operation.urls {
                 // Given: the folder's lookup fails, or the file's
                 let backingStore = FileBackingStoreMock()
                 backingStore.items = [root.path: .directory, path("key"): .file(data)]
                 backingStore.errors = [(.itemType(url), FileItemError.notPermitted)]
 
-                // When - Then: a value `clear()` couldn't remove is reported under its key
-                let expected: FileStorage.Error = operation.name == "clear" && url != root
-                    ? .clearIncomplete(["key": .protectedDataUnavailable]) : .protectedDataUnavailable
-                assertThrows(expected) { try operation.run(makeStorage(backingStore)) }
+                // When - Then
+                assertThrows(FileStorage.Error.protectedDataUnavailable) { try operation.run(makeStorage(backingStore)) }
                 XCTAssertEqual(backingStore.items, [root.path: .directory, path("key"): .file(data)], "\(operation.name), \(url)")
             }
         }

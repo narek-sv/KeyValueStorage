@@ -12,16 +12,14 @@ import Foundation
 /// Names a file storage's folder and files.
 ///
 /// A custom locator must:
+/// - give each scope a folder nothing else uses;
 /// - never return a name starting with `.`: the system keeps dot files in the same folders;
-/// - never give two keys names the volume sees as one, such as names that differ only in case;
-/// - make `key(forFileName:in:)` the exact inverse of `fileName(forKey:in:)`, or `clear()` leaves files behind.
+/// - never give two keys names the volume sees as one, such as names that differ only in case.
 public protocol FileLocator: Sendable {
+    /// - Warning: `clear()` removes this folder with everything inside, so it's the scope's alone.
     func directory(for scope: FileStorage.Scope) throws(FileStorage.Error) -> URL
 
     func fileName(forKey key: FileStorage.Key, in scope: FileStorage.Scope) throws(FileStorage.Error) -> String
-
-    /// `nil` for names no key produces.
-    func key(forFileName fileName: String, in scope: FileStorage.Scope) -> FileStorage.Key?
 }
 
 // MARK: - DefaultFileLocator
@@ -31,7 +29,6 @@ public protocol FileLocator: Sendable {
 /// A scope's folder is `<namespace>!/<protection>`: in `<base>/<app identifier>` for `.own`, in its subfolder `x` for
 /// `.persistentExcludedFromBackup`, and in the group's container for `.appGroup`.
 /// - Note: Names are exact bytes, not normalized: `"é"` and `"e\u{301}"` are two keys.
-/// - Note: A subclass that changes names overrides both name methods.
 /// - Warning: Subclasses inherit `Sendable`: their own state must be thread-safe too.
 open class DefaultFileLocator: FileLocator, @unchecked Sendable {
     private static let maximumNameLength = 255
@@ -87,15 +84,6 @@ open class DefaultFileLocator: FileLocator, @unchecked Sendable {
 
     open func fileName(forKey key: FileStorage.Key, in scope: FileStorage.Scope) throws(FileStorage.Error) -> String {
         try Self.fileName(forKey: key)
-    }
-
-    open func key(forFileName fileName: String, in scope: FileStorage.Scope) -> FileStorage.Key? {
-        // Decoding alone also accepts names the encoding never writes, such as `%41` for `A`
-        guard let key = String(portableName: fileName).map({ FileStorage.Key($0) }), (try? Self.fileName(forKey: key)) == fileName else {
-            return nil
-        }
-
-        return key
     }
 
     // MARK: Helpers
