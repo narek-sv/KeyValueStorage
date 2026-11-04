@@ -45,7 +45,7 @@ device; then what's optional, done or declined; the release comes last, once eve
 | 6 | Medium, verify | tvOS on a device |
 | 7 | Low, verify | Ubiquitous key limit on the oldest supported systems |
 | 8 | Optional, design | Coding and observation layers as protocols with `open class Default…` implementations |
-| 9 | Last | The release: README, DocC, the CHANGELOG's date, the coverage badge, the tag |
+| 9 | Last | The release: every doc refined, the CHANGELOG's date, the coverage badge, the tag |
 
 ### Low
 
@@ -217,8 +217,26 @@ If it's declined, remove this item (rule 2).
 #### 9. The release
 
 Once every other item is addressed (rule 1):
-- README: "Migrating from 2.x" points to the 3.0.0 CHANGELOG's migration code, which is written for the 3.x API.
-- DocC rewrite: the scopes table, the isolation guide, observation limits.
+- **Every doc refined as a set,** from the README to DESIGN.md and the CHANGELOG: each as compact as it can be without
+  losing context, and as clear to agents as to people.
+  - **README:** shorter, leading with the library's benefits, then short examples of the everyday tasks; the rest moves
+    to the docs below, linked. "Migrating from 2.x" points to the 3.0.0 CHANGELOG's migration code, which is written
+    for the 3.x API.
+  - **A doc per storage,** in detail: its scopes and where each keeps values, its key and namespace encodings and
+    limits, setup, errors, locator and backing store (their rules, and how to replace or subclass them), and nuances,
+    such as durability, cross-process behavior and system gotchas.
+  - **A doc on the layers:** the data storages, coding and its coders, observation, isolation, and `UnifiedStorage`
+    with its factory: what each is for, how they compose, and how to use one on its own, replace it or subclass it.
+  - **A doc on the factory and its modifiers:** what a modifier is, how to use the factory and the built-in modifiers,
+    how to write your own, and what `previous` is: what the modifiers before it make, made anew on each call, so a
+    modifier calls it at most once.
+  - **Links and consistency:** wherever a doc mentions something that has a doc or section of its own, it links there,
+    and every link and anchor resolves; the docs agree with each other and with the API's doc comments.
+  - **AGENTS.md:** whatever is missing, such as the docs' layout, which docs a change updates, and any principle or
+    working rule not written down yet.
+  - **Where the docs live,** to decide: Markdown files, which GitHub renders and agents read as they are, or a DocC
+    catalog, which Xcode and the Swift Package Index render and whose symbol links `docc` checks. The DocC rewrite
+    planned here, with the scopes table, the isolation guide and the observation limits, becomes part of it.
 - Date the CHANGELOG's 4.0.0 section, re-measure the coverage badge (96% of lines on 2026-11-02), and tag 4.0.0.
 
 ---
