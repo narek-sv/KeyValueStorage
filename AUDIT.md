@@ -52,7 +52,7 @@ maintainers will hit), **low** (rare, cosmetic or design).
 ## 1. Open work, by priority
 
 Addressed from the top: the public API first, which can change freely (rule 1); then internals; then what needs a real
-device; the release comes last, once everything else is gone.
+device; then what's optional, done or declined; the release comes last, once everything else is gone.
 
 | # | Severity | Item |
 | --- | --- | --- |
@@ -64,7 +64,8 @@ device; the release comes last, once everything else is gone.
 | 6 | Medium, verify | Error cases the device checks may add |
 | 7 | Medium, verify | tvOS on a device |
 | 8 | Low, verify | Ubiquitous key limit on the oldest supported systems |
-| 9 | Last | The release: README, DocC, the CHANGELOG's date, the coverage badge, the tag |
+| 9 | Optional, design | Coding and observation layers as protocols with `open class Default…` implementations |
+| 10 | Last | The release: README, DocC, the CHANGELOG's date, the coverage badge, the tag |
 
 ### Low
 
@@ -161,9 +162,92 @@ ones (iOS 13, macOS 10.15, watchOS 9) did, keys between the two limits would cra
 
 To do: §2's Ubiquitous check on the oldest supported systems; only if one crashes, check both limits.
 
+### Optional
+
+#### 9. Coding and observation layers as protocols with `open class Default…` implementations (optional, design)
+
+Every other extension point is a protocol, with the library's own implementation as a concrete type: storages
+(`DataStorage`, `AsyncDataStorage`), scopes (`DataStorageScope`), coders (`DataCoder`), factory modifiers
+(`UnifiedStorage.Factory.Modifier`), and all twelve locators and backing stores, each a protocol and an
+`open class Default…` (`FileLocator` and `DefaultFileLocator`, `FileBackingStore` and `DefaultFileBackingStoreWrapper`,
+and so on for the other five storages). `CodingStorage`, `AsyncCodingStorage` and `ObservableStorage` are the only
+exceptions: open classes, with open operations since `3331462`, and no protocol.
+
+Compared on 2026-11-04: the better architecture and the more consistent one, at the costs below. The proposed shape:
+- `public protocol CodingStorage<Storage>`, with `associatedtype Storage: DataStorage`: `scope`, and synchronous
+  `fetch`, `save`, `set`, `delete` and `clear`, throwing `CodingStorageError<Storage>`. Its implementation is
+  `open class DefaultCodingStorage<Storage: DataStorage>: CodingStorage`, today's class, `Sendable` when its storage is.
+- `public protocol AsyncCodingStorage<Storage>: Sendable`, with `associatedtype Storage: AsyncDataStorage & Sendable`:
+  the same operations, `async`. Its implementation is `open class DefaultAsyncCodingStorage<Storage>`. The protocol
+  requires `Sendable` because a protocol can't conform conditionally, as today's class does: a non-`Sendable`
+  asynchronous storage loses the default coding storage, but it isn't safe to share anyway, and `UnifiedStorage` takes
+  only `Sendable` storages.
+- `public protocol ObservableStorage<Storage>: AsyncCodingStorage`, which adds
+  `publisher(forKey:includingCurrentValue:)` and `stream(forKey:includingCurrentValue:bufferingPolicy:)`: an observable
+  storage is a coding storage that also publishes. Its implementation is `open class DefaultObservableStorage<Storage>`,
+  which wraps `any AsyncCodingStorage<Storage>` instead of the class, so it observes any coding storage.
+- No defaults in protocol extensions: a conformance from scratch implements every requirement, which the compiler
+  checks, and a refinement subclasses a `Default…` class, where `override` is checked and `super` reaches the library's
+  behavior. A conformance whose method nearly matches a defaulted requirement compiles and is never called (measured
+  2026-11-03 on `Modifier`: a concrete storage type, a one-letter label typo, `_` or another label, and `throws` without
+  its error type, none with a warning).
+- `CodingStorageKey` and `CodingStorageError` stay as they are.
+- The value stays generic per call, as today: each operation is a generic method, such as
+  `fetch<Value: CodingValue>(forKey:)`, as `DataCoder`'s `encode` and `Modifier`'s steps already are; only the storage,
+  fixed per instance, is an associated type.
+- Requirements can't declare default arguments, so `publisher`'s `includingCurrentValue: true`, and `stream`'s
+  `includingCurrentValue: true` and `bufferingPolicy: .unbounded`, move to overloads in a protocol extension that
+  forward to the requirement: `publisher(forKey:)`, `stream(forKey:)`, `stream(forKey:includingCurrentValue:)` and
+  `stream(forKey:bufferingPolicy:)`. They add ways to call, not defaults of requirements, so they have no near-miss
+  trap. The `Default…` classes keep their initializer's `coder: RawDataCoder()`.
+
+Pros:
+- One shape for every extension point: a protocol, and the library's `open class Default…`.
+- Every way to customize: subclass a default to refine it; conform from scratch for a different implementation that
+  doesn't inherit the default's storage and coder; or wrap any implementation, such as what the modifiers before make,
+  with `Logging(base: await previous())` in a modifier's coding step, stacking any number deep. Today wrapping takes a
+  subclass that forwards every call, and still initializes its superclass with a storage and coder it never uses.
+- The layers depend on abstractions: `UnifiedStorage`, `ScopeStorage`, the factory and `DefaultObservableStorage` see
+  protocols, not classes.
+- Test doubles are small fakes instead of subclasses of the real classes, in the library's tests and in apps'.
+
+Cons:
+- Six types instead of three, and longer everyday names: `DefaultCodingStorage(storage:)` instead of
+  `CodingStorage(storage:)`, and `DefaultObservableStorage(_:)` instead of `ObservableStorage(_:)`.
+- Existential signatures: the factory's coding and observation steps and their closures, `Modifier`'s requirements and
+  `ScopeStorage` take and return `any AsyncCodingStorage<Storage>` and `(any ObservableStorage<Storage>)?`. Calls
+  through them dispatch through the witness table, negligible next to storage I/O; measure the facade's per-call cost
+  (item 5) before and after.
+- Breaking: renamed types and new protocols, so it's done or declined before 4.0.0 is tagged, or it waits for 5.0.
+- **Deployment targets:** constrained existentials (`any P<T>`) need the Swift 5.7 runtime in generic code: macOS 13,
+  iOS 16, tvOS 16 and watchOS 9. A probe at the package's targets (2026-11-03): `observable ?? coding`, on
+  `(any AsyncCoding<Storage>)?`, fails with "runtime support for parameterized protocol types is only available in
+  macOS 13.0.0 or newer". Stored properties of those types, the factory's chain, `Modifier`'s defaults, a stored
+  per-type closure and the creation task compiled when written without `??`, so the library can avoid the problem;
+  apps targeting older systems can't, once they write `await previous() ?? fallback` in a modifier, map such a value,
+  keep them in an array or cast them. So either the deployment targets rise (they stay, decided 2026-11-01), or apps on
+  older systems live with that restriction.
+
+To do, if it's wanted:
+1. Turn `CodingStorage`, `AsyncCodingStorage` and `ObservableStorage` into the protocols above, and their classes into
+   `DefaultCodingStorage`, `DefaultAsyncCodingStorage` and `DefaultObservableStorage`, each in a file of its own.
+2. `DefaultObservableStorage` wraps `any AsyncCodingStorage<Storage>`; `ScopeStorage` holds
+   `any AsyncCodingStorage<Storage>` and `(any ObservableStorage<Storage>)?`.
+3. `UnifiedStorage.Factory`: the coding and observation steps, `Modifier`'s requirements, `codingStorage(for:_:)`,
+   `observableStorage(for:_:)`, and the per-type modifiers' casts, now between existentials.
+4. Tests: fakes for the protocols; the subclass tests in `PublicAPITests` subclass the `Default…` classes; a public test
+   for a modifier that wraps what `previous()` made.
+5. README: the Factory table, Coding, Observation, and every `CodingStorage(storage:)` and `ObservableStorage(_:)`
+   example. CHANGELOG: Breaking changes and Added.
+6. Verify: `swift build --build-tests` with no warnings, the full suite, 100% coverage of the layers, the factory's
+   mutation run, and the iOS build; the lock's mutation run (about 25 minutes) only if `UnifiedStorage+Scopes.swift`
+   changes beyond `ScopeStorage`'s types.
+
+If it's declined, remove this item (rule 2).
+
 ### Last
 
-#### 9. The release
+#### 10. The release
 
 Once every other item is addressed (rule 1):
 - README: "Migrating from 2.x" points to the 3.0.0 CHANGELOG's migration code, which is written for the 3.x API.
@@ -214,7 +298,7 @@ the suite (448 tests, no warnings) covers every compound condition.
 - **Encodings:** `portableName` is lossless, ASCII-only and capital-free; `percentEscaping` is exactly invertible;
   every `clear()` re-encodes each name before removing it, so a locator's lenient decoder never claims foreign items.
 
-Weak spots: items 2 and 3.
+Weak spots: items 2 and 3, and the optional item 9.
 
 ### 3.2 Performance — real-life use A, extreme cases B
 
@@ -299,7 +383,7 @@ between the steps of a `move` or an `update`, which only calls through the same 
 
 ### 3.6 Docs and tests
 
-Docs and comments: none open besides the release (item 9). Tests: none open. Every compound condition's paths are
+Docs and comments: none open besides the release (item 10). Tests: none open. Every compound condition's paths are
 covered, limits are tested on both sides, edge-case keys (`""`, NUL, `é`/`e\u{301}`, `..`, `/`) run against the real
 systems, and the tests of `move`, `update` and `close` wait for the scope state they need through `UnifiedStorage.Scopes.state(of:in:)`,
 so they neither depend on timing nor pass without checking. Every tried mutation of the lock's admission logic
