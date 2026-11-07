@@ -223,9 +223,12 @@ extension UnifiedStorage {
         /// Under the lock: lets in every waiting hold whose scopes are free, oldest first; returns them to resume after unlocking.
         private func admitHolds() -> [CheckedContinuation<Void, Never>] {
             var admitted = [CheckedContinuation<Void, Never>]()
-            waitingHolds.removeAll { hold in
+            var stillWaiting = [WaitingHold]()
+            // Oldest first: a hold let in holds its scopes, so a later one for the same scopes keeps waiting
+            for hold in waitingHolds {
                 guard hold.slots.allSatisfy(\.admitsHold) else {
-                    return false
+                    stillWaiting.append(hold)
+                    continue
                 }
 
                 for slot in hold.slots {
@@ -234,9 +237,9 @@ extension UnifiedStorage {
                 }
 
                 admitted.append(hold.continuation)
-                return true
             }
 
+            waitingHolds = stillWaiting
             return admitted
         }
 

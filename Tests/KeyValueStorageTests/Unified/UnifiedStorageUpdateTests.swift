@@ -216,6 +216,74 @@ final class UnifiedStorageUpdateTests: XCTestCase {
         XCTAssertEqual(place.value(forKey: "key"), 11)
     }
 
+    func testUpdatesWaitingForAScopeRunOneAtATimeOldestFirst() async throws {
+        // Given: a save in the scope, held while it runs, and three updates waiting for it, in order
+        let (place, entry) = place()
+        let storage = UnifiedStorage()
+        let steps = PublishedValues()
+        place.hold(.save)
+        let save = Task { try await storage.save(10, to: entry) }
+        try await place.waitUntilHeld()
+        var updates = [Task<Int?, any Error>]()
+        for step in [1, 100, 1_000] {
+            updates.append(Task {
+                try await storage.update(entry) { value in
+                    steps.append(step)
+                    return (value ?? 0) + step
+                }
+            })
+            try await waitUntil { storage.scopes.state(of: entry.scope, in: PlaceStorage.self).waitingHolds == updates.count }
+        }
+
+        // When: the save ends, and the first update is held at its write
+        place.hold(.set)
+        place.release()
+        try await waitForValue(of: save)
+        try await place.waitUntilHeld()
+
+        // Then: only the oldest update holds the scope, and the others still wait without having read
+        XCTAssertEqual(steps.all, [1])
+        XCTAssertEqual(storage.scopes.state(of: entry.scope, in: PlaceStorage.self).waitingHolds, 2)
+
+        // When
+        place.release()
+        for update in updates {
+            _ = try await waitForValue(of: update)
+        }
+
+        // Then: each ran on the value the one before it wrote
+        XCTAssertEqual(steps.all, [1, 100, 1_000])
+        XCTAssertEqual(place.value(forKey: "key"), 1_111)
+    }
+
+    func testAnUpdateOfAFreeScopeDoesntWaitBehindOneForABusyScope() async throws {
+        // Given: a save held in one scope, and an update waiting for it
+        let (busy, busyEntry) = place()
+        let (_, freeEntry) = place()
+        let storage = UnifiedStorage()
+        busy.hold(.save)
+        let save = Task { try await storage.save(1, to: busyEntry) }
+        try await busy.waitUntilHeld()
+        let waiting = Task { try await storage.update(busyEntry) { ($0 ?? 0) + 1 } }
+        try await waitUntil { storage.scopes.state(of: busyEntry.scope, in: PlaceStorage.self).waitingHolds == 1 }
+
+        // When: an update of a scope that nothing uses, which came later
+        let free = Task { try await storage.update(freeEntry) { ($0 ?? 0) + 5 } }
+
+        // Then: it runs while the older one still waits
+        let freeValue = try await waitForValue(of: free)
+        XCTAssertEqual(freeValue, 5)
+        XCTAssertEqual(storage.scopes.state(of: busyEntry.scope, in: PlaceStorage.self).waitingHolds, 1)
+
+        // When
+        busy.release()
+        try await waitForValue(of: save)
+
+        // Then
+        let busyValue = try await waitForValue(of: waiting)
+        XCTAssertEqual(busyValue, 2)
+    }
+
     func testCallsInOtherScopesDontWaitForAnUpdate() async throws {
         // Given: a held update
         let (place, entry) = place()

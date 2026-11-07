@@ -80,24 +80,27 @@ final class UnifiedIntegrationTests: XCTestCase {
         try await storage.save("sqlite", to: oldRecord)
         try await storage.save("defaults", to: oldFlag)
 
-        // When: to an entry, a scope and a key
-        try await storage.move(oldFile, to: file)
-        try await storage.move(oldRecord, to: record.scope)
-        try await storage.move(oldFlag, to: flag.key)
+        // When: to an entry, a scope and a key; not awaited by the test, so a move or a call that waits forever fails at
+        // the timeout instead of hanging
+        let finished = expectation(description: "the moves and the calls after them finished")
+        let fetched = Task {
+            defer { finished.fulfill() }
+            try await storage.move(oldFile, to: file)
+            try await storage.move(oldRecord, to: record.scope)
+            try await storage.move(oldFlag, to: flag.key)
+            return try await [
+                storage.fetch(file), storage.fetch(record), storage.fetch(flag),
+                storage.fetch(oldFile), storage.fetch(oldRecord), storage.fetch(oldFlag)
+            ]
+        }
+
+        guard await XCTWaiter.fulfillment(of: [finished], timeout: 5) == .completed else {
+            return XCTFail("A move or a call after it waited forever")
+        }
 
         // Then: each value is at its new entry only
-        let movedFile = try await storage.fetch(file)
-        let movedRecord = try await storage.fetch(record)
-        let movedFlag = try await storage.fetch(flag)
-        XCTAssertEqual(movedFile, "file")
-        XCTAssertEqual(movedRecord, "sqlite")
-        XCTAssertEqual(movedFlag, "defaults")
-        let leftFile = try await storage.fetch(oldFile)
-        let leftRecord = try await storage.fetch(oldRecord)
-        let leftFlag = try await storage.fetch(oldFlag)
-        XCTAssertNil(leftFile)
-        XCTAssertNil(leftRecord)
-        XCTAssertNil(leftFlag)
+        let values = try await fetched.value
+        XCTAssertEqual(values, ["file", "sqlite", "defaults", nil, nil, nil])
     }
 
     // MARK: Closing
