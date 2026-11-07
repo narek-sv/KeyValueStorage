@@ -1,0 +1,28 @@
+//
+//  ValuePublisher.swift
+//  KeyValueStorage
+//
+//  Created by Narek Sahakyan on 15.10.26.
+//
+
+import Combine
+
+// MARK: - ValuePublisher
+
+/// Publishes the changes of a stored value, and can be passed between concurrency domains.
+///
+/// Combine's type-erased publishers aren't marked `Sendable`, so they can't cross concurrency domains; subscribing and
+/// cancelling are thread-safe, which makes sharing this wrapper safe.
+public struct ValuePublisher<Output: Sendable>: Publisher, @unchecked Sendable {
+    public typealias Failure = Never
+
+    private let upstream: AnyPublisher<Output, Never>
+
+    init(_ upstream: AnyPublisher<Output, Never>) {
+        self.upstream = upstream
+    }
+
+    public func receive<S: Subscriber>(subscriber: S) where S.Input == Output, S.Failure == Never {
+        upstream.receive(subscriber: subscriber)
+    }
+}

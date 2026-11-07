@@ -1,0 +1,105 @@
+//
+//  UserDefaultsStorage.swift
+//  KeyValueStorage
+//
+//  Created by Narek Sahakyan on 11.12.23.
+//
+
+import Foundation
+
+// MARK: - UserDefaultsStorage
+
+/// Values in a `UserDefaults` suite, one per stored key.
+/// - Note: Only `Data` at a stored key is a value. Anything else there fetches as `nil`, is never removed, and makes `save`
+///   throw `.keyOccupied`.
+/// - Note: Thread-safe: an instance can be shared between threads and tasks, but a sequence of operations isn't atomic.
+/// - Warning: Until the user first unlocks the device after a restart, such as when the system launches the app in the
+///   background, `UserDefaults` can't read its files: fetches return `nil` as if nothing were stored, and nothing reports
+///   it. Don't take a missing value for a first launch then.
+/// - Note: Keep values small: the whole suite is loaded into memory, the system logs an error for a suite of 4 MB or more
+///   on iOS, and tvOS allows 500 KB in all.
+public final class UserDefaultsStorage: DataStorage, Sendable {
+
+    // MARK: Properties
+
+    private let suite: any UserDefaultsSuite
+    private let locator: any UserDefaultsLocator
+
+    public let scope: Scope
+
+    // MARK: Initializers
+
+    public init(
+        scope: Scope,
+        backingStore: any UserDefaultsBackingStore = DefaultUserDefaultsBackingStoreWrapper(),
+        locator: any UserDefaultsLocator = DefaultUserDefaultsLocator()
+    ) throws(Error) {
+        let name = try locator.suiteName(for: scope)
+        guard let suite = backingStore.suite(named: name) else {
+            throw .invalidSuiteName(name)
+        }
+
+        self.suite = suite
+        self.scope = scope
+        self.locator = locator
+    }
+
+    public convenience init(scope: Scope) throws(Error) {
+        try self.init(scope: scope, backingStore: DefaultUserDefaultsBackingStoreWrapper(), locator: DefaultUserDefaultsLocator())
+    }
+
+    /// The `default` scope's storage.
+    public convenience init() throws(Error) {
+        try self.init(scope: .default)
+    }
+
+    // MARK: Main Functionality
+
+    public func fetch(forKey key: Key) -> Data? {
+        suite.read(forKey: storedKey(for: key)) as? Data
+    }
+
+    public func save(_ value: Data, forKey key: Key) throws(Error) {
+        let storedKey = storedKey(for: key)
+        if let object = suite.read(forKey: storedKey), !(object is Data) {
+            throw .keyOccupied(key)
+        }
+
+        suite.write(value, forKey: storedKey)
+    }
+
+    public func delete(forKey key: Key) {
+        removeValue(forStoredKey: storedKey(for: key))
+    }
+
+    public func clear() {
+        for storedKey in suite.keys() where isValueKey(storedKey) {
+            removeValue(forStoredKey: storedKey)
+        }
+    }
+
+    // MARK: Helpers
+
+    private func storedKey(for key: Key) -> String {
+        locator.storedKey(forKey: key, in: scope)
+    }
+
+    /// Never a value of another type: it isn't the scope's.
+    private func removeValue(forStoredKey storedKey: String) {
+        guard suite.read(forKey: storedKey) is Data else {
+            return
+        }
+
+        suite.remove(forKey: storedKey)
+    }
+
+    /// Only names this storage writes, byte for byte: a locator's reverse mapping can accept more.
+    private func isValueKey(_ storedKey: String) -> Bool {
+        guard let key = locator.key(forStoredKey: storedKey, in: scope) else {
+            return false
+        }
+
+        let encoded = locator.storedKey(forKey: key, in: scope)
+        return Key(encoded) == Key(storedKey)
+    }
+}

@@ -1,0 +1,25 @@
+//
+//  InMemoryStorage+Scope.swift
+//  KeyValueStorage
+//
+//  Created by Narek Sahakyan on 16.10.26.
+//
+
+// MARK: - InMemoryStorage + Scope
+
+public extension InMemoryStorage {
+    /// Values live until the process exits.
+    enum Scope: DataStorageScope {
+        /// This process's own memory.
+        case own(namespace: Namespace)
+
+        public static var `default`: Self {
+            .own(namespace: defaultNamespace)
+        }
+
+        /// `own(namespace:)`, with any string as the namespace, such as one made at runtime.
+        public static func own(namespace: String) -> Self {
+            .own(namespace: Namespace(namespace))
+        }
+    }
+}

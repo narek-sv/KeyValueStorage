@@ -1,0 +1,320 @@
+//
+//  UserDefaultsIntegrationTests.swift
+//  KeyValueStorage
+//
+//  Created by Narek Sahakyan on 29.10.26.
+//
+
+import XCTest
+import Foundation
+import KeyValueStorage // not @testable: real UserDefaults through the public API
+
+/// The default backing store and locator against real `UserDefaults`, in the own suite of a test app identifier, emptied after each test.
+/// One suite for every test: the system writes an emptied suite's file back after it's deleted, so a suite per test leaves files behind.
+final class UserDefaultsIntegrationTests: XCTestCase {
+    private let scope = UserDefaultsStorage.Scope.own(namespace: "ns")
+    private let locator = TestUserDefaultsLocator(bundleIdentifier: "UserDefaultsIntegrationTests")
+    /// The test suite, read directly.
+    private var defaults: UserDefaults!
+
+    override func setUpWithError() throws {
+        let suiteName = try locator.suiteName(for: scope)
+        defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        addTeardownBlock {
+            UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
+        }
+    }
+
+    // MARK: Values
+
+    func testValuesPersistInTheSuiteAcrossInstances() throws {
+        // When
+        try storage().save(Data([1]), forKey: "key")
+
+        // Then
+        XCTAssertEqual(try storage().fetch(forKey: "key"), Data([1]))
+        XCTAssertEqual(defaults.data(forKey: "ns!/key"), Data([1]))
+    }
+
+    func testStoredKeysAreTheLocatorsExactBytes() throws {
+        // Given
+        let storage = try storage()
+        let other = try self.storage(.own(namespace: "a/b"))
+
+        // When
+        try storage.save(Data([1]), forKey: "a/b")
+        try other.save(Data([2]), forKey: "c")
+        try storage.save(Data([3]), forKey: "\u{E9}")
+        try storage.save(Data([4]), forKey: "e\u{301}")
+        try storage.save(Data([5]), forKey: "")
+
+        // Then: the two spellings of `é` are two keys, as the suite compares bytes
+        XCTAssertEqual(defaults.data(forKey: "ns!/a/b"), Data([1]))
+        XCTAssertEqual(defaults.data(forKey: "a%2Fb!/c"), Data([2]))
+        XCTAssertEqual(storage.fetch(forKey: "\u{E9}"), Data([3]))
+        XCTAssertEqual(storage.fetch(forKey: "e\u{301}"), Data([4]))
+        XCTAssertEqual(storage.fetch(forKey: ""), Data([5]))
+    }
+
+    func testOwnScopesUseTheAppsOwnSuiteNotTheStandardOne() throws {
+        // When
+        try storage().save(Data([1]), forKey: "key")
+
+        // Then
+        XCTAssertEqual(defaults.data(forKey: "ns!/key"), Data([1]))
+        XCTAssertNil(UserDefaults.standard.object(forKey: "ns!/key"))
+    }
+
+    // MARK: NUL
+
+    /// Two keys that differ only after a NUL would share a value if the system cut names at it.
+    func testKeysThatDifferAfterANulKeepTheirOwnValues() throws {
+        // Given
+        let keys: [UserDefaultsStorage.Key] = ["a", "a\0", "a\0b", "a\0c", "\0", "\0a", ""]
+        let storage = try storage()
+
+        // When
+        for (index, key) in keys.enumerated() {
+            try storage.save(Data([UInt8(index)]), forKey: key)
+        }
+
+        // Then
+        for (index, key) in keys.enumerated() {
+            XCTAssertEqual(storage.fetch(forKey: key), Data([UInt8(index)]), key.string.debugDescription)
+        }
+
+        storage.clear()
+        for key in keys {
+            XCTAssertNil(storage.fetch(forKey: key), key.string.debugDescription)
+        }
+    }
+
+    /// The system keeps values in memory before it writes the suite's file, so only the file shows what survives a restart.
+    /// Every control character, and characters the system could treat specially, such as noncharacters, a byte order mark,
+    /// a line separator, a combining mark and an emoji, reach it under keys and namespaces.
+    func testEveryKeyAndNamespaceReachesTheSuitesFile() throws {
+        // Given
+        let names = (0x00...0x1F).map { String(UnicodeScalar(UInt8($0))) } + ["\u{7F}", "\u{FEFF}", "\u{FFFE}", "\u{FFFF}",
+                                                                                    "\u{10FFFF}", "\u{2028}", "e\u{301}", "\u{E9}", "🙂", "%", "%00", ""]
+        let keys = names.flatMap { [$0, "a\($0)", "a\($0)b"] }.map { UserDefaultsStorage.Key($0) }
+        let namespaces = names.map { UserDefaultsStorage.Scope.own(namespace: .init("ns\($0)")) }
+        let suiteName = try locator.suiteName(for: scope)
+        let storage = try storage()
+        // A dropped key isn't found by count alone, so every value is unique
+        var expected = Set<Data>()
+
+        // When
+        for (index, key) in keys.enumerated() {
+            try storage.save(Data("key \(index)".utf8), forKey: key)
+            expected.insert(Data("key \(index)".utf8))
+        }
+        for (index, namespace) in namespaces.enumerated() {
+            try self.storage(namespace).save(Data("namespace \(index)".utf8), forKey: "key")
+            expected.insert(Data("namespace \(index)".utf8))
+        }
+        // Written last: once it's in the file, so is everything before it
+        try storage.save(Data("sentinel".utf8), forKey: "sentinel")
+        CFPreferencesAppSynchronize(suiteName as CFString)
+
+        // Then: every value is in the file, under its own stored key
+        let plist = try suiteFile(suiteName, once: "ns!/sentinel")
+        XCTAssertNotNil(plist["ns!/sentinel"], "the suite's file was never written")
+        let stored = Set(plist.allValues.compactMap { $0 as? Data }).subtracting([Data("sentinel".utf8)])
+        XCTAssertEqual(stored, expected, "lost: \(expected.subtracting(stored).map { String(decoding: $0, as: UTF8.self) }.sorted())")
+        XCTAssertEqual(plist.count, expected.count + 1)
+    }
+
+    func testNamespacesThatDifferAfterANulKeepTheirOwnValues() throws {
+        // Given
+        let first = try storage(.own(namespace: "ns\0a"))
+        let second = try storage(.own(namespace: "ns\0b"))
+        let plain = try storage(.own(namespace: "ns"))
+
+        // When
+        try first.save(Data([1]), forKey: "key")
+        try second.save(Data([2]), forKey: "key")
+        try plain.save(Data([3]), forKey: "key")
+
+        // Then
+        XCTAssertEqual(first.fetch(forKey: "key"), Data([1]))
+        XCTAssertEqual(second.fetch(forKey: "key"), Data([2]))
+        XCTAssertEqual(plain.fetch(forKey: "key"), Data([3]))
+
+        first.clear()
+        XCTAssertNil(first.fetch(forKey: "key"))
+        XCTAssertEqual(second.fetch(forKey: "key"), Data([2]))
+        second.clear()
+        plain.clear()
+    }
+
+    // MARK: Other Code's Values
+
+    func testAValueOfAnotherTypeIsNeverReplacedOrRemoved() throws {
+        // Given
+        let storage = try storage()
+        defaults.set("text", forKey: "ns!/key")
+
+        // When
+        let fetched = storage.fetch(forKey: "key")
+        storage.delete(forKey: "key")
+        storage.clear()
+
+        // Then
+        XCTAssertNil(fetched)
+        assertKeyOccupied("key") { try storage.save(Data([1]), forKey: "key") }
+        XCTAssertEqual(defaults.string(forKey: "ns!/key"), "text")
+    }
+
+    func testARegisteredDefaultOfAnotherTypeOccupiesTheKey() throws {
+        // Given: registered defaults are process-wide, so the key is this test's own
+        let key = "registered-\(UUID().uuidString)"
+        UserDefaults.standard.register(defaults: ["ns!/\(key)": "text"])
+
+        // When - Then
+        assertKeyOccupied(.init(key)) { try storage().save(Data([1]), forKey: .init(key)) }
+    }
+
+    func testClearRemovesExactlyTheScopesValues() throws {
+        // Given: two namespaces in one suite, next to other code's data, without the library's mark, and values of other types
+        let storage = try storage()
+        let other = try self.storage(.own(namespace: "other"))
+        try storage.save(Data([1]), forKey: "key")
+        try other.save(Data([2]), forKey: "key")
+        defaults.set(Data([3]), forKey: "ns/key")
+        defaults.set("text", forKey: "ns!/text")
+        let globalKeys = UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)?.keys.sorted()
+
+        // When
+        storage.clear()
+
+        // Then
+        XCTAssertNil(storage.fetch(forKey: "key"))
+        XCTAssertEqual(other.fetch(forKey: "key"), Data([2]))
+        XCTAssertEqual(defaults.data(forKey: "ns/key"), Data([3]))
+        XCTAssertEqual(defaults.string(forKey: "ns!/text"), "text")
+        XCTAssertEqual(UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)?.keys.sorted(), globalKeys)
+    }
+
+    func testClearRemovesKeysThatDifferOnlyInNormalization() throws {
+        // Given
+        let storage = try storage()
+        try storage.save(Data([1]), forKey: "\u{E9}")
+        try storage.save(Data([2]), forKey: "e\u{301}")
+
+        // When
+        storage.clear()
+
+        // Then
+        XCTAssertNil(storage.fetch(forKey: "\u{E9}"))
+        XCTAssertNil(storage.fetch(forKey: "e\u{301}"))
+        XCTAssertNil(defaults.data(forKey: "ns!/\u{E9}"))
+        XCTAssertNil(defaults.data(forKey: "ns!/e\u{301}"))
+    }
+
+    // MARK: Suites
+
+    func testGroupIdsThatAreTheGlobalDomainTheAppsSuiteOrEmptyThrow() throws {
+        let ownSuiteName = try locator.suiteName(for: scope)
+        for groupId in ["", UserDefaults.globalDomain, ".GlobalPreferences", "kCFPreferencesAnyApplication", "Apple Global Domain", ownSuiteName] {
+            XCTAssertThrowsError(try storage(.appGroup(id: groupId, namespace: "ns"))) { error in
+                guard case .invalidSuiteName(groupId)? = error as? UserDefaultsStorage.Error else {
+                    return XCTFail("Unexpected \(error)")
+                }
+            }
+        }
+    }
+
+    /// Measured, for `.appGroup`'s doc: the system makes the suite whether or not the app is in the group.
+    func testAnUnentitledGroupsSuiteWorksAndStaysInTheAppsOwnPreferences() throws {
+        // Given: a group this test process isn't entitled to
+        let groupId = "group.keyvaluestorage.unentitled"
+        let storage = try storage(.appGroup(id: groupId, namespace: "ns"))
+        addTeardownBlock {
+            UserDefaults(suiteName: groupId)?.removePersistentDomain(forName: groupId)
+        }
+
+        // When: nothing throws or reports it
+        try storage.save(Data([1]), forKey: "key")
+        CFPreferencesAppSynchronize(groupId as CFString)
+
+        // Then: the value works, and its file is in the app's own preferences, not a group container
+        XCTAssertEqual(storage.fetch(forKey: "key"), Data([1]))
+        XCTAssertEqual(try suiteFile(groupId, once: "ns!/key")["ns!/key"] as? Data, Data([1]))
+    }
+
+    #if os(macOS)
+    /// Measured, for `.appGroup`'s doc: suites are files named after them, which a volume that ignores case takes for one.
+    func testGroupSuitesThatDifferOnlyInCaseWriteOneFile() throws {
+        // Given
+        let preferences = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true).appendingPathComponent("Library/Preferences", isDirectory: true)
+        let caseSensitive = try preferences.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]).volumeSupportsCaseSensitiveNames
+        try XCTSkipIf(caseSensitive != false, "The preferences volume tells case apart")
+        let groupIds = ["group.keyvaluestorage.case", "GROUP.KEYVALUESTORAGE.CASE"]
+        addTeardownBlock {
+            for groupId in groupIds {
+                UserDefaults(suiteName: groupId)?.removePersistentDomain(forName: groupId)
+            }
+        }
+
+        // When
+        for (index, groupId) in groupIds.enumerated() {
+            try storage(.appGroup(id: groupId, namespace: "ns")).save(Data([UInt8(index)]), forKey: .init("key\(index)"))
+            CFPreferencesAppSynchronize(groupId as CFString)
+        }
+
+        // Then: one file for both
+        _ = try suiteFile(groupIds[0], once: "ns!/key0")
+        let files = try FileManager.default.contentsOfDirectory(atPath: preferences.path).filter { $0.lowercased() == "group.keyvaluestorage.case.plist" }
+        XCTAssertEqual(files.count, 1, "\(files)")
+    }
+    #endif
+
+    func testTheLocatorsLookupsReturnTheSystems() {
+        let locator = DefaultUserDefaultsLocator()
+
+        XCTAssertEqual(locator.ownIdentifier, OwnIdentity.identifier)
+    }
+
+    // MARK: Helpers
+
+    private func storage(_ scope: UserDefaultsStorage.Scope? = nil) throws(UserDefaultsStorage.Error) -> UserDefaultsStorage {
+        try UserDefaultsStorage(scope: scope ?? self.scope, backingStore: DefaultUserDefaultsBackingStoreWrapper(), locator: locator)
+    }
+
+    /// The suite's file once the system has written `key` to it, or as it is after 30 s; an `NSDictionary`, because a Swift
+    /// dictionary merges keys that differ only in normalization.
+    /// - Note: In a test process the system writes a suite's file up to about 10 s after a change, more on a busy CI runner,
+    ///   and synchronizing doesn't hurry it. Each write replaces the file, so the folder reports it.
+    private func suiteFile(_ suiteName: String, once key: String) throws -> NSDictionary {
+        let folder = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true).appendingPathComponent("Library/Preferences", isDirectory: true)
+        let file = folder.appendingPathComponent("\(suiteName).plist")
+        let descriptor = open(folder.path, O_EVTONLY)
+        guard descriptor >= 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+
+        // Watched before the first read, so a write in between still wakes the wait
+        let changed = DispatchSemaphore(value: 0)
+        let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: descriptor, eventMask: .write)
+        source.setEventHandler { changed.signal() }
+        source.setCancelHandler { close(descriptor) }
+        source.resume()
+        defer { source.cancel() }
+
+        let deadline = DispatchTime.now() + 30
+        var plist = NSDictionary()
+        repeat {
+            plist = (try? Data(contentsOf: file)).flatMap { try? PropertyListSerialization.propertyList(from: $0, format: nil) as? NSDictionary } ?? [:]
+        } while plist[key] == nil && changed.wait(timeout: deadline) == .success
+
+        return plist
+    }
+
+    private func assertKeyOccupied(_ key: UserDefaultsStorage.Key, file: StaticString = #filePath, line: UInt = #line, _ body: () throws -> Void) {
+        XCTAssertThrowsError(try body(), file: file, line: line) { error in
+            guard case .keyOccupied(key)? = error as? UserDefaultsStorage.Error else {
+                return XCTFail("Expected .keyOccupied(\(key)), got \(error)", file: file, line: line)
+            }
+        }
+    }
+}

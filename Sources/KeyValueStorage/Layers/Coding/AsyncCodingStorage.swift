@@ -1,0 +1,96 @@
+//
+//  AsyncCodingStorage.swift
+//  KeyValueStorage
+//
+//  Created by Narek Sahakyan on 31.10.26.
+//
+
+import Foundation
+
+// MARK: - AsyncCodingStorage
+
+/// Encodes values and passes them to any data storage, synchronous or not.
+/// It holds only immutable state, so it doesn't need an actor: encoding runs in parallel on the callers' tasks.
+/// - Note: `Sendable` only when its storage is: wrap a synchronous storage that isn't in `IsolatedDataStorage` to share it.
+/// - Warning: Subclasses inherit `Sendable`: their own state must be thread-safe too.
+open class AsyncCodingStorage<Storage: AsyncDataStorage> {
+    public typealias Error = CodingStorageError<Storage>
+
+    // MARK: Properties
+
+    private let coder: any DataCoder
+    private let storage: Storage
+    
+    public var scope: Storage.Scope {
+        storage.scope
+    }
+    
+    // MARK: Initializers
+    
+    public init(storage: Storage, coder: any DataCoder = RawDataCoder()) {
+        self.coder = coder
+        self.storage = storage
+    }
+    
+    // MARK: Main Functionality
+    
+    open func fetch<Value: CodingValue>(forKey key: CodingStorageKey<Storage, Value>) async throws(Error) -> Value? {
+        let data: Data?
+        do throws(Storage.Error) {
+            data = try await storage.fetch(forKey: key.key)
+        } catch {
+            throw .storage(error)
+        }
+
+        guard let data else {
+            return nil
+        }
+
+        return try coder.decoded(data, as: Value.self, for: Storage.self)
+    }
+
+    open func save<Value: CodingValue>(_ value: Value, forKey key: CodingStorageKey<Storage, Value>) async throws(Error) {
+        let encoded = try coder.encoded(value, for: Storage.self)
+        do throws(Storage.Error) {
+            try await storage.save(encoded, forKey: key.key)
+        } catch {
+            throw .storage(error)
+        }
+    }
+
+    /// Saves `value`, or deletes the stored one if `nil`, through the storage's `set`.
+    /// - Note: It doesn't call `save` or `delete`: a subclass that changes them changes this too.
+    open func set<Value: CodingValue>(_ value: Value?, forKey key: CodingStorageKey<Storage, Value>) async throws(Error) {
+        var encoded: Data?
+        if let value {
+            encoded = try coder.encoded(value, for: Storage.self)
+        }
+
+        do throws(Storage.Error) {
+            try await storage.set(encoded, forKey: key.key)
+        } catch {
+            throw .storage(error)
+        }
+    }
+
+    open func delete<Value: CodingValue>(forKey key: CodingStorageKey<Storage, Value>) async throws(Error) {
+        do throws(Storage.Error) {
+            try await storage.delete(forKey: key.key)
+        } catch {
+            throw .storage(error)
+        }
+    }
+
+    open func clear() async throws(Error) {
+        do throws(Storage.Error) {
+            try await storage.clear()
+        } catch {
+            throw .storage(error)
+        }
+    }
+}
+
+// MARK: - AsyncCodingStorage + Sendable
+
+/// Unchecked only because the class is open: its state is immutable, and the coder and the storage are `Sendable`.
+extension AsyncCodingStorage: @unchecked Sendable where Storage: Sendable { }
